@@ -4,7 +4,6 @@
     "types": [],
     "lib": ["ES2023"]
   },
-  "files": ["test/support/core-sentinel.ts"],
   "include": ["src/domain", "src/application"],
   "exclude": ["node_modules", "dist", "coverage"]
 }
