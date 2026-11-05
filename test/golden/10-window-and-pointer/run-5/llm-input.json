@@ -1,0 +1,11 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550246@s.whatsapp.net",
+      "chatName": "Dina Funes",
+      "isGroup": false,
+      "userMessage": "Chat con: Dina Funes\n\n[16:00] Dina Funes: Sofi, ¿me pasás la factura del mes?"
+    }
+  ]
+}

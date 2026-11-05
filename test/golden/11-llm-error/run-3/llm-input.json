@@ -1,0 +1,11 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550258@s.whatsapp.net",
+      "chatName": "Wanda Pinto",
+      "isGroup": false,
+      "userMessage": "Chat con: Wanda Pinto\n\n[12:00] Wanda Pinto: Sofi, te escribo por la inscripción\n[12:01] Wanda Pinto: ¿Llegaste a completar el formulario?"
+    }
+  ]
+}

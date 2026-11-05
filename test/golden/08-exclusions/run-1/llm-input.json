@@ -1,0 +1,41 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550211@s.whatsapp.net",
+      "chatName": "Bruno Acosta",
+      "isGroup": false,
+      "userMessage": "Chat con: Bruno Acosta\n\n[08:00] Bruno Acosta: Sofi, ¿viste el partido de anoche?\n[09:20] Bruno Acosta: Dale, mañana te cuento"
+    },
+    {
+      "jid": "120363000000000111@g.us",
+      "chatName": "Familia Rey",
+      "isGroup": true,
+      "userMessage": "Grupo: Familia Rey\n\n[08:15] Camila Ortiz: Domingo almuerzo en lo de los abuelos\n[09:25] Bruno Acosta: Yo llevo el postre"
+    },
+    {
+      "jid": "5491155550212@s.whatsapp.net",
+      "chatName": "Camila Ortiz",
+      "isGroup": false,
+      "userMessage": "Chat con: Camila Ortiz\n\n[08:35] Camila Ortiz: Te mando las fotos del viaje más tarde"
+    },
+    {
+      "jid": "120363000000000112@g.us",
+      "chatName": "Club de Lectura",
+      "isGroup": true,
+      "userMessage": "Grupo: Club de Lectura\n\n[08:45] Bruno Acosta: Este mes leemos una novela corta"
+    },
+    {
+      "jid": "5491155550213@s.whatsapp.net",
+      "chatName": "Marcos ( +5491155550213 )",
+      "isGroup": false,
+      "userMessage": "Chat con: Marcos ( +5491155550213 )\n\n[09:00] Marcos: Hola, me pasaron tu número por la mudanza"
+    },
+    {
+      "jid": "5491155550214@s.whatsapp.net",
+      "chatName": "Diego Molina",
+      "isGroup": false,
+      "userMessage": "Chat con: Diego Molina\n\n[09:30] Diego Molina: Sofi, ¿tenés el cargador que te presté?"
+    }
+  ]
+}

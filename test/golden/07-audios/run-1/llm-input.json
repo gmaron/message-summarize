@@ -1,0 +1,47 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550201@s.whatsapp.net",
+      "chatName": "Lucía Paredes",
+      "isGroup": false,
+      "userMessage": "Chat con: Lucía Paredes\n\n[08:05] Lucía Paredes: Hola Sofi, te dejo un audio porque es largo\n[08:06] Lucía Paredes: 🎤 (audio) Che, te cuento que el sábado cambiamos el horario de la comida a las dos de la tarde, avisale a tu mamá.\n[08:07] Lucía Paredes: Después me decís si les sirve\n[08:20] Sofía [VOS]: 🎤 (audio) Perfecto Lu, les aviso y confirmo esta noche.\n[08:21] Lucía Paredes: Genial, gracias!"
+    },
+    {
+      "jid": "5491155550202@s.whatsapp.net",
+      "chatName": "Mateo Rinaldi",
+      "isGroup": false,
+      "userMessage": "Chat con: Mateo Rinaldi\n\n[09:00] Mateo Rinaldi: 🎤 (audio sin transcribir)\n[09:02] Mateo Rinaldi: 🎤 (audio sin transcribir)"
+    },
+    {
+      "jid": "5491155550203@s.whatsapp.net",
+      "chatName": "Julia Soto",
+      "isGroup": false,
+      "userMessage": "Chat con: Julia Soto\n\n[09:30] Julia Soto: ¿Pudiste escuchar lo que te mandé ayer?\n[09:40] Sofía [VOS]: 🎤 (audio) Sí, lo escuché. Mañana te llamo para coordinar.\n[09:41] Sofía [VOS]: 🎤 (audio sin transcribir)"
+    },
+    {
+      "jid": "5491155550204@s.whatsapp.net",
+      "chatName": "Valentín Cruz",
+      "isGroup": false,
+      "userMessage": "Chat con: Valentín Cruz\n\n[10:00] Valentín Cruz: 🎤 (audio sin transcribir)\n[10:01] Valentín Cruz: 🎤 (audio) Primera línea del audio.\nSegunda línea después de una pausa.\n[10:02] Valentín Cruz: 🎤 (audio sin transcribir)"
+    },
+    {
+      "jid": "5491155550205@s.whatsapp.net",
+      "chatName": "Nuevo Vecino ( +5491155550205 )",
+      "isGroup": false,
+      "userMessage": "Chat con: Nuevo Vecino ( +5491155550205 )\n\n[10:30] Nuevo Vecino: 🎤 (audio) Hola, soy el nuevo del 4B, ¿tenés la llave del bicicletero?"
+    },
+    {
+      "jid": "120363000000000101@g.us",
+      "chatName": "Cumple de Tía Marta",
+      "isGroup": true,
+      "userMessage": "Grupo: Cumple de Tía Marta\n\n[11:00] Primo Tomás: ¿Quién se encarga de la torta?\n[11:02] Lucía Paredes: 🎤 (audio) Yo llevo la torta y las velitas.\n[11:03] Mateo Rinaldi: 🎤 (audio sin transcribir)\n[11:05] Sofía [VOS]: Yo llevo las bebidas\n[11:06] Sofía [VOS]: 🎤 (audio) Perdón, me olvidé de contar las sillas: necesitamos diez más.\n[11:08] Sofía [VOS]: 🎤 (audio sin transcribir)\n[11:10] Primo Tomás: Gracias a todos"
+    },
+    {
+      "jid": "120363000000000102@g.us",
+      "chatName": "Vecinos del 5to",
+      "isGroup": true,
+      "userMessage": "Grupo: Vecinos del 5to\n\n[12:00] Primo Tomás: 🎤 (audio) Mañana cortan el agua de nueve a doce, llenen los tanques.\n[12:01] Mateo Rinaldi: 🎤 (audio sin transcribir)\n[12:05] Lucía Paredes: 🎤 (audio) Gracias por avisar."
+    }
+  ]
+}

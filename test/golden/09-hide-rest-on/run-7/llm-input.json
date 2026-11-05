@@ -1,0 +1,17 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550234@s.whatsapp.net",
+      "chatName": "Tina Cano",
+      "isGroup": false,
+      "userMessage": "Chat con: Tina Cano\n\n[22:10] Tina Cano: Sofi, ¿me llamás cuando puedas?"
+    },
+    {
+      "jid": "5491155550235@s.whatsapp.net",
+      "chatName": "Ugo Cano",
+      "isGroup": false,
+      "userMessage": "Chat con: Ugo Cano\n\n[22:20] Ugo Cano: Acordate de pagar la patente"
+    }
+  ]
+}

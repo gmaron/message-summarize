@@ -1,0 +1,23 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550251@s.whatsapp.net",
+      "chatName": "Ofelia Quiroga",
+      "isGroup": false,
+      "userMessage": "Chat con: Ofelia Quiroga\n\n[08:00] Ofelia Quiroga: Sofi, ¿viste el mail del banco?\n[08:02] Ofelia Quiroga: Dice que hay que actualizar los datos"
+    },
+    {
+      "jid": "5491155550252@s.whatsapp.net",
+      "chatName": "Pedro Aguirre",
+      "isGroup": false,
+      "userMessage": "Chat con: Pedro Aguirre\n\n[08:10] Pedro Aguirre: ¿Jugamos al pádel el sábado?"
+    },
+    {
+      "jid": "5491155550253@s.whatsapp.net",
+      "chatName": "Rubén Mansilla",
+      "isGroup": false,
+      "userMessage": "Chat con: Rubén Mansilla\n\n[08:20] Rubén Mansilla: Te paso el presupuesto de la reparación\n[08:21] Rubén Mansilla: Son tres cuotas"
+    }
+  ]
+}

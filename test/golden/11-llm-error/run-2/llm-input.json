@@ -1,0 +1,29 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550255@s.whatsapp.net",
+      "chatName": "Tomás Herrera",
+      "isGroup": false,
+      "userMessage": "Chat con: Tomás Herrera\n\n[10:00] Tomás Herrera: Sofi, ¿tenés el número del electricista?"
+    },
+    {
+      "jid": "5491155550256@s.whatsapp.net",
+      "chatName": "Úrsula Vega",
+      "isGroup": false,
+      "userMessage": "Chat con: Úrsula Vega\n\n[10:05] Úrsula Vega: Mañana paso por los papeles"
+    },
+    {
+      "jid": "5491155550257@s.whatsapp.net",
+      "chatName": "Víctor Lamas",
+      "isGroup": false,
+      "userMessage": "Chat con: Víctor Lamas\n\n[10:20] Víctor Lamas: Gracias por lo de ayer"
+    },
+    {
+      "jid": "120363000000000131@g.us",
+      "chatName": "Peña de Amigos",
+      "isGroup": true,
+      "userMessage": "Grupo: Peña de Amigos\n\n[10:30] Víctor Lamas: El asado es el domingo a las 13\n[10:32] Pedro Aguirre: Yo llevo el pan"
+    }
+  ]
+}

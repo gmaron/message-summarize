@@ -1,0 +1,21 @@
+{
+  "last_summary_ts": "1777917600000",
+  "last_summary_local": "2026-05-04 15:00:00",
+  "outbox": [
+    {
+      "id": 1,
+      "text": "*Resumen WhatsApp — lun 04-05, 12:00*\n2 chats con novedades desde lun 04-05, 06:00 · 1 necesitan respuesta\n\n*🔴 Necesitan respuesta*\n• *Xavier Roldán*: Xavier quiere confirmar la visita de las 10.\n\n*🟡 Con pendientes*\n• *Bea Cortés*: Bea dejó las llaves en la portería.\n   ☐ Retirar las llaves de la portería",
+      "sent_at": null
+    },
+    {
+      "id": 2,
+      "text": "*Resumen WhatsApp — lun 04-05, 15:00*\n2 chats con novedades desde lun 04-05, 12:00 · 1 necesitan respuesta\n\n*🔴 Necesitan respuesta*\n• *Yago Sanz*: Yago invita a almorzar hoy.\n\n*⚪ El resto*\n• *Carlos Díaz*: Carlos manda el informe a la tarde.",
+      "sent_at": null
+    },
+    {
+      "id": 3,
+      "text": "*Resumen WhatsApp — lun 04-05, 06:00*\n1 chats con novedades desde lun 04-05, 05:00 · 1 necesitan respuesta\n\n*🔴 Necesitan respuesta*\n• *Ana Gómez*: Ana pregunta si llegó el paquete.",
+      "sent_at": null
+    }
+  ]
+}

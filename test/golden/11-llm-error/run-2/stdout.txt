@@ -1,0 +1,6 @@
+Resumiendo desde mié 08-04, 10:00…
+· Tomás Herrera (1)… error
+· Úrsula Vega (1)… error
+· Víctor Lamas (1)… ok (fake)
+· Peña de Amigos (2)… ok (fake)
+Resumen encolado para tu chat de WhatsApp (lo envía el listener).
