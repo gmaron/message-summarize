@@ -1,0 +1,11 @@
+{
+  "last_summary_ts": "1780441200000",
+  "last_summary_local": "2026-06-02 20:00:00",
+  "outbox": [
+    {
+      "id": 1,
+      "text": "*Resumen WhatsApp — mar 02-06, 20:00*\n6 chats con mensajes sin leer desde mar 02-06, 08:00 · 2 necesitan respuesta\n\n*🔴 Necesitan respuesta*\n• *Irene Navarro*: Irene necesita el contacto de un plomero.\n• *Equipo de Fútbol 5*: Nacho confirma el partido de hoy y Tomi pregunta si hay lugar para uno más.\n\n*🟡 Con pendientes*\n• *Elena Juárez*: Elena pide ayuda con la mudanza del sábado a las 9, con guantes y cinta.\n   ☐ Llevar guantes y cinta el sábado\n• *Ágata Fuentes*: Ágata pregunta si Sofía vio los pasajes del viaje.\n   ☐ Mirar los pasajes y avisarle a Ágata\n\n*⚪ El resto*\n• *Diego Iglesias*: Diego pasa a buscar a Sofía a las 20:30 y lleva las pelotas.\n• *Fabián Kramer*: Fabián, del curso de fotografía, pasa el programa que empieza el 15.",
+      "sent_at": null
+    }
+  ]
+}

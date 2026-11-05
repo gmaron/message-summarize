@@ -1,0 +1,41 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550113@s.whatsapp.net",
+      "chatName": "Tienda Luz ( +5491155550113 )",
+      "isGroup": false,
+      "userMessage": "Chat con: Tienda Luz ( +5491155550113 )\n\n[08:10] +5491155550113: Hola, te escribo de Tienda Luz por tu pedido de lámparas\n[08:12] +5491155550113: Ya está listo para retirar\n[08:13] +5491155550113: Abrimos hasta las 19\n[08:15] +5491155550113: ¡Gracias!"
+    },
+    {
+      "jid": "120363000000000011@g.us",
+      "chatName": "Grupo sin nombre",
+      "isGroup": true,
+      "userMessage": "Grupo: Grupo sin nombre\n\n[08:20] Ana Gómez: Chicos, mañana pasa el fumigador\n[08:21] Nico: Yo no estoy, dejo la llave en portería\n[08:22] Lucho (Plomero): El jueves arreglo la bomba de agua\n[08:23] +5491155550117: ¿Alguien sabe a qué hora cortan la luz?"
+    },
+    {
+      "jid": "5491155550111@s.whatsapp.net",
+      "chatName": "Ana Gómez",
+      "isGroup": false,
+      "userMessage": "Chat con: Ana Gómez\n\n[08:30] Ana Gómez: Sofi, ¿venís al cumple de Tomás el sábado?\n[08:31] Ana Gómez: Necesito saber hoy para pedir la torta\n[08:32] Ana Gómez: ¿Me avisás?"
+    },
+    {
+      "jid": "5491155550115@s.whatsapp.net",
+      "chatName": "Mati ( +5491155550115 )",
+      "isGroup": false,
+      "userMessage": "Chat con: Mati ( +5491155550115 )\n\n[08:40] Mati: Buenas, soy Mati, el que alquila el depto del 4°\n[08:41] Mati: Solo te aviso que ya depositó la inmobiliaria\n[08:42] Mati: Cualquier cosa me escribís"
+    },
+    {
+      "jid": "5491155550114@s.whatsapp.net",
+      "chatName": "+5491155550114",
+      "isGroup": false,
+      "userMessage": "Chat con: +5491155550114\n\n[08:50] +5491155550114: Hola, soy del consorcio, falta que mandes la foto del DNI\n[08:51] +5491155550114: La podés pasar por acá hasta el viernes"
+    },
+    {
+      "jid": "5491155550112@s.whatsapp.net",
+      "chatName": "Nico ( +5491155550112 )",
+      "isGroup": false,
+      "userMessage": "Chat con: Nico ( +5491155550112 )\n\n[09:00] Nico: Sofi, ¿me pasás el contacto del electricista?\n[09:01] Nico: Es urgente, se me fue la luz"
+    }
+  ]
+}

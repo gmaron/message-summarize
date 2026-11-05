@@ -1,0 +1,29 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550121@s.whatsapp.net",
+      "chatName": "Beto Sosa",
+      "isGroup": false,
+      "userMessage": "Chat con: Beto Sosa\n\n[08:00] Beto Sosa: Hola Sofi, ¿cómo va todo?\n[08:06] Sofía [VOS]: Hoy el local cierra a las seis y media.\n[08:07] Sofía [VOS]: Consorcio: reunión el jueves 18 hs en el SUM.\n[08:08] Sofía [VOS]: Nos vemos en la plaza hoy a las cinco 😀\n[08:10] Beto Sosa: Todo bien, gracias por avisar"
+    },
+    {
+      "jid": "5491155550122@s.whatsapp.net",
+      "chatName": "Cora Beltrán",
+      "isGroup": false,
+      "userMessage": "Chat con: Cora Beltrán\n\n[08:20] Cora Beltrán: Sofi, ¿mañana hay clase?\n[08:23] Sofía [VOS]: Hoy el local cierra a las seis y media.\n[08:24] Sofía [VOS]: Consorcio: reunión el jueves 18 hs en el SUM.\n[08:25] Sofía [VOS]: Nos vemos en la plaza hoy a las cinco 😀\n[08:30] Cora Beltrán: Perfecto, ahí estaré"
+    },
+    {
+      "jid": "5491155550124@s.whatsapp.net",
+      "chatName": "Eli Paz",
+      "isGroup": false,
+      "userMessage": "Chat con: Eli Paz\n\n[09:30] Eli Paz: Sofi, ¿seguro hoy hay clase?\n[09:32] Sofía [VOS]: Se suspende la clase de hoy por lluvia, perdón!\n[09:40] Sofía [VOS]: Se suspende la clase de hoy por lluvia, perdón!\n[09:45] Eli Paz: Entiendo, gracias"
+    },
+    {
+      "jid": "5491155550125@s.whatsapp.net",
+      "chatName": "Fede Luna",
+      "isGroup": false,
+      "userMessage": "Chat con: Fede Luna\n\n[10:00] Fede Luna: ¿Qué pasó con la clase?\n[10:02] Sofía [VOS]: Se suspende la clase de hoy por lluvia, perdón!\n[10:05] Fede Luna: Ah, ok"
+    }
+  ]
+}

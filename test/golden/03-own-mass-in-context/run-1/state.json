@@ -1,0 +1,11 @@
+{
+  "last_summary_ts": "1776812400000",
+  "last_summary_local": "2026-04-21 20:00:00",
+  "outbox": [
+    {
+      "id": 1,
+      "text": "*Resumen WhatsApp — mar 21-04, 20:00*\n1 chats con mensajes sin leer desde mar 21-04, 10:00 · 1 necesitan respuesta\n\n*🔴 Necesitan respuesta*\n• *Lola Vega*: Lola pide confirmar el turno de mañana antes de las 18.",
+      "sent_at": null
+    }
+  ]
+}

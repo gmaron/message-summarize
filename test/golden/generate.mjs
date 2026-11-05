@@ -84,16 +84,21 @@ db.close()
 
 const FULL_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/
 
-// Every run needs a fixed window so the output does not depend on the clock
+// Every run needs a fixed end (--hasta) so the output does not depend on the clock. --desde is optional:
+// without it the legacy tool starts at last_summary_ts, or at --hasta minus horasPorDefecto, both fixed.
 function validateRuns(slug, runs) {
   if (!Array.isArray(runs) || !runs.length) throw new Error(`[${slug}] the scenario has no runs`)
   for (const [i, run] of runs.entries()) {
     const label = `[${slug} run-${i + 1}]`
     if (run.args.some((a) => a === '--horas' || a.startsWith('--horas='))) throw new Error(`${label} --horas is not allowed: it depends on the clock`)
+    if (run.args.some((a) => /^--(desde|hasta)=/.test(a))) throw new Error(`${label} use '--desde <value>' and '--hasta <value>', not the = form`)
     for (const flag of ['--desde', '--hasta']) {
+      // parseArgs keeps the last occurrence, so a repeated flag could slip a clock-dependent value past this check
+      if (run.args.filter((a) => a === flag).length > 1) throw new Error(`${label} ${flag} appears more than once`)
       const at = run.args.indexOf(flag)
+      if (at < 0 && flag === '--desde') continue
       const value = at < 0 ? undefined : run.args[at + 1]
-      if (!FULL_TIME.test(value ?? '')) throw new Error(`${label} ${flag} is required in the form 'YYYY-MM-DD HH:MM' (got ${JSON.stringify(value)})`)
+      if (!FULL_TIME.test(value ?? '')) throw new Error(`${label} ${flag} must be in the form 'YYYY-MM-DD HH:MM' (got ${JSON.stringify(value)})`)
     }
   }
 }
@@ -201,7 +206,10 @@ async function runScenario(slug, tmp) {
     const recordFile = join(work, `calls-${k}.jsonl`)
     const systemFile = join(work, `system-${k}.txt`)
     writeFileSync(recordFile, '')
-    const digestsBefore = snapshotDigests(digestDir)
+    // Empty the digest dir so any file present after the run was written by this run, even if a previous
+    // run wrote the same name with the same content. The legacy tool never reads this dir.
+    rmSync(digestDir, { recursive: true, force: true })
+    mkdirSync(digestDir, { recursive: true })
     const outboxBefore = Math.max(0, ...readDb(dbPath).outbox.map((r) => r.id))
 
     const child = spawnSync(process.execPath, ['--no-warnings', 'src/summarize.js', ...run.args], {
@@ -217,9 +225,8 @@ async function runScenario(slug, tmp) {
 
     for (const c of calls) calledJids.add(c.jid)
     const after = readDb(dbPath)
-    const digestsAfter = snapshotDigests(digestDir)
-    const changed = [...digestsAfter].filter(([name, text]) => digestsBefore.get(name) !== text)
-    if (changed.length > 1) throw new Error(`${label} more than one digest file changed: ${changed.map(([n]) => n)}`)
+    const written = [...snapshotDigests(digestDir)]
+    if (written.length > 1) throw new Error(`${label} more than one digest file was written: ${written.map(([n]) => n)}`)
 
     const dir = join(outDir, `run-${k}`)
     mkdirSync(dir, { recursive: true })
@@ -227,7 +234,7 @@ async function runScenario(slug, tmp) {
     writeFileSync(join(dir, 'llm-input.json'), json({ system, calls: calls.map(({ jid, chatName, isGroup, userMessage }) => ({ jid, chatName, isGroup, userMessage })) }))
     const added = after.outbox.filter((r) => r.id > outboxBefore)
     writeFileSync(join(dir, 'whatsapp-parts.json'), json(added.map((r) => r.text)))
-    if (changed.length) writeFileSync(join(dir, 'digest.md'), changed[0][1])
+    if (written.length) writeFileSync(join(dir, 'digest.md'), written[0][1])
     const last = after.last
     writeFileSync(
       join(dir, 'state.json'),
@@ -239,9 +246,9 @@ async function runScenario(slug, tmp) {
     )
     let stdout = child.stdout
     if (child.stderr) stdout += `\n--- stderr ---\n${child.stderr}`
-    if (!changed.length) stdout += '\n--- generator note: no digest file was produced in this run ---\n'
+    if (!written.length) stdout += '\n--- generator note: no digest file was produced in this run ---\n'
     writeFileSync(join(dir, 'stdout.txt'), stdout)
-    console.log(`${label} done (${calls.length} LLM calls, ${added.length} outbox parts, digest ${changed.length ? 'yes' : 'no'})`)
+    console.log(`${label} done (${calls.length} LLM calls, ${added.length} outbox parts, digest ${written.length ? 'yes' : 'no'})`)
   }
 
   const defined = Object.keys(scenario.llm)
