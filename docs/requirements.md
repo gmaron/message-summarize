@@ -1,6 +1,6 @@
 # message-summarize: requerimientos
 
-Versión 1.0 · 2026-11-05 · Estado: aprobado
+Versión 1.2 · 2026-11-05 · Estado: aprobado
 
 ## 1. Propósito
 
@@ -20,9 +20,9 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella: 
 
 ### 1.2 Alcance de la v1
 
-**Incluye:** una fuente (WhatsApp por Baileys), un destino (el chat propio de WhatsApp), varias cuentas por instalación, proveedores de LLM a elección del usuario (OpenAI, Anthropic, Gemini y Ollama), transcripción de audios local y opcional, web local, CLI, horarios configurables e instalación con Docker y nativa en macOS, Linux y Windows.
+**Incluye:** una fuente (WhatsApp por Baileys), un destino (el chat propio de WhatsApp), varias cuentas por instalación, proveedores de LLM a elección del usuario (OpenAI, Anthropic, Gemini y Ollama), transcripción de audios local y opcional, web local, CLI, horarios configurables e instalación con Docker y nativa en macOS y Linux.
 
-**No incluye:** otras plataformas de mensajería, responder mensajes en nombre del usuario, envío a terceros, mandar el digest de una cuenta a otra cuenta (cada digest es personal y solo lo recibe la cuenta resumida), acceso remoto a la web (fuera de la red local), app móvil, sincronización entre máquinas, modo multiusuario ni servicio en la nube.
+**No incluye:** otras plataformas de mensajería, responder mensajes en nombre del usuario, envío a terceros, mandar el digest de una cuenta a otra cuenta (cada digest es personal y solo lo recibe la cuenta resumida), acceso remoto a la web (fuera de la red local), app móvil, sincronización entre máquinas, modo multiusuario ni servicio en la nube. La instalación nativa en Windows queda para la v1.1 (en la v1, Windows usa Docker).
 
 ## 2. Glosario
 
@@ -35,7 +35,7 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella: 
 | Digest | El resumen de todas las conversaciones de una ventana de tiempo, ordenado por secciones |
 | Ventana | El intervalo de tiempo que cubre un digest. Arranca donde terminó el anterior (puntero) |
 | Horario | Una regla que dispara un digest (por ejemplo, "lun a vie 9:00") |
-| Proveedor | El servicio de LLM que resume: OpenAI, Anthropic, Gemini u Ollama (local) |
+| Proveedor | El LLM que resume. Hay dos formas de conectarlo: por **API** (OpenAI, Anthropic, Gemini u Ollama local, con clave de API) o por **CLI** (el programa de línea de comandos del proveedor, como Claude Code, Gemini CLI o Codex, con la sesión que el usuario ya tiene iniciada) |
 | Solo local | Conversación que se resume únicamente con un proveedor que corre en la máquina |
 | Daemon | El único proceso de larga duración que mantiene conexiones, planifica y sirve la web |
 
@@ -100,14 +100,16 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
-| RF-40 | Usar el LLM que prefiera el usuario | v1 | Proveedores: OpenAI, Anthropic, Gemini y Ollama. El adaptador de OpenAI acepta una URL base, así que también sirve para cualquier API compatible (LM Studio, OpenRouter, etc.). Todos pasan el mismo test de contrato |
-| RF-41 | Elegir proveedor y modelo por cuenta | v1 | No hay proveedor por defecto: el asistente pide elegir uno, pide la clave de API (salvo Ollama) y tiene un botón "Probar conexión" que hace una llamada real y muestra el resultado o el error. Para cada proveedor muestra si cobra, si los datos salen de la máquina y qué hace el proveedor con ellos |
+| RF-40 | Usar el LLM que prefiera el usuario, por API | v1 | Proveedores por API: OpenAI, Anthropic, Gemini y Ollama. El adaptador de OpenAI acepta una URL base, así que también sirve para cualquier API compatible (LM Studio, OpenRouter, etc.). Todos pasan el mismo test de contrato |
+| RF-41 | Elegir proveedor y modelo por cuenta | v1 | No hay proveedor por defecto: el asistente pide elegir uno y la forma de conectarlo (API o CLI), pide la clave de API cuando corresponde y tiene un botón "Probar conexión" que hace una llamada real y muestra el resultado o el error. Para cada proveedor muestra si cobra, si los datos salen de la máquina y qué hace el proveedor con ellos |
 | RF-42 | Proveedor de respaldo | v1 | Si una llamada falla, esa conversación se reintenta con el proveedor de respaldo configurado, y el digest indica cuáles se resumieron con el respaldo |
 | RF-43 | Conversaciones solo locales | v1 | Una conversación marcada como "solo local" se resume siempre con un proveedor local (Ollama). Si no hay ninguno disponible, se omite y se avisa; nunca se envía a un proveedor externo |
 | RF-44 | Informar el costo o consumo | Luego | El historial muestra tokens usados por digest y proveedor |
 | RF-45 | Modelo local chico para Ollama | v1 | El asistente recomienda un modelo según la RAM disponible y lo descarga con barra de progreso. El modelo recomendado se elige con una evaluación contra el set de golden files: tiene que devolver JSON válido en el 100% de los casos y coincidir con el resumen de referencia en "necesita respuesta" en el 90% o más. Candidatos a evaluar en la fase 3: modelos de 3 a 8 mil millones de parámetros (familias Qwen, Gemma, Llama, Phi), revisando cuáles son los vigentes en ese momento |
 | RF-46 | Respetar los límites de los planes gratuitos | v1 | Si el proveedor responde por límite de uso (por ejemplo, el plan gratuito de Gemini), se espera y se reintenta respetando el tiempo que indica; si no alcanza, el digest sale con las conversaciones que se pudieron resumir y avisa cuáles faltaron |
-| RF-47 | Claude Code CLI como proveedor | Luego | Para quien ya tiene un plan de Claude (`claude -p`). Se usa en la instalación personal actual, por eso se mantiene la compatibilidad desde la fase 1 aunque no se ofrezca en el asistente |
+| RF-47 | Usar el LLM por su propia CLI | v1 | Para quien ya paga un plan (Claude, ChatGPT, Gemini) o tiene una cuenta gratuita y no quiere sacar una clave de API: se usa la CLI del proveedor con la sesión que el usuario ya inició. Vienen configuradas Claude Code (`claude -p`, la que usa hoy la instalación personal), Gemini CLI y Codex CLI. Además hay un modo **CLI genérica**: cualquier comando que reciba el prompt por stdin y devuelva texto por stdout, configurado como plantilla de comando. Pasa el mismo test de contrato que los proveedores por API |
+| RF-48 | Salida estructurada con CLIs | v1 | Si la CLI permite forzar un esquema JSON (como `--json-schema` de Claude Code), se usa. Si no, el esquema va en el prompt, la respuesta se valida y, si es inválida, se reintenta una vez pidiendo corregirla; si vuelve a fallar, esa conversación pasa al respaldo (RF-42) |
+| RF-49 | Ejecutar las CLIs sin herramientas | v1 | Las CLIs de proveedores son agentes que pueden leer archivos y ejecutar comandos, y el texto de los chats lo escriben terceros (riesgo de *prompt injection*). Cada llamada corre con las herramientas, MCP y la persistencia de sesión desactivadas (hoy: `--tools ''`, `--strict-mcp-config`, `--no-session-persistence`), en un directorio temporal vacío y con un tiempo máximo. Una CLI configurada solo se habilita si el producto puede verificar que corre así; la CLI genérica muestra la advertencia y pide confirmación explícita |
 
 ### 4.6 Entrega
 
@@ -157,7 +159,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RNF-02 | Privacidad | Antes de activar un proveedor externo, la web muestra qué datos se envían y a quién | Paso obligatorio del asistente; queda registrado el consentimiento |
 | RNF-03 | Seguridad | La web escucha solo en `127.0.0.1` por defecto y exige un token generado en la instalación | Test de integración: sin token responde 401; exponerla en otra interfaz requiere una opción explícita |
 | RNF-04 | Seguridad | Las claves de API y la sesión de WhatsApp se guardan con permisos 600 (o ACL equivalente en Windows) y nunca aparecen en logs | Test que verifica permisos; los logs pasan por una lista de campos a ocultar |
-| RNF-05 | Portabilidad | Funciona en macOS (arm64 y x64), Linux (x64 y arm64), Windows 11 (x64) y Docker (amd64 y arm64) | Matriz de CI con los tres sistemas + build multi-arch |
+| RNF-05 | Portabilidad | Funciona en macOS (arm64 y x64), Linux (x64 y arm64) y Docker (amd64 y arm64). Windows 11 nativo en la v1.1; en la v1, por Docker | Matriz de CI con macOS y Linux + build multi-arch; Windows se suma a la matriz en la v1.1 |
 | RNF-06 | Instalación | Instalación completa en menos de 10 minutos con buena conexión, sin contar la descarga del modelo de whisper | Prueba cronometrada en VMs limpias antes de cada release |
 | RNF-07 | Disponibilidad | El daemon arranca solo con el sistema (servicio del usuario o `restart: unless-stopped`) y se recupera de caídas | Matar el proceso → vuelve en menos de 30 s |
 | RNF-08 | Durabilidad | Ningún mensaje recibido ni digest generado se pierde por un reinicio | SQLite en modo WAL; cola de envíos persistente; test de reinicio en mitad de un digest |
@@ -189,6 +191,9 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | Cambios en Baileys o en el protocolo de WhatsApp rompen la conexión | Alto | Versión fijada, Renovate, tests de contrato del adaptador con fixtures grabados |
 | El contenido de los chats sale hacia el proveedor de LLM | Alto | Consentimiento explícito (RNF-02), opción solo local (RF-43), Ollama como opción totalmente local |
 | El plan gratuito de Gemini puede usar el contenido para mejorar los productos de Google (incluida revisión humana), según sus términos | Alto | El asistente lo advierte al elegir Gemini sin facturación (RF-41) y sugiere marcar como solo locales los chats sensibles. Revisar los términos vigentes antes de cada release |
+| Un mensaje de un tercero contiene instrucciones que una CLI con herramientas podría ejecutar en la máquina del usuario (*prompt injection*) | Alto | CLIs sin herramientas, en directorio vacío y con tiempo máximo (RF-49); test que verifica las opciones con las que se lanza cada CLI |
+| Los términos de algunos planes de suscripción podrían no permitir el uso automatizado de su CLI | Medio | Revisar los términos de Claude, ChatGPT/Codex y Gemini antes de la v0.1.0 y documentar en el README qué permite cada uno; la responsabilidad de cumplirlos queda del lado del usuario |
+| Las CLIs cambian sus opciones entre versiones | Medio | `doctor` verifica la versión y las opciones de cada CLI configurada; tests de contrato con una CLI falsa |
 | Un modelo chico de Ollama resume mal o devuelve JSON inválido | Medio | Evaluación contra golden files (RF-45); salida forzada con esquema JSON (`format`) de Ollama; reintento con el respaldo |
 | La web expuesta da acceso a todos los chats | Alto | Solo localhost + token (RNF-03) |
 | Instalación nativa difícil en Windows (whisper, ffmpeg) | Medio | Transcripción opcional; Docker como vía recomendada; `doctor` |
@@ -202,7 +207,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-10 a RF-15 | `infrastructure/whatsapp/BaileysSource` + `MessageParser` + `HandleIncomingMessage` | 1 |
 | RF-50 a RF-52 | `DeliveryChannel` + `WhatsAppSelfChatDelivery` + `OutboxRepository` + `WhatsAppTextRenderer` | 1 |
 | RF-03, RF-06, RF-60 a RF-66 | Daemon, `CronerScheduler`, `ScheduleRepository`, `app.db`, `import` | 2 |
-| RF-20 a RF-23, RF-40 a RF-47, RF-81 | `infrastructure/llm/` (`OpenAISummarizer`, `AnthropicSummarizer`, `GeminiSummarizer`, `OllamaSummarizer`, `ClaudeCliSummarizer`), `FallbackSummarizer`, `LocalOnlyRouter`, `RateLimitRetry`, `WhisperCppTranscriber`, `ModelDownloader`, `doctor` | 3 |
+| RF-20 a RF-23, RF-40 a RF-47, RF-81 | `infrastructure/llm/api/` (`OpenAISummarizer`, `AnthropicSummarizer`, `GeminiSummarizer`, `OllamaSummarizer`), `infrastructure/llm/cli/` (`CliSummarizer` con presets de Claude Code, Gemini CLI y Codex, más la plantilla genérica; `SandboxedProcessRunner`), `StructuredOutputValidator`, `FallbackSummarizer`, `LocalOnlyRouter`, `RateLimitRetry`, `WhisperCppTranscriber`, `ModelDownloader`, `doctor` | 3 |
 | RF-01, RF-02, RF-04, RF-70 a RF-75, RF-82 | API Fastify + SSE, SPA, autenticación con token | 4 |
 | RNF-05 a RNF-07, RF-80 (`service`) | Imagen Docker, `install.sh`, `install.ps1`, `ServiceInstaller` | 5 |
 | RNF-15, RNF-18, documentación | CI, licencia, aviso legal, README | 6 |
@@ -215,5 +220,14 @@ Cambio respecto del plan original: como WhatsApp es la primera plataforma y no l
 2. **Destino:** el digest es personal; nunca se manda a otra cuenta, ni siquiera a otra cuenta de la misma instalación (RF-51 y alcance).
 3. **Web:** la opción más liviana posible, Svelte 5 compilado con Vite (RNF-19).
 4. **CLI:** alias corto `msum` (RF-80).
-5. **Proveedor:** sin proveedor por defecto; el usuario conecta el LLM que prefiera entre OpenAI, Anthropic, Gemini y Ollama. Gemini es atractivo por su plan gratuito, con la advertencia de privacidad de la sección 7. Para Ollama se elige un modelo chico por evaluación (RF-45). Claude Code CLI queda como proveedor secundario (RF-47).
+5. **Proveedor:** sin proveedor por defecto; el usuario conecta el LLM que prefiera entre OpenAI, Anthropic, Gemini y Ollama. Gemini es atractivo por su plan gratuito, con la advertencia de privacidad de la sección 7. Para Ollama se elige un modelo chico por evaluación (RF-45). Cada proveedor se puede conectar por API o por su propia CLI (Claude Code, Gemini CLI, Codex o una CLI genérica), aprovechando el plan que el usuario ya tiene (RF-47 a RF-49).
 6. **Transcripción:** whisper.cpp local, igual que en la herramienta actual (RF-20).
+
+## 10. Decisiones de implementación (2026-11-05)
+
+1. **Datos de prueba de la fase 0:** conversaciones inventadas que cubren cada regla; nunca datos reales, porque el repo es público.
+2. **CLIs dentro de Docker:** imagen base sin CLIs (API u Ollama) y una variante `-cli` que incluye Claude Code, Gemini CLI y Codex, con la sesión iniciada adentro del contenedor.
+3. **Instaladores nativos:** Docker, macOS y Linux en la v1; Windows nativo en la v1.1.
+4. **Publicación:** repo público `message-summarize` en la cuenta personal de GitHub del autor, con licencia MIT.
+5. **Idioma:** código, commits y nombres en inglés; README en inglés y español; los documentos de diseño en español hasta la v0.1.0.
+6. **Autoría:** los commits van solo a nombre del autor, sin coautoría de herramientas de IA.
