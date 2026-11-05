@@ -16,7 +16,7 @@ The project is in design. The approved requirements are in [docs/requirements.md
 - Web: Svelte 5 compiled with Vite, no component library, served as static files by the daemon.
 - Scheduling inside the daemon with `croner`. Never write to the OS crontab or scheduler.
 
-The tooling is not set up yet; it arrives in phase 1.
+Scripts: `npm run lint` (Biome), `npm run typecheck` (tsc), `npm test` (Vitest), `npm run test:coverage` (Vitest with v8 thresholds), `npm run build` (tsc to `dist/`). `npm run format` applies Biome fixes (it never touches Markdown).
 
 ## Architecture
 
