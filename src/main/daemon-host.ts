@@ -2,7 +2,7 @@ import { mergeByTime, scheduleToCron } from '../domain/schedule.js'
 import { getCatalog, type Language } from '../infrastructure/i18n/index.js'
 import { type Installation, isDirectory } from './accounts.js'
 import { type BlockedReason, readBlocked, writeBlocked } from './blocked.js'
-import { type AppConfig, describeConfigIssue, loadEffectiveConfig } from './config.js'
+import { type AppConfig, describeConfigIssue, loadEffectiveConfig, usesGenericCli } from './config.js'
 import { type CommandContext, hasSession } from './context.js'
 import { Daemon, type DaemonConnection } from './daemon.js'
 import { linkLockHolder } from './link-lock.js'
@@ -373,6 +373,10 @@ export class DaemonHost {
       return
     }
     this.idleReasons.delete(id)
+    // RF-49: the generic CLI can run tools on chat text written by third parties: said when the account starts.
+    if (this.ctx.summarizer === undefined && usesGenericCli(config)) {
+      this.ctx.io.err(texts.config.genericCliWarning(config.provider.genericCli.acknowledgeRisk))
+    }
     // A unit is being started, so nothing is blocked: whatever the host remembered of an earlier block is dropped, and
     // cannot make a later block look cleared (or not cleared).
     this.blocks.delete(id)

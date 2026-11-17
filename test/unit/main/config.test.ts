@@ -57,6 +57,9 @@ describe('parseConfig defaults', () => {
         anthropic: { model: null, timeoutMs: 180_000, maxTokens: 16_000, effort: null },
         gemini: { model: null, timeoutMs: 180_000 },
         retry: { maxRetries: 3, maxWaitMs: 120_000, maxTotalMs: 300_000 },
+        geminiCli: { command: 'gemini', model: null, timeoutMs: 180_000 },
+        codexCli: { command: 'codex', model: null, timeoutMs: 180_000 },
+        genericCli: { command: null, timeoutMs: 180_000, acknowledgeRisk: false },
       },
       transcription: {
         enabled: false,
@@ -151,7 +154,7 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
       {
         option: 'provider.primary',
         code: 'notOneOf',
-        allowed: ['claude-cli', 'ollama', 'openai', 'anthropic', 'gemini'],
+        allowed: ['claude-cli', 'gemini-cli', 'codex-cli', 'generic-cli', 'ollama', 'openai', 'anthropic', 'gemini'],
       },
     ])
   })

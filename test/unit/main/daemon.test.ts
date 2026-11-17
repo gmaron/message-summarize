@@ -39,6 +39,13 @@ async function setup(
     now?: string
     /** A blocked marker left by a previous run. */
     marker?: BlockedReason
+    /**
+     * How often the daemon reloads the schedules and sweeps the outbox. A test that moves the fake clock for hours must
+     * use `LONG_INTERVALS`: at the defaults (5 s and 30 s) 26 hours are about 18,700 reloads and 3,100 sweeps, each with
+     * SQLite reads, which is CPU work that takes seconds and fails under load. The schedules are read when the daemon
+     * starts, so nothing is missed.
+     */
+    timing?: { scheduleReloadMs: number; sweepMs: number }
   } = {},
 ): Promise<Setup> {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
@@ -52,9 +59,17 @@ async function setup(
   const runtime = harness.runtime()
   if (options.bound !== null) runtime.identity.bind(options.bound ?? ME)
   if (options.marker !== undefined) await writeBlocked(harness.account.blockedFile, options.marker, Date.now())
-  const daemon = new Daemon({ runtime, connection: harness.connection, logger: harness.ctx.logger })
+  const daemon = new Daemon({
+    runtime,
+    connection: harness.connection,
+    logger: harness.ctx.logger,
+    ...(options.timing ?? {}),
+  })
   return { harness, runtime, daemon }
 }
+
+/** Intervals for the tests that advance the fake clock for hours (see `setup`). */
+const LONG_INTERVALS = { scheduleReloadMs: 3_600_000, sweepMs: 3_600_000 }
 
 let current: Setup | null = null
 const start = async (options?: Parameters<typeof setup>[0]): Promise<Setup> => {
@@ -214,7 +229,11 @@ describe('Daemon: digests (RF-63, RF-66)', () => {
 describe('Daemon: schedules (RF-60, RF-62)', () => {
   it('fires at the cron time in the configured time zone', async () => {
     // 06:00 in Buenos Aires (UTC-3) is 09:00Z; the schedule is 07:00 local = 10:00Z.
-    const { harness } = await start({ config: { schedules: ['0 7 * * *'] }, now: '2026-11-17T09:00:00Z' })
+    const { harness } = await start({
+      config: { schedules: ['0 7 * * *'] },
+      now: '2026-11-17T09:00:00Z',
+      timing: LONG_INTERVALS,
+    })
     await vi.advanceTimersByTimeAsync(59 * 60_000)
     expect(named(harness, 'schedule.fired')).toHaveLength(0)
     await vi.advanceTimersByTimeAsync(61_000)
@@ -231,6 +250,7 @@ describe('Daemon: schedules (RF-60, RF-62)', () => {
     const { harness } = await start({
       config: { schedules: ['0 7 * * *'], timezone: 'Europe/Madrid' },
       now: '2026-11-17T05:30:00Z',
+      timing: LONG_INTERVALS,
     })
     await vi.advanceTimersByTimeAsync(29 * 60_000)
     expect(named(harness, 'schedule.fired')).toHaveLength(0)
@@ -458,7 +478,11 @@ async function expectIdle(s: Setup, reason: BlockedReason): Promise<void> {
 
 describe('Daemon: terminal states of the connection (idle, never a reconnect loop)', () => {
   it.each(connectionEnds)('%s', async (_name, status, reason) => {
-    const s = await start({ config: { schedules: ['0 7 * * *'] }, now: '2026-11-17T09:00:00Z' })
+    const s = await start({
+      config: { schedules: ['0 7 * * *'] },
+      now: '2026-11-17T09:00:00Z',
+      timing: LONG_INTERVALS,
+    })
     s.harness.connection.emit({ state: 'connected' })
     await settle()
     s.harness.connection.emit(status)
@@ -467,7 +491,12 @@ describe('Daemon: terminal states of the connection (idle, never a reconnect loo
   })
 
   it('another account (mismatch)', async () => {
-    const s = await start({ bound: OTHER, config: { schedules: ['0 7 * * *'] }, now: '2026-11-17T09:00:00Z' })
+    const s = await start({
+      bound: OTHER,
+      config: { schedules: ['0 7 * * *'] },
+      now: '2026-11-17T09:00:00Z',
+      timing: LONG_INTERVALS,
+    })
     s.harness.connection.emit({ state: 'connected' })
     await settle()
     await expectIdle(s, 'mismatch')
@@ -475,7 +504,11 @@ describe('Daemon: terminal states of the connection (idle, never a reconnect loo
   })
 
   it('a socket with no phone number (noAccount)', async () => {
-    const s = await start({ config: { schedules: ['0 7 * * *'] }, now: '2026-11-17T09:00:00Z' })
+    const s = await start({
+      config: { schedules: ['0 7 * * *'] },
+      now: '2026-11-17T09:00:00Z',
+      timing: LONG_INTERVALS,
+    })
     s.harness.connection.user = undefined
     s.harness.connection.emit({ state: 'connected' })
     await settle()
@@ -527,6 +560,7 @@ describe('Daemon: terminal states of the connection (idle, never a reconnect loo
       connection: s.harness.connection,
       logger: s.harness.ctx.logger,
       onBlocked: (reason) => said.push(reason),
+      ...LONG_INTERVALS,
     })
     s.daemon = daemon
     await daemon.start()

@@ -86,7 +86,7 @@ The programs run with no shell, in an empty temporary directory, with a minimal 
 
 ## Choose an LLM provider
 
-You choose it in `config.json` (or in an account's own file): `provider.primary`, and optionally `provider.backup`, which takes over a conversation when the primary fails (a rate limit that does not clear in time, an answer that does not fit the summary format...). Both accept `claude-cli`, `ollama`, `openai`, `anthropic` and `gemini`. **There is no default model for the API providers** (model names change often, and a stale default would fail later): `provider.<name>.model` is required when you use one, and the configuration is rejected without it.
+You choose it in `config.json` (or in an account's own file): `provider.primary`, and optionally `provider.backup`, which takes over a conversation when the primary fails (a rate limit that does not clear in time, an answer that does not fit the summary format...). Both accept `claude-cli`, `gemini-cli`, `codex-cli`, `generic-cli` (see [Use a CLI as the provider](#use-a-cli-as-the-provider)), `ollama`, `openai`, `anthropic` and `gemini`. **There is no default model for the API providers** (model names change often, and a stale default would fail later): `provider.<name>.model` is required when you use one, and the configuration is rejected without it.
 
 | Provider | Configuration | Contacts |
 |---|---|---|
@@ -112,12 +112,44 @@ If a provider answers "too many requests", the program waits for the time it ask
 - **Anthropic:** by default it does not train on inputs or outputs of its commercial offerings, the API included. [Is my data used for model training?](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training)
 - **Gemini:** with a free (unpaid) key, Google may use what you send to improve its products, and human reviewers may read it; with billing enabled that is not the default. **Do not use a free key for chats you would not want read**, and mark sensitive chats as local only. [Gemini API data logging and sharing](https://aistudio.google.com/docs/logs-policy).
 
+## Use a CLI as the provider
+
+If you already pay for a plan, or want no API key, a provider can be a program on your machine that uses the session you already signed in with. There are three modes: `claude-cli`, `gemini-cli` and `codex-cli` (presets) and `generic-cli` (any command). All of them are **external** like the APIs: conversations in `localOnlyPatterns` never reach them.
+
+**The rule (RF-49).** The chats are written by other people, and a CLI is an agent that can read files and run commands: text in a chat could try to make it do so (prompt injection). So a CLI preset is only used when the program can be **verified** to run without tools. Before the first call, and in `msum doctor`, the program runs `<cli> --help` and `<cli> --version` (never a model call, in an empty temporary directory, with the environment below) and every flag the hardening relies on must be listed. If one is missing, the provider is unavailable with the reason "this version of X cannot be run without tools", and the conversation goes to the backup provider. The result is remembered per program path and modification time, so an upgrade is checked again.
+
+| Preset | Status | Flags and why |
+|---|---|---|
+| `claude-cli` | enabled | `claude -p --model <m> --system-prompt <s> --json-schema <schema> --output-format json --tools '' --strict-mcp-config --no-session-persistence --safe-mode --disable-slash-commands`. `-p` is the headless mode; `--json-schema` forces the summary format natively; `--tools ''` turns every tool off; `--strict-mcp-config` loads no MCP server; `--no-session-persistence` saves no session; `--safe-mode` ignores your customizations (CLAUDE.md, skills, plugins, hooks, MCP), so no hook receives the chat; `--disable-slash-commands` turns off commands and skills. The chat goes through stdin, never as an argument. |
+| `gemini-cli` | **disabled** | Gemini CLI (`-p`, `-o json`) has no documented flag that turns its tools off: `--allowed-tools` is deprecated, `--allowed-mcp-server-names` and `--extensions` only select, `--approval-mode plan` is read-only but still has tools (file reads, web fetch), and sessions cannot be turned off. A deny-all policy exists, but its flag (`--admin-policy`) is documented without saying whether it takes a file or a directory, and it is ignored when policy files exist in the system location. |
+| `codex-cli` | **disabled** | `codex exec --sandbox read-only --ephemeral --ignore-user-config --output-schema <file>` restricts what commands may write, saves no session and forces a schema, but the shell tool stays available: the documentation says the sandbox limits "model-generated shell commands", not that it removes them, and no documented switch turns off the shell, MCP and web search together. |
+
+A disabled preset fails every call at once with that reason and `msum doctor` says so; nothing is run. They will be enabled when a documented way to turn the tools off can be verified in `--help`. Until then the generic CLI can run them, with the risk below. Sources: the [Claude Code](https://code.claude.com/docs/en/network-config), [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md) and [Codex CLI](https://learn.chatgpt.com/docs/developer-commands?surface=cli) documentation.
+
+**What the CLI receives.** Only these variables, when set, and never one of your API keys: `PATH` (to find the program and its runtime), `HOME`, `USER` and `LOGNAME` (to find your existing login), `CLAUDE_CONFIG_DIR` (a login kept elsewhere; Claude only), `LANG` and `TZ`. Proxy and certificate variables are not passed: set them where the CLI itself reads them. It runs with no shell, in a fresh empty temporary directory that is removed afterwards, with a time limit that kills the whole process group (grandchildren included), and at most 2 MB of output.
+
+**Signing in.** The CLI uses the login you already made for it. Inside a Docker or sandbox container the login must be made inside it, once, and kept in a volume: for Claude, run `claude` in the container (for example `docker exec -it <container> claude`, or `sbx claude` when you use `sbx`), sign in, and keep its configuration directory (`~/.claude`, or the one in `CLAUDE_CONFIG_DIR`) in a volume so the daemon sees it.
+
+**The answer format (RF-48).** `claude-cli` forces the schema with `--json-schema`; if the answer is still unusable it is asked once more to correct it. A CLI without a native schema flag (the generic one) gets the schema in the prompt, the answer is validated, and if it is invalid it is asked ONCE more with a message that says what was wrong; if that fails too, the conversation goes to the backup provider (RF-42).
+
+**The generic CLI** (`generic-cli`) runs any command that takes the prompt and prints text with the answer:
+
+```json
+"provider": {
+  "primary": "generic-cli",
+  "genericCli": { "command": ["my-llm", "--json", "{{prompt}}"], "timeoutMs": 180000, "acknowledgeRisk": true }
+}
+```
+
+`command` is an argument list, with no shell and no interpolation inside an element. **By default the prompt goes through stdin, which is private.** An element that is exactly `{{prompt}}` receives the whole prompt instead: use it only for a tool that cannot read stdin, because **arguments are visible to other users of the machine** (`ps`) and a long chat can exceed the size limit of arguments; `msum doctor` warns when the command uses it. `{{prompt}}` is never the program and never part of a longer element. There is no default command. **It cannot be hardened:** the command may run tools on text written by third parties, so it is refused unless you set `acknowledgeRisk` to `true`; `msum doctor`, `msum digest` and the daemon print this warning every time it is about to be used. Prefer a provider that runs without tools.
+
 ## What the program connects to
 
 Nothing is sent anywhere except:
 
 - **WhatsApp**, through the connection of your own account (including the download of the audios you receive, when transcription is on).
 - **The LLM provider you chose**, and nothing else: with Ollama, the URL you configured; with an API provider, exactly one of `api.openai.com` (or your `provider.openai.baseUrl`), `api.anthropic.com` or `generativelanguage.googleapis.com`. **The text of the conversations that are not local only is sent there**, together with your summary prompt. Keys travel only in the request headers.
+- **With `claude-cli`, whatever Claude Code itself contacts**, which is its vendor's own hosts, per [its network documentation](https://code.claude.com/docs/en/network-config): `api.anthropic.com` (the model requests, which carry the text of the conversations that are not local only, and its own operational telemetry), `claude.ai`, `claude.com`, `platform.claude.com` and `sso.claude.com` (sign-in), and `http-intake.logs.us5.datadoghq.com` and `browser-intake-us5-datadoghq.com` (optional telemetry of the CLI, which its settings can turn off: `DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`). That traffic is the CLI's, not this program's, and the program does not pass those variables to it: set them in the settings file of Claude Code. `gemini-cli` and `codex-cli` are disabled and contact nothing. A `generic-cli` command contacts whatever it does.
 - **Hugging Face, only when you run `msum whisper download <name>`:** the model is fetched from the official whisper.cpp repository, `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-<name>.bin`. Hugging Face answers with a redirect to its content network: a request to that URL ends at **`us.aws.cdn.hf.co`** (checked with a `HEAD` request when this was written). The program follows redirects itself, one at a time, and only to `https` addresses on `huggingface.co` or `*.hf.co`; any other host is refused. Nothing is sent but the request for that file, and the **checksum (SHA-256) and size of every model are pinned in the program**: a file that does not match is discarded.
 
 There is no telemetry, and transcription never opens a network connection.

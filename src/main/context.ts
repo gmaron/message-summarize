@@ -4,6 +4,7 @@ import type { Clock } from '../application/ports/clock.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import type { Transcriber } from '../application/ports/transcriber.js'
 import { type Catalog, getCatalog } from '../infrastructure/i18n/index.js'
+import type { CliVerification } from '../infrastructure/llm/index.js'
 import type { WhisperModel } from '../infrastructure/transcription/index.js'
 import type { CliIo } from '../interfaces/cli/run.js'
 import { type AppConfig, describeConfigIssue, languageHint, loadEffectiveConfig } from './config.js'
@@ -49,6 +50,11 @@ export interface DoctorProbes {
   commandVersion(command: string, env: NodeJS.ProcessEnv): Promise<string | null>
   /** Runs `<command> <args>` and reports how it went. For programs that have no `--version` (whisper.cpp). */
   commandProbe(command: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<CommandProbe>
+  /**
+   * RF-49: whether this Claude Code can be run without tools. Runs `<command> --help` (never a model call) and checks
+   * that every flag of the hardening is listed.
+   */
+  verifyCli(command: string, env: NodeJS.ProcessEnv): Promise<CliVerification>
   /** Whether an Ollama server answers at this base URL. */
   ollamaReachable(baseUrl: string): Promise<boolean>
 }

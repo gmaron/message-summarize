@@ -162,6 +162,13 @@ export interface Catalog {
       promptFile(path: string): string
       /** An API key written in config.json: keys are secrets and go in secrets.json or the environment (RNF-04). */
       secretInConfig(option: string): string
+      /** `provider.genericCli.command`: it needs a program first, and `{{prompt}}` only as a whole element. */
+      invalidCommandTemplate(option: string): string
+      /**
+       * Printed when a command starts with the generic CLI chosen (RF-47, RF-49): the command may run tools on text written
+       * by third parties. `acknowledged` says whether the user accepted that, which is what lets it run.
+       */
+      genericCliWarning(acknowledged: boolean): string
     }
     /** `msum secret set|rm|ls`: the API keys (RNF-04). A key is never printed, not even partly. */
     readonly secret: {
@@ -440,6 +447,25 @@ export interface Catalog {
       providerApiNoKeyFix(keyName: string, envNames: string): string
       providerApiNoModel(provider: string): string
       providerApiNoModelFix(provider: string): string
+      /** A CLI provider after `verify` (RF-49): found, with its version, and the flags of the hardening are all there. */
+      cliVerified(provider: string, version: string | null): string
+      /** `--help` does not list a flag the hardening relies on: this version cannot be run without tools. */
+      cliMissingFlags(provider: string, flags: string): string
+      cliMissingFlagsFix(provider: string): string
+      cliUnrunnable(provider: string): string
+      cliUnrunnableFix(provider: string): string
+      /** A preset shipped disabled: its documentation has no way to run it without tools that can be verified. */
+      cliDisabled(provider: string): string
+      cliDisabledFix(provider: string): string
+      /** The generic CLI without `acknowledgeRisk`: refused. */
+      readonly genericNotAcknowledged: string
+      readonly genericNotAcknowledgedFix: string
+      /** The generic CLI with the risk acknowledged: it runs, and this is said every time. */
+      genericRisk(command: string): string
+      readonly genericRiskFix: string
+      /** The command has `{{prompt}}`: the chat is in the arguments, which other local users can read with `ps`. */
+      readonly genericPromptInArgv: string
+      readonly genericPromptInArgvFix: string
       readonly providerNone: string
       readonly whatsappOk: string
       readonly whatsappNone: string

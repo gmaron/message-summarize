@@ -14,14 +14,27 @@ import {
   OPENAI_BASE_URL,
   type StructuredOutputMode,
 } from '../infrastructure/llm/api/index.js'
+import { genericCommandProblem } from '../infrastructure/llm/cli/index.js'
 import { isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
 import { DEFAULT_TRANSCRIPTION_TIMEOUT_MS, LANGUAGE_PATTERN } from '../infrastructure/transcription/index.js'
 
-export const PROVIDERS = ['claude-cli', 'ollama', 'openai', 'anthropic', 'gemini'] as const
+export const PROVIDERS = [
+  'claude-cli',
+  'gemini-cli',
+  'codex-cli',
+  'generic-cli',
+  'ollama',
+  'openai',
+  'anthropic',
+  'gemini',
+] as const
 export type ProviderKind = (typeof PROVIDERS)[number]
 /** The providers that call an HTTP API with a key. They are external: "local only" chats never reach them (RF-43). */
 export const API_PROVIDERS = ['openai', 'anthropic', 'gemini'] as const
 export type ApiProviderKind = (typeof API_PROVIDERS)[number]
+/** True when the primary or the backup is the generic CLI, which gets a warning wherever it is about to run (RF-49). */
+export const usesGenericCli = (config: { readonly provider: Pick<ProviderConfig, 'primary' | 'backup'> }): boolean =>
+  config.provider.primary === 'generic-cli' || config.provider.backup === 'generic-cli'
 export const isApiProvider = (kind: ProviderKind): kind is ApiProviderKind =>
   (API_PROVIDERS as readonly string[]).includes(kind)
 const STRUCTURED_OUTPUT_MODES = [
@@ -78,6 +91,25 @@ export interface RetryConfig {
   readonly maxTotalMs: number
 }
 
+/**
+ * `gemini-cli` and `codex-cli` are shipped disabled (RF-49: their documentation offers no way to run them without tools
+ * that can be verified), so the section only holds what a future enabled preset needs. `doctor` says they are disabled.
+ */
+export interface VendorCliConfig {
+  readonly command: string
+  readonly model: string | null
+  readonly timeoutMs: number
+}
+
+/** RF-47, generic mode: any command that takes the prompt and prints text. Refused unless the risk is acknowledged. */
+export interface GenericCliConfig {
+  /** The program and its arguments, with no shell. `{{prompt}}` as a whole element receives the prompt; else stdin. */
+  readonly command: readonly string[] | null
+  readonly timeoutMs: number
+  /** True when the user accepted that the command may run tools on text written by third parties. */
+  readonly acknowledgeRisk: boolean
+}
+
 export interface ProviderConfig {
   /** Null until the user chooses one (RF-41: there is no default provider). */
   readonly primary: ProviderKind | null
@@ -88,6 +120,9 @@ export interface ProviderConfig {
   readonly anthropic: AnthropicConfig
   readonly gemini: GeminiConfig
   readonly retry: RetryConfig
+  readonly geminiCli: VendorCliConfig
+  readonly codexCli: VendorCliConfig
+  readonly genericCli: GenericCliConfig
 }
 
 /**
@@ -138,6 +173,8 @@ export type ConfigIssueCode =
   | 'invalidTimezone'
   /** An API key written in config.json, which must not hold secrets. */
   | 'secretInConfig'
+  /** `provider.genericCli.command` has no program, a placeholder as the program, or one inside an element. */
+  | 'invalidCommandTemplate'
 
 /** A problem of config.json: which option and why. Codes, not text: `describeConfigIssue` translates them. */
 export interface ConfigIssue {
@@ -181,7 +218,20 @@ const TRANSCRIPTION_KEYS = new Set([
   'historyAudioDays',
   'maxMediaMb',
 ])
-const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama', 'openai', 'anthropic', 'gemini', 'retry'])
+const PROVIDER_KEYS = new Set([
+  'primary',
+  'backup',
+  'claudeCli',
+  'geminiCli',
+  'codexCli',
+  'genericCli',
+  'ollama',
+  'openai',
+  'anthropic',
+  'gemini',
+  'retry',
+])
+const GENERIC_CLI_KEYS = new Set(['command', 'timeoutMs', 'acknowledgeRisk'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
 const OPENAI_KEYS = new Set(['baseUrl', 'model', 'timeoutMs', 'structuredOutput'])
@@ -357,6 +407,49 @@ export function parseConfig(
   const geminiModel = text(geminiObj, 'model', 'provider.gemini.model')
   const geminiTimeout = positiveInt(geminiObj, 'timeoutMs', 'provider.gemini.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
 
+  const geminiCliObj = section(providerObj, 'geminiCli', 'provider.geminiCli', CLAUDE_CLI_KEYS)
+  const geminiCliCommand = text(geminiCliObj, 'command', 'provider.geminiCli.command')
+  const geminiCliModel = text(geminiCliObj, 'model', 'provider.geminiCli.model')
+  const geminiCliTimeout = positiveInt(
+    geminiCliObj,
+    'timeoutMs',
+    'provider.geminiCli.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+  const codexCliObj = section(providerObj, 'codexCli', 'provider.codexCli', CLAUDE_CLI_KEYS)
+  const codexCliCommand = text(codexCliObj, 'command', 'provider.codexCli.command')
+  const codexCliModel = text(codexCliObj, 'model', 'provider.codexCli.model')
+  const codexCliTimeout = positiveInt(
+    codexCliObj,
+    'timeoutMs',
+    'provider.codexCli.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+
+  const genericObj = section(providerObj, 'genericCli', 'provider.genericCli', GENERIC_CLI_KEYS)
+  const genericTimeout = positiveInt(
+    genericObj,
+    'timeoutMs',
+    'provider.genericCli.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+  const genericAcknowledged = ((): boolean | undefined => {
+    const v = genericObj.acknowledgeRisk
+    if (v === undefined) return false
+    if (typeof v !== 'boolean') return add('provider.genericCli.acknowledgeRisk', 'notBoolean')
+    return v
+  })()
+  const genericCommand = ((): readonly string[] | null | undefined => {
+    const v = genericObj.command
+    if (v === undefined) return null
+    if (!Array.isArray(v)) return add('provider.genericCli.command', 'notArray')
+    if (!v.every((element) => typeof element === 'string')) return add('provider.genericCli.command', 'notStringList')
+    if (genericCommandProblem(v as string[]) !== null) {
+      return add('provider.genericCli.command', 'invalidCommandTemplate')
+    }
+    return [...(v as string[])]
+  })()
+
   const retryObj = section(providerObj, 'retry', 'provider.retry', RETRY_KEYS)
   const retryTotal = positiveInt(retryObj, 'maxTotalMs', 'provider.retry.maxTotalMs', DEFAULT_MAX_TOTAL_MS)
   const retryMax = nonNegativeInt(retryObj, 'maxRetries', 'provider.retry.maxRetries', DEFAULT_RETRY_BUDGET.maxRetries)
@@ -401,6 +494,9 @@ export function parseConfig(
   if (chosen.includes('openai') && openaiModel === null) add('provider.openai.model', 'required')
   if (chosen.includes('anthropic') && anthropicModel === null) add('provider.anthropic.model', 'required')
   if (chosen.includes('gemini') && geminiModel === null) add('provider.gemini.model', 'required')
+  // The generic CLI has no default command: the user brings it. (The acknowledgment is checked when it runs, and by
+  // `doctor`, so that `doctor` can show the warning instead of the configuration being refused whole.)
+  if (chosen.includes('generic-cli') && genericCommand === null) add('provider.genericCli.command', 'required')
 
   if (
     issues.length > 0 ||
@@ -434,6 +530,15 @@ export function parseConfig(
     retryMax === undefined ||
     retryTotal === undefined ||
     retryWait === undefined ||
+    geminiCliCommand === undefined ||
+    geminiCliModel === undefined ||
+    geminiCliTimeout === undefined ||
+    codexCliCommand === undefined ||
+    codexCliModel === undefined ||
+    codexCliTimeout === undefined ||
+    genericTimeout === undefined ||
+    genericAcknowledged === undefined ||
+    genericCommand === undefined ||
     transcriptionEnabled === undefined ||
     whisperCommand === undefined ||
     ffmpegCommand === undefined ||
@@ -478,6 +583,9 @@ export function parseConfig(
       },
       gemini: { model: geminiModel, timeoutMs: geminiTimeout },
       retry: { maxRetries: retryMax, maxWaitMs: retryWait, maxTotalMs: retryTotal },
+      geminiCli: { command: geminiCliCommand ?? 'gemini', model: geminiCliModel, timeoutMs: geminiCliTimeout },
+      codexCli: { command: codexCliCommand ?? 'codex', model: codexCliModel, timeoutMs: codexCliTimeout },
+      genericCli: { command: genericCommand, timeoutMs: genericTimeout, acknowledgeRisk: genericAcknowledged },
     },
     transcription: {
       enabled: transcriptionEnabled,
@@ -540,7 +648,17 @@ export function mergeConfigJson(base: Obj, overrides: Obj): Obj {
   const overrideProvider = overrides.provider
   if (isObject(baseProvider) && isObject(overrideProvider)) {
     const provider: Obj = { ...baseProvider, ...overrideProvider }
-    for (const key of ['claudeCli', 'ollama', 'openai', 'anthropic', 'gemini', 'retry']) {
+    for (const key of [
+      'claudeCli',
+      'geminiCli',
+      'codexCli',
+      'genericCli',
+      'ollama',
+      'openai',
+      'anthropic',
+      'gemini',
+      'retry',
+    ]) {
       const baseSection = baseProvider[key]
       const overrideSection = overrideProvider[key]
       if (isObject(baseSection) && isObject(overrideSection)) provider[key] = { ...baseSection, ...overrideSection }
@@ -649,6 +767,8 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.invalidLanguage(issue.option)
     case 'secretInConfig':
       return texts.secretInConfig(issue.option)
+    case 'invalidCommandTemplate':
+      return texts.invalidCommandTemplate(issue.option)
     default:
       return catalog.errors.settings[issue.code](issue.option)
   }

@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { type Catalog, getCatalog } from '../../infrastructure/i18n/index.js'
+import { PROMPT_PLACEHOLDER, resolveExecutable } from '../../infrastructure/llm/index.js'
 import { envNames, type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/index.js'
 import { findModelByFile, resolveModelPath, sha256File } from '../../infrastructure/transcription/index.js'
 import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
@@ -139,7 +140,40 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
                 accountTexts.providerMissing(provider.claudeCli.command),
                 accountTexts.providerFix(kind),
               )
-            } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, version))
+            } else {
+              ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, version))
+              // RF-49: found is not enough, the version must be one that can be run without tools (`--help` only).
+              const verified = await ctx.probes.verifyCli(provider.claudeCli.command, ctx.env)
+              const name = label(accountTexts.names.provider)
+              if (verified.ok) ok(name, accountTexts.cliVerified(kind, null))
+              else if (verified.kind === 'missingFlags') {
+                fail(
+                  name,
+                  accountTexts.cliMissingFlags(kind, verified.flags.join(', ')),
+                  accountTexts.cliMissingFlagsFix(kind),
+                )
+              } else if (verified.kind === 'notFound') {
+                fail(name, accountTexts.providerMissing(provider.claudeCli.command), accountTexts.providerFix(kind))
+              } else
+                fail(name, accountTexts.cliUnrunnable(kind), accountTexts.cliUnrunnableFix(provider.claudeCli.command))
+            }
+          } else if (kind === 'gemini-cli' || kind === 'codex-cli') {
+            // Shipped disabled (RF-49): nothing is run to find out.
+            fail(label(accountTexts.names.provider), accountTexts.cliDisabled(kind), accountTexts.cliDisabledFix(kind))
+          } else if (kind === 'generic-cli') {
+            const [program = ''] = provider.genericCli.command ?? []
+            const name = label(accountTexts.names.provider)
+            if (!provider.genericCli.acknowledgeRisk) {
+              fail(name, accountTexts.genericNotAcknowledged, accountTexts.genericNotAcknowledgedFix)
+            } else {
+              io.out(accountTexts.warn(name, accountTexts.genericRisk(program), accountTexts.genericRiskFix))
+              if (provider.genericCli.command?.includes(PROMPT_PLACEHOLDER) === true) {
+                io.out(accountTexts.warn(name, accountTexts.genericPromptInArgv, accountTexts.genericPromptInArgvFix))
+              }
+              if (resolveExecutable(program, ctx.env) === null) {
+                fail(name, accountTexts.providerMissing(program), accountTexts.genericRiskFix)
+              }
+            }
           } else if (isApiProvider(kind)) {
             // An API provider: the model and the key are checked, without any request (RNF-01; the real connection
             // test is a separate step).

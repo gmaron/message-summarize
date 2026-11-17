@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { CHILD_ENV_NAMES } from '../infrastructure/llm/index.js'
+import { CHILD_ENV_NAMES, verifyClaudeCli } from '../infrastructure/llm/index.js'
 import type { CommandProbe, DoctorProbes } from './context.js'
 
 const PROBE_TIMEOUT_MS = 10_000
@@ -59,4 +59,4 @@ async function ollamaReachable(baseUrl: string): Promise<boolean> {
   }
 }
 
-export const realProbes: DoctorProbes = { commandVersion, commandProbe, ollamaReachable }
+export const realProbes: DoctorProbes = { commandVersion, commandProbe, ollamaReachable, verifyCli: verifyClaudeCli }

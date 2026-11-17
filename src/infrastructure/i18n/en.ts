@@ -173,6 +173,12 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       noProvider:
         'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" or "gemini") in the configuration.',
       promptFile: (path) => `The prompt file (promptFile) could not be read: ${path}`,
+      invalidCommandTemplate: (option) =>
+        `"${option}" must be a list of texts whose first element is the program; "{{prompt}}" may be an argument on its own, never the program and never part of a longer text.`,
+      genericCliWarning: (acknowledged) =>
+        acknowledged
+          ? 'Warning: the generic CLI provider runs a command that may use tools on chat text written by third parties (prompt injection). You accepted this risk (provider.genericCli.acknowledgeRisk).'
+          : 'Warning: the generic CLI provider is NOT run: its command may use tools on chat text written by third parties (prompt injection). To accept that risk set provider.genericCli.acknowledgeRisk to true.',
       secretInConfig: (option) =>
         `"${option}" looks like an API key, and config.json does not hold secrets. Remove it and run "msum secret set <provider>" (or set the environment variable of the provider).`,
     },
@@ -536,6 +542,28 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       secretsLoose: (file, mode) => `${file} has permissions ${mode}: other users can read the API keys in it`,
       secretsLooseFix: (file) => `run "chmod 600 ${file}".`,
       providerApiNoModel: (provider) => `no model chosen for ${provider}`,
+      cliVerified: (provider, version) =>
+        `${provider}${version === null ? '' : ` (${version})`}; its --help lists every flag that turns the tools off`,
+      cliMissingFlags: (provider, flags) =>
+        `this version of ${provider} cannot be run without tools: its --help does not list ${flags}`,
+      cliMissingFlagsFix: (provider) =>
+        `update ${provider} to a version that has those flags. It is not used until then (the chats are written by third parties and must not reach a program with tools).`,
+      cliUnrunnable: (provider) => `could not check ${provider}: "${provider} --help" did not run`,
+      cliUnrunnableFix: (provider) => `run "${provider} --help" yourself and fix what it says.`,
+      cliDisabled: (provider) =>
+        `${provider} is disabled: its documentation offers no way to run it without tools that can be verified`,
+      cliDisabledFix: (provider) =>
+        `choose another provider. If you accept the risk, "generic-cli" can run ${provider} with your own arguments (see the README).`,
+      genericNotAcknowledged: 'generic-cli is refused: its command may use tools on chat text written by third parties',
+      genericNotAcknowledgedFix:
+        'if you accept that risk, set "provider.genericCli.acknowledgeRisk" to true in config.json. Otherwise choose another provider.',
+      genericRisk: (command) =>
+        `running "${command}": it may use tools on chat text written by third parties (prompt injection); you accepted this`,
+      genericPromptInArgv:
+        'the command uses {{prompt}}: the chat goes in the arguments, where other users of this machine can read it (ps), and a long chat can exceed the size limit of arguments',
+      genericPromptInArgvFix:
+        'if the program can read the prompt from stdin, remove {{prompt}} from "provider.genericCli.command": stdin is the private default.',
+      genericRiskFix: 'prefer a provider that runs without tools (claude-cli, an API, or Ollama).',
       providerApiNoModelFix: (provider) =>
         `set "provider.${provider}.model" in config.json: there is no default model, as model names change often.`,
       providerNone: 'no provider chosen',

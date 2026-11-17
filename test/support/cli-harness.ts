@@ -214,6 +214,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
       commandVersion: async () => '1.0.0 (fake)',
       commandProbe: async () => ({ started: true, ok: true, line: '1.0.0 (fake)' }),
       ollamaReachable: async () => true,
+      verifyCli: async () => ({ ok: true as const, path: '/fake/claude', version: '1.0.0 (fake)' }),
       ...options.probes,
     },
     nodeVersion: '22.16.0',

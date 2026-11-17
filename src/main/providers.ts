@@ -3,7 +3,9 @@ import {
   AnthropicSummarizer,
   ClaudeCliSummarizer,
   composeSummarizer,
+  DisabledCliSummarizer,
   GeminiSummarizer,
+  GenericCliSummarizer,
   isOpenAiHost,
   OllamaSummarizer,
   OpenAiCompatibleSummarizer,
@@ -88,6 +90,20 @@ export function buildSummarizer(config: AppConfig, env: NodeJS.ProcessEnv, secre
           command: provider.claudeCli.command,
           model: provider.claudeCli.model,
           timeoutMs: provider.claudeCli.timeoutMs,
+          env,
+          // RF-49: the CLI is only run once `--help` shows that this version has every flag that turns the tools off.
+          verify: true,
+        })
+      // Shipped disabled (RF-49): see `DISABLED_PRESETS`. Every call fails at once, nothing is run.
+      case 'gemini-cli':
+      case 'codex-cli':
+        return new DisabledCliSummarizer(kind)
+      // External too: we cannot know where a generic command sends the chat (RF-43).
+      case 'generic-cli':
+        return new GenericCliSummarizer({
+          command: provider.genericCli.command ?? [],
+          acknowledgeRisk: provider.genericCli.acknowledgeRisk,
+          timeoutMs: provider.genericCli.timeoutMs,
           env,
         })
     }
