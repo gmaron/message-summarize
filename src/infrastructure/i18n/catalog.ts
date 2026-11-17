@@ -17,6 +17,48 @@ export type BlockedReason =
   | 'mismatch'
   | 'noAccount'
 
+/** The signs that the previous tool is running (see `legacyLiveSignals`). */
+export type ImportLiveSignal = 'wal' | 'shm' | 'recentWrite' | 'recentSession'
+
+/** What an import tells the user afterwards (nothing secret: counts, names of options, a masked number). */
+export interface ImportSummary {
+  /** The account created. */
+  readonly id: string
+  /** What was imported, as the user named it: the path of the installation, plus the instance when there is one. */
+  readonly source: string
+  /** The linked number, masked. */
+  readonly masked: string
+  readonly sessionFiles: number
+  readonly conversations: number
+  readonly participants: number
+  readonly messages: number
+  /** Messages of a kind this program does not know: not imported. */
+  readonly skippedKinds: number
+  /** Messages of chats the account excludes (RF-14): not stored. */
+  readonly excluded: number
+  /** Messages whose text was edited (kept as the previous tool stored them, with the "edited" marker). */
+  readonly edited: number
+  readonly unreadCounted: number
+  readonly unreadMarked: number
+  /** The pointer of the last digest, formatted, or null when there was none. */
+  readonly pointer: string | null
+  /** Options set in the config.json of the account (our names). */
+  readonly configWritten: readonly string[]
+  /** Options of the previous tool with no equivalent here (their names). */
+  readonly configUnmapped: readonly string[]
+  /** Options whose value was not valid here: not imported. */
+  readonly configInvalid: readonly string[]
+  readonly promptCopied: boolean
+  readonly schedules: number
+  /** What was left behind, counted: */
+  readonly mediaFiles: number
+  readonly imageTexts: number
+  readonly transcribeErrors: number
+  readonly pendingOutbox: number
+  readonly digestFiles: number
+  readonly otherState: readonly string[]
+}
+
 export interface HeadlineParts {
   readonly total: number
   readonly unreadOnly: boolean
@@ -97,6 +139,7 @@ export interface Catalog {
       invalidNumber(option: string): string
       invalidDate(option: string): string
       invalidAccountId(value: string): string
+      conflictingOptions(option: string): string
       unknownSubcommand(value: string): string
       invalidTime(value: string): string
       invalidDays(value: string): string
@@ -191,6 +234,33 @@ export interface Catalog {
       /** What to tell the user about each window error, naming the flags of the CLI. */
       readonly flagHint: Readonly<Record<WindowError, string>>
     }
+    /** `msum import` (RF-06): the previous tool's installation, copied into accounts. */
+    readonly import: {
+      notLegacy(path: string): string
+      instanceNotFound(name: string): string
+      noSession(source: string): string
+      /** The account id derived from an instance name is not valid: say which flag to use. */
+      invalidDerivedId(name: string): string
+      duplicateId(id: string): string
+      targetLinked(id: string): string
+      targetHasData(id: string): string
+      daemonUsing(id: string, pid: number): string
+      beingLinked(id: string, pid: number, lockFile: string): string
+      /** The previous tool looks as if it runs: which signs say so, and that stopping it clears them (or `--force`). */
+      legacyLive(source: string, signals: readonly ImportLiveSignal[]): string
+      /** Its database is not where it should be: the data directory may have been moved (`WA_DATA_DIR`). */
+      dataMissing(source: string, dbFile: string): string
+      /** A privacy list of the previous tool cannot be imported: nothing is imported, and what to fix. */
+      privacyList(source: string, legacyKey: 'soloLocal' | 'excluir', reason: 'invalid' | 'needsOllamaModel'): string
+      /** The warning before the session is copied: `plan` lists "source -> account". */
+      warning(plan: string): string
+      readonly confirm: string
+      readonly cancelled: string
+      starting(source: string, id: string): string
+      /** The multi-line summary printed after an import. */
+      summary(summary: ImportSummary): string
+      failed(id: string, code: string): string
+    }
     /** `msum retry`. */
     readonly retry: {
       notBlocked(id: string): string
@@ -248,6 +318,9 @@ export interface Catalog {
         readonly accounts: string
         readonly schedules: string
       }
+      /** Work directories of imports that died, which hold a copy of a WhatsApp session. */
+      staleImport(names: string): string
+      readonly staleImportFix: string
       schedulesOk(count: number): string
       readonly schedulesNone: string
       readonly schedulesNoneFix: string

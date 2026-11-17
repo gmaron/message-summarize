@@ -1,5 +1,12 @@
 import type { Catalog } from '../../infrastructure/i18n/index.js'
-import { type AccountArg, type ArgError, type Command, type DigestArgs, parseCommandLine } from './args.js'
+import {
+  type AccountArg,
+  type ArgError,
+  type Command,
+  type DigestArgs,
+  type ImportArgs,
+  parseCommandLine,
+} from './args.js'
 
 /** The `schedule` command with its subcommand. */
 export type ScheduleCommand = Extract<Command, { name: 'schedule' }>
@@ -20,6 +27,7 @@ export interface CliHandlers {
   status(args: AccountArg): Promise<number>
   doctor(args: AccountArg): Promise<number>
   retry(args: AccountArg): Promise<number>
+  import(args: ImportArgs): Promise<number>
   accounts(): Promise<number>
   schedule(command: ScheduleCommand): Promise<number>
 }
@@ -52,6 +60,8 @@ export function describeArgError(texts: Catalog['cli'], error: ArgError): string
       return messages.invalidTime(error.value)
     case 'invalidDays':
       return messages.invalidDays(error.value)
+    case 'conflictingOptions':
+      return messages.conflictingOptions(error.value)
   }
 }
 
@@ -73,6 +83,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.doctor({ account: command.account })
     case 'retry':
       return handlers.retry({ account: command.account })
+    case 'import':
+      return handlers.import(command)
     case 'accounts':
       return handlers.accounts()
     case 'schedule':

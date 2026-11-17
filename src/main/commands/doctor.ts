@@ -5,6 +5,7 @@ import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { openInstallation } from '../accounts.js'
 import { describeConfigIssue, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
 import { type CommandContext, hasSession } from '../context.js'
+import { IMPORT_DIR_PATTERN, importDirs } from '../import-workdirs.js'
 import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.js'
 import { createRuntime } from '../runtime.js'
 import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
@@ -83,13 +84,17 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
 
     // What app.db and accounts/ say about each other
     const { report } = installation
+    // Work directories of imports: one that is running is not a problem; one that died holds a copy of a session.
+    const staleImports = (await importDirs(layout)).filter((dir) => !dir.live).map((dir) => dir.name)
+    const ignoredEntries = report.ignoredEntries.filter((name) => !IMPORT_DIR_PATTERN.test(name))
     const registryProblems = [
+      ...(staleImports.length > 0 ? [[texts.staleImport(staleImports.join(', ')), texts.staleImportFix] as const] : []),
       ...report.missingDirs.map((id) => [texts.accountsMissingDir(id), texts.accountsMissingDirFix(id)] as const),
       ...(report.invalidRows.length > 0
         ? [[texts.accountsInvalid(report.invalidRows.join(', ')), texts.accountsInvalidFix] as const]
         : []),
-      ...(report.ignoredEntries.length > 0
-        ? [[texts.accountsIgnored(report.ignoredEntries.join(', ')), texts.accountsIgnoredFix] as const]
+      ...(ignoredEntries.length > 0
+        ? [[texts.accountsIgnored(ignoredEntries.join(', ')), texts.accountsIgnoredFix] as const]
         : []),
       ...(report.legacyConflict ? [[texts.legacyConflict, texts.legacyConflictFix] as const] : []),
     ]

@@ -108,6 +108,14 @@ Comandos:
                                       bloqueo de una conexión rechazada o reemplazada)
   retry [--account <id>]              Borra el bloqueo de una cuenta (conexión rechazada o reemplazada) para que el
                                       daemon en marcha la tome de nuevo
+  import --from <ruta> [--account <id>] [--instance <nombre>] [--all] [--schedule HH:MM,HH:MM] [--yes]
+                                      Importa una instalación de la herramienta anterior (summaryzing-whatsapp): su
+                                      sesión (sin QR para escanear de nuevo), mensajes, configuración y prompt, como una
+                                      cuenta. Solo copia. Detené primero la herramienta anterior. --instance toma una de
+                                      sus instancias, --all toma la instalación principal y todas las instancias
+                                      [--data <dir>] dice dónde están sus datos si se movieron (WA_DATA_DIR),
+                                      [--session-only] no trae mensajes, [--force] se salta la comprobación de que
+                                      la herramienta anterior no esté corriendo
   digest [--account <id>]             Genera un digest ahora, sin conectarse a WhatsApp (lo envía el daemon)
     --dry-run            Lo muestra y no guarda ni envía nada
     --hours N            Resume las últimas N horas
@@ -134,6 +142,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       invalidNumber: (option) => `El valor de ${option} tiene que ser un número.`,
       invalidAccountId: (value) =>
         `El id de cuenta ${JSON.stringify(value)} no es válido: usá letras minúsculas, dígitos y guiones, empezando con letra o dígito, hasta 32 caracteres.`,
+      conflictingOptions: (option) =>
+        `${option} no se puede combinar con --account ni con --instance: importa la instalación principal y todas las instancias, cada una como su propia cuenta.`,
       unknownSubcommand: (value) => `Comando de horarios desconocido: "${value}". Usá: ls, add o rm.`,
       invalidTime: (value) => `La hora ${JSON.stringify(value)} tiene que ser HH:MM (24 horas), por ejemplo 07:30.`,
       invalidDays: (value) =>
@@ -232,6 +242,83 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       stopped: 'Daemon detenido.',
       blocked: (reason) => `El daemon quedó en pausa, sin conectarse ni generar digests: ${reason}`,
     },
+    import: {
+      notLegacy: (path) =>
+        `${path} no parece una instalación de la herramienta anterior (summaryzing-whatsapp): no tiene auth/, data/ ni instancias/.`,
+      instanceNotFound: (name) =>
+        `La instalación anterior no tiene una instancia llamada "${name}" (instancias/${name}).`,
+      noSession: (source) =>
+        `${source} no tiene una sesión de WhatsApp para importar (auth/creds.json con una cuenta vinculada). Vinculala primero en la herramienta anterior.`,
+      invalidDerivedId: (name) =>
+        `La instancia "${name}" no sirve como id de cuenta acá (letras minúsculas, dígitos y guiones, hasta 32). Elegí uno con --account <id>.`,
+      duplicateId: (id) => `Dos cosas pasarían a ser la cuenta "${id}". No se importó nada.`,
+      targetLinked: (id) =>
+        `La cuenta "${id}" ya está vinculada. No se importó nada. Si de verdad querés reemplazarla, corré antes "msum unlink --account ${id}".`,
+      targetHasData: (id) =>
+        `La cuenta "${id}" ya existe y tiene datos. No se importó nada. Si querés reemplazarla, corré antes "msum unlink --account ${id}".`,
+      daemonUsing: (id, pid) =>
+        `La cuenta "${id}" la está usando el daemon en marcha (pid ${pid}). No se importó nada. Detené el daemon primero (Ctrl+C en su terminal, "kill ${pid}", o detené su servicio o contenedor).`,
+      beingLinked: (id, pid, lockFile) =>
+        `La cuenta "${id}" la está vinculando, desvinculando o importando otro proceso (pid ${pid}). Esperá a que termine. Si estás seguro de que no hay nada corriendo, ese bloqueo quedó viejo: borrá el archivo ${lockFile}.`,
+      legacyLive: (source, signals) => {
+        const why: Record<(typeof signals)[number], string> = {
+          wal: 'existe whatsapp.db-wal: SQLite lo borra cuando se cierra la última conexión, así que la herramienta tiene la base abierta (o se cayó)',
+          shm: 'existe whatsapp.db-shm, por el mismo motivo',
+          recentWrite: 'su base se escribió en el último minuto',
+          recentSession:
+            'un archivo de su sesión (auth/) se escribió en los últimos 10 minutos: los reescribe mientras corre',
+        }
+        return `${source}: la herramienta anterior parece seguir corriendo:\n${signals.map((signal) => `  - ${why[signal]}`).join('\n')}\nDetenerla (su listener y su sandbox) hace desaparecer estas señales; después corré la importación de nuevo. Si estás seguro de que está detenida, --force se salta esta comprobación (el aviso y la pregunta quedan).`
+      },
+      dataMissing: (source, dbFile) =>
+        `${source} no tiene una base en ${dbFile}. Si la herramienta anterior guardaba sus datos en otro lugar (WA_DATA_DIR), indicalo con --data <dir> (solo se lee). Para traer solo la sesión y la configuración, usá --session-only.`,
+      privacyList: (source, legacyKey, reason) =>
+        reason === 'needsOllamaModel'
+          ? `No se importó nada de ${source}: su "soloLocal" (chats que nunca deben salir de esta computadora) necesita un modelo de Ollama acá, y no hay ninguno. Descartar la lista dejaría que esos chats lleguen a un proveedor externo. Definí un modelo de Ollama ("ollama.modelo" en el config.json anterior, o "provider.ollama.model" en el config.json de este programa), o sacá soloLocal de ahí, y volvé a importar.`
+          : `No se importó nada de ${source}: su "${legacyKey}" no es una lista de textos que este programa pueda usar, y nunca se descarta en silencio (${legacyKey === 'soloLocal' ? 'esos chats llegarían a un proveedor externo' : 'esos chats se guardarían y se resumirían'}). Corregilo en el config.json anterior (una lista de palabras o nombres) y volvé a importar.`,
+      warning: (plan) =>
+        `Se va a importar (solo se copia, la instalación anterior no se modifica):\n${plan}\n\nATENCIÓN: se copia la sesión de WhatsApp. La misma sesión NO puede correr en dos lugares a la vez: detené la herramienta anterior (su listener) ANTES de seguir, y no la vuelvas a iniciar para este celular, o WhatsApp va a desconectar a una de las dos. Si corren las dos, el daemon de este programa bloquea la cuenta como "reemplazada" en vez de pelear por ella.`,
+      confirm: '¿Importar ahora? [s/N] ',
+      cancelled: 'Cancelado. No se importó nada (usá --yes para no preguntar).',
+      starting: (source, id) => `Importando ${source} como la cuenta "${id}"...`,
+      summary: (s) => {
+        const list = (items: readonly string[]): string => items.join(', ')
+        const lines = [
+          `Se importó ${s.source} como la cuenta "${s.id}".`,
+          `  Número vinculado:   ${s.masked} (sesión: ${s.sessionFiles} archivos, privados; sin QR para escanear de nuevo)`,
+          `  Mensajes:           ${s.messages} en ${s.conversations} conversaciones, ${s.participants} contactos`,
+          `  Estado de leídos:   ${s.unreadCounted} conversaciones con contador, ${s.unreadMarked} marcadas como no leídas a mano`,
+          `  Último digest:      ${s.pointer ?? 'todavía ninguno'}${s.pointer === null ? '' : ' (el primer digest arranca desde acá)'}`,
+          `  Configuración:      ${s.configWritten.length === 0 ? 'la de la instalación ya coincide' : list(s.configWritten)}`,
+          `  Prompt:             ${s.promptCopied ? 'copiado (promptFile en la configuración de la cuenta)' : 'ninguno: el prompt por defecto'}`,
+          `  Horarios:           ${s.schedules}`,
+        ]
+        if (s.schedules === 0) {
+          lines.push(
+            '    La herramienta anterior guardaba sus horarios fuera de sus datos (el cron de su sandbox, o launchd): no se importó ninguno. Agregalos con "msum schedule add --time HH:MM --account ' +
+              `${s.id}" o importá de nuevo con --schedule 07:00,19:00.`,
+          )
+        }
+        const left: string[] = []
+        if (s.skippedKinds > 0) left.push(`${s.skippedKinds} mensajes de un tipo que este programa no conoce`)
+        if (s.excluded > 0)
+          left.push(`${s.excluded} mensajes de chats que tus patrones de exclusión excluyen (nunca se guardan)`)
+        if (s.mediaFiles > 0)
+          left.push(`${s.mediaFiles} archivos de audio o imagen (solo vinieron sus textos y transcripciones)`)
+        if (s.imageTexts > 0) left.push(`${s.imageTexts} textos leídos de imágenes`)
+        if (s.transcribeErrors > 0) left.push(`${s.transcribeErrors} errores de transcripción de audios`)
+        if (s.pendingOutbox > 0) left.push(`${s.pendingOutbox} digests que estaban esperando para enviarse`)
+        if (s.digestFiles > 0) left.push(`${s.digestFiles} archivos de digests guardados`)
+        if (s.configUnmapped.length > 0) left.push(`opciones sin equivalente: ${list(s.configUnmapped)}`)
+        if (s.configInvalid.length > 0) left.push(`opciones con un valor inválido: ${list(s.configInvalid)}`)
+        if (s.otherState.length > 0) left.push(`estado interno: ${list(s.otherState)}`)
+        if (left.length > 0) lines.push('  NO se importó:', ...left.map((item) => `    - ${item}`))
+        if (s.edited > 0) lines.push(`  (${s.edited} mensajes fueron editados: conservan la marca de "editado".)`)
+        lines.push(`  Siguiente: msum digest --dry-run --account ${s.id}`)
+        return lines.join('\n')
+      },
+      failed: (id, code) => `La importación de "${id}" falló (${code}). No quedó nada: ni cuenta ni archivos.`,
+    },
     retry: {
       notBlocked: (id) => `La cuenta "${id}" no está bloqueada: no hay nada que reintentar.`,
       beingLinked: (id, pid, lockFile) =>
@@ -319,6 +406,10 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         accounts: 'Cuentas',
         schedules: 'Horarios',
       },
+      staleImport: (names) =>
+        `quedaron en accounts/ directorios de importaciones que no terminaron: ${names}. Cada uno tiene una copia de una sesión de WhatsApp y de mensajes`,
+      staleImportFix:
+        'los borra el próximo "msum import" o el arranque del daemon; o borralos vos (no hay nada corriendo en ellos).',
       schedulesOk: (count) => `${count} configurados`,
       schedulesNone: 'no hay horarios: el daemon captura mensajes pero nunca genera un digest por su cuenta',
       schedulesNoneFix:

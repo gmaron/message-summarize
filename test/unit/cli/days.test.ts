@@ -37,6 +37,99 @@ describe('parseDaysSpec', () => {
   })
 })
 
+describe('msum import arguments', () => {
+  const parse = (...argv: string[]) => parseCommandLine(['import', ...argv])
+
+  it('takes --from and the options, with defaults', () => {
+    expect(parse('--from', '/old')).toEqual({
+      ok: true,
+      value: {
+        name: 'import',
+        from: '/old',
+        account: null,
+        instance: null,
+        all: false,
+        yes: false,
+        schedules: [],
+        data: null,
+        sessionOnly: false,
+        force: false,
+      },
+    })
+    expect(
+      parse('--from', '/old', '--account', 'main', '--instance', 'taller', '--yes', '--schedule', '7:00, 19:30,07:00'),
+    ).toEqual({
+      ok: true,
+      value: {
+        name: 'import',
+        from: '/old',
+        account: 'main',
+        instance: 'taller',
+        all: false,
+        yes: true,
+        schedules: ['07:00', '19:30'],
+        data: null,
+        sessionOnly: false,
+        force: false,
+      },
+    })
+    expect(parse('--from', '/old', '--data', '/moved', '--force')).toMatchObject({
+      ok: true,
+      value: { data: '/moved', force: true, sessionOnly: false },
+    })
+    expect(parse('--from', '/old', '--session-only')).toMatchObject({ ok: true, value: { sessionOnly: true } })
+    expect(parse('--from', '/old', '--data', '/moved', '--all')).toEqual({
+      ok: false,
+      error: { kind: 'conflictingOptions', value: '--all' },
+    })
+    expect(parse('--from', '/old', '--data', '/moved', '--session-only')).toEqual({
+      ok: false,
+      error: { kind: 'conflictingOptions', value: '--session-only' },
+    })
+    expect(parse('--from', '/old', '--data', ' ')).toEqual({
+      ok: false,
+      error: { kind: 'missingValue', value: '--data' },
+    })
+    expect(parse('--from', '/old', '--all')).toMatchObject({ ok: true, value: { all: true } })
+  })
+
+  it('needs --from, refuses --all with --account or --instance, and bad times or ids', () => {
+    expect(parse()).toEqual({ ok: false, error: { kind: 'missingValue', value: '--from' } })
+    expect(parse('--from', ' ')).toEqual({ ok: false, error: { kind: 'missingValue', value: '--from' } })
+    expect(parse('--from', '/old', '--all', '--account', 'x')).toEqual({
+      ok: false,
+      error: { kind: 'conflictingOptions', value: '--all' },
+    })
+    expect(parse('--from', '/old', '--all', '--instance', 'taller')).toEqual({
+      ok: false,
+      error: { kind: 'conflictingOptions', value: '--all' },
+    })
+    expect(parse('--from', '/old', '--schedule', '25:00')).toEqual({
+      ok: false,
+      error: { kind: 'invalidTime', value: '25:00' },
+    })
+    expect(parse('--from', '/old', '--account', 'Bad Id')).toEqual({
+      ok: false,
+      error: { kind: 'invalidAccountId', value: 'Bad Id' },
+    })
+  })
+
+  it('the options belong to import only', () => {
+    expect(parseCommandLine(['link', '--from', '/old'])).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--from' },
+    })
+    expect(parseCommandLine(['status', '--instance', 'taller'])).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--instance' },
+    })
+    expect(parseCommandLine(['digest', '--all'])).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--all' },
+    })
+  })
+})
+
 describe('msum schedule arguments', () => {
   const parse = (...argv: string[]) => parseCommandLine(['schedule', ...argv])
 

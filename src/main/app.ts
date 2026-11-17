@@ -4,6 +4,7 @@ import { accountsCommand } from './commands/accounts.js'
 import { daemonCommand } from './commands/daemon.js'
 import { digestCommand } from './commands/digest.js'
 import { doctorCommand } from './commands/doctor.js'
+import { importCommand } from './commands/import.js'
 import { initCommand } from './commands/init.js'
 import { linkCommand } from './commands/link.js'
 import { retryCommand } from './commands/retry.js'
@@ -25,6 +26,7 @@ export function createHandlers(ctx: CommandContext): CliHandlers {
     doctor: (args) => doctorCommand(ctx, args),
     accounts: () => accountsCommand(ctx),
     retry: (args) => retryCommand(ctx, args),
+    import: (args) => importCommand(ctx, args),
     schedule: (command) => scheduleCommand(ctx, command),
   }
 }

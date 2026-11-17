@@ -8,6 +8,7 @@ import { describeConfigIssue, languageHint, loadEffectiveConfig } from '../confi
 import type { CommandContext } from '../context.js'
 import { DaemonHost, hasNoProvider } from '../daemon-host.js'
 import { acquireDaemonLock, HEARTBEAT_MS } from '../daemon-lock.js'
+import { removeStaleImportDirs } from '../import-workdirs.js'
 import { linkLockHolder } from '../link-lock.js'
 import { accountLayoutOf, ensureDataDirs } from '../paths.js'
 import { retryBlock } from '../retry.js'
@@ -57,6 +58,8 @@ export async function daemonCommand(
       return EXIT_FAILURE
     }
     installation = opened.installation
+    // A copy of a session left by an import that died is not kept around (the work directories of live imports are).
+    await removeStaleImportDirs(layout, ctx.logger)
     const known = installation.accounts().map((row) => row.id)
     if (args.account !== null && !known.includes(args.account)) {
       io.err(rootCatalog.cli.accounts.unknown(args.account, known.join(', ')))

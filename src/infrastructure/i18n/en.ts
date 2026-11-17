@@ -107,6 +107,14 @@ Commands:
                                       block left by a refused or replaced connection)
   retry [--account <id>]              Clears the block of an account (refused or replaced connection) so the running
                                       daemon picks it up again
+  import --from <path> [--account <id>] [--instance <name>] [--all] [--schedule HH:MM,HH:MM] [--yes]
+                                      Imports an installation of the previous tool (summaryzing-whatsapp): its session
+                                      (no QR to scan again), messages, settings and prompt, as an account. It only
+                                      copies. Stop the previous tool first. --instance takes one of its instances,
+                                      --all takes the main installation and every instance
+                                      [--data <dir>] says where its data is when it was moved (WA_DATA_DIR),
+                                      [--session-only] brings no messages, [--force] skips the check that the
+                                      previous tool is not running
   digest [--account <id>]             Generates a digest now, without connecting to WhatsApp (the daemon sends it)
     --dry-run            Shows it and saves or sends nothing
     --hours N            Summarizes the last N hours
@@ -133,6 +141,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidNumber: (option) => `The value of ${option} must be a number.`,
       invalidAccountId: (value) =>
         `The account id ${JSON.stringify(value)} is not valid: use lowercase letters, digits and dashes, starting with a letter or a digit, up to 32 characters.`,
+      conflictingOptions: (option) =>
+        `${option} cannot be combined with --account or --instance: it imports the main installation and every instance, each as its own account.`,
       unknownSubcommand: (value) => `Unknown schedule command: "${value}". Use: ls, add or rm.`,
       invalidTime: (value) =>
         `The time ${JSON.stringify(value)} must look like HH:MM (24-hour clock), for example 07:30.`,
@@ -231,6 +241,81 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       stopped: 'Daemon stopped.',
       blocked: (reason) => `The daemon is paused, not connecting and not generating digests: ${reason}`,
     },
+    import: {
+      notLegacy: (path) =>
+        `${path} does not look like an installation of the previous summaryzing-whatsapp tool (it has no auth/, data/ or instancias/).`,
+      instanceNotFound: (name) => `The previous installation has no instance named "${name}" (instancias/${name}).`,
+      noSession: (source) =>
+        `${source} has no WhatsApp session to import (auth/creds.json with a linked account). Link it in the previous tool first.`,
+      invalidDerivedId: (name) =>
+        `The instance "${name}" cannot be used as an account id here (lowercase letters, digits and dashes, up to 32). Choose one with --account <id>.`,
+      duplicateId: (id) => `Two things would become the account "${id}". Nothing was imported.`,
+      targetLinked: (id) =>
+        `The account "${id}" is already linked. Nothing was imported. Run "msum unlink --account ${id}" first if you really want to replace it.`,
+      targetHasData: (id) =>
+        `The account "${id}" already exists and has data. Nothing was imported. Run "msum unlink --account ${id}" first if you want to replace it.`,
+      daemonUsing: (id, pid) =>
+        `The account "${id}" is being used by the running daemon (pid ${pid}). Nothing was imported. Stop the daemon first (Ctrl+C in its terminal, "kill ${pid}", or stop its service or container).`,
+      beingLinked: (id, pid, lockFile) =>
+        `The account "${id}" is being linked, unlinked or imported by another process (pid ${pid}). Wait for it to finish. If you are sure nothing is running, that lock is stale: delete the file ${lockFile}.`,
+      legacyLive: (source, signals) => {
+        const why: Record<(typeof signals)[number], string> = {
+          wal: 'whatsapp.db-wal exists: SQLite removes it when the last connection closes cleanly, so the tool has the database open (or it crashed)',
+          shm: 'whatsapp.db-shm exists, for the same reason',
+          recentWrite: 'its database was written to within the last minute',
+          recentSession:
+            'a file of its session (auth/) was written within the last 10 minutes: it rewrites them while it runs',
+        }
+        return `${source}: the previous tool looks like it is still running:\n${signals.map((signal) => `  - ${why[signal]}`).join('\n')}\nStopping it (its listener and its sandbox) clears these signs; then run the import again. If you are sure it is stopped, --force skips this check (the warning and the question remain).`
+      },
+      dataMissing: (source, dbFile) =>
+        `${source} has no database at ${dbFile}. If the previous tool kept its data somewhere else (WA_DATA_DIR), point to it with --data <dir> (it is only read). To bring only the session and the settings, use --session-only.`,
+      privacyList: (source, legacyKey, reason) =>
+        reason === 'needsOllamaModel'
+          ? `Nothing was imported from ${source}: its "soloLocal" (chats that must never leave this computer) needs an Ollama model here, and none is set. Dropping the list would let those chats reach an outside provider. Set an Ollama model ("ollama.modelo" in the previous config.json, or "provider.ollama.model" in this program's config.json), or remove soloLocal there, and import again.`
+          : `Nothing was imported from ${source}: its "${legacyKey}" is not a list of texts that this program can use, and it must never be dropped silently (${legacyKey === 'soloLocal' ? 'those chats would reach an outside provider' : 'those chats would be stored and summarized'}). Fix it in the previous config.json (a list of words or names) and import again.`,
+      warning: (plan) =>
+        `About to import (copying only, the previous installation is not modified):\n${plan}\n\nWARNING: the WhatsApp session is copied. The same session must NOT run in two places at once: stop the previous tool (its listener) BEFORE going on, and never start it again for this phone, or WhatsApp will disconnect one of the two. If both run, the daemon of this program will block the account as "replaced" instead of fighting for it.`,
+      confirm: 'Import now? [y/N] ',
+      cancelled: 'Cancelled. Nothing was imported (use --yes to skip the question).',
+      starting: (source, id) => `Importing ${source} as the account "${id}"...`,
+      summary: (s) => {
+        const list = (items: readonly string[]): string => items.join(', ')
+        const lines = [
+          `Imported ${s.source} as the account "${s.id}".`,
+          `  Linked number:      ${s.masked} (session: ${s.sessionFiles} files, private; no QR to scan again)`,
+          `  Messages:           ${s.messages} in ${s.conversations} conversations, ${s.participants} contacts`,
+          `  Unread state:       ${s.unreadCounted} conversations with a count, ${s.unreadMarked} marked unread by hand`,
+          `  Last digest:        ${s.pointer ?? 'none yet'}${s.pointer === null ? '' : ' (the first digest starts from here)'}`,
+          `  Settings:           ${s.configWritten.length === 0 ? 'the installation settings already match' : list(s.configWritten)}`,
+          `  Prompt:             ${s.promptCopied ? 'copied (promptFile in the account config)' : 'none: the default prompt'}`,
+          `  Schedules:          ${s.schedules}`,
+        ]
+        if (s.schedules === 0) {
+          lines.push(
+            '    The previous tool kept its schedules outside its data (the cron of its sandbox, or launchd): none were imported. Add them with "msum schedule add --time HH:MM --account ' +
+              `${s.id}" or import again with --schedule 07:00,19:00.`,
+          )
+        }
+        const left: string[] = []
+        if (s.skippedKinds > 0) left.push(`${s.skippedKinds} messages of a kind this program does not know`)
+        if (s.excluded > 0)
+          left.push(`${s.excluded} messages of chats that your exclusion patterns exclude (never stored)`)
+        if (s.mediaFiles > 0) left.push(`${s.mediaFiles} audio or image files (only their text and transcripts came)`)
+        if (s.imageTexts > 0) left.push(`${s.imageTexts} texts read from images`)
+        if (s.transcribeErrors > 0) left.push(`${s.transcribeErrors} audio transcription errors`)
+        if (s.pendingOutbox > 0) left.push(`${s.pendingOutbox} digests that were waiting to be sent`)
+        if (s.digestFiles > 0) left.push(`${s.digestFiles} saved digest files`)
+        if (s.configUnmapped.length > 0) left.push(`settings without an equivalent: ${list(s.configUnmapped)}`)
+        if (s.configInvalid.length > 0) left.push(`settings with an invalid value: ${list(s.configInvalid)}`)
+        if (s.otherState.length > 0) left.push(`internal state: ${list(s.otherState)}`)
+        if (left.length > 0) lines.push('  NOT imported:', ...left.map((item) => `    - ${item}`))
+        if (s.edited > 0) lines.push(`  (${s.edited} messages were edited: they keep the "edited" marker.)`)
+        lines.push(`  Next: msum digest --dry-run --account ${s.id}`)
+        return lines.join('\n')
+      },
+      failed: (id, code) => `The import of "${id}" failed (${code}). Nothing was left behind: no account, no files.`,
+    },
     retry: {
       notBlocked: (id) => `The account "${id}" is not blocked: there is nothing to retry.`,
       beingLinked: (id, pid, lockFile) =>
@@ -318,6 +403,10 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         accounts: 'Accounts',
         schedules: 'Schedules',
       },
+      staleImport: (names) =>
+        `directories of imports that did not finish are left in accounts/: ${names}. Each holds a copy of a WhatsApp session and of messages`,
+      staleImportFix:
+        'they are removed by the next "msum import" or when the daemon starts; or delete them yourself (nothing is running in them).',
       schedulesOk: (count) => `${count} configured`,
       schedulesNone: 'no schedules: the daemon captures messages but never generates a digest on its own',
       schedulesNoneFix:

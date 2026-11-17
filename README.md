@@ -43,6 +43,23 @@ Other commands: `msum status` (account, last digest, pending deliveries, next ru
 
 Everything stays on your machine, in the data directory (permissions restricted to your user), except what the LLM provider you chose receives. The command-line texts are in Spanish or English (`language` in `config.json`).
 
+## Import from the previous tool
+
+If you ran the previous installation of this idea (the summaryzing-whatsapp tool), `msum import --from <path>` brings it in without scanning the QR code again. It only **copies**: the previous installation is never modified, so it stays as a way back.
+
+- **What it takes:** the WhatsApp session (byte for byte, private: directory 0700, files 0600), the messages with their edits, transcripts and read marks, the unread state of each chat, the contacts and their names, the pointer of the last digest (so the first digest does not summarize the past again), the settings (mapped to this program's options, writing only what differs from your `config.json`) and the prompt (`{{nombre}}` becomes `{{name}}`). The account is bound to the number of the session, so digests only go to that number's own chat.
+- **What it does not take, and says so:** audio and image files (only their text and transcripts), the text read from images, transcription errors, digests waiting in the outbox, the saved digest files, the options without an equivalent here (image reading, Whisper, the web), and its internal state. They are counted in the summary.
+- **Schedules:** the previous tool kept them outside its data (the cron of its sandbox, or launchd), so they cannot be read from the folder. Give the times with `--schedule 07:00,19:00`, or add them later with `msum schedule add`.
+- **Which account:** `--account <id>` (default `default`) names the account for the main installation. `--instance <name>` imports one of its instances (`instancias/<name>/`, another phone) under that name, and `--all` imports the main installation and every instance, each as its own account.
+- **Before you run it, stop the previous tool.** The same WhatsApp session must not run in two places at once, or WhatsApp disconnects one of them. The command warns you and asks for confirmation (or `--yes`), and it refuses while the previous tool looks as if it is running (it keeps no lock file, so this is inferred, only from file metadata): a `whatsapp.db-wal` or `-shm` next to its database (SQLite removes them when the last connection closes cleanly), its database written within the last minute, or its session files written within the last ten minutes. The message says which sign fired; stopping the previous tool clears them, and `--force` skips the check (the warning and the question remain). If both do run, the daemon blocks the account as `replaced` (see `msum retry`) instead of fighting for it.
+- **Safe to run:** it refuses an account that is already linked or has data (unlink it first) or that the running daemon is using, and it is all-or-nothing per account: everything is built aside and moved into place with one rename, so a failure leaves no account and no files. Afterwards it opens what it built, offline, and prints a summary with the number masked.
+
+- **Where its data is:** if the previous tool kept its data somewhere else (`WA_DATA_DIR`), the import refuses and says so; point to it with `--data <dir>` (only read). `--session-only` brings just the session, the settings and the prompt, without messages.
+- **Privacy lists are never dropped silently:** your `excluir` chats are never stored here (RF-14; the summary counts what was left out), and if `soloLocal` (chats that must never leave your computer) cannot be imported, for example because no Ollama model is set, the whole import is refused and says what to fix.
+- **Crashes:** the import works in a hidden `accounts/.import-*` directory with a pid file; one left by a crash is removed by the next import or when the daemon starts, and `msum doctor` reports it (it holds a copy of a session). While the import runs, the account's lock moves in with it, so a running daemon never starts the account half way.
+
+Then check with `msum digest --dry-run --account <id>` and start the daemon.
+
 ## What it will do
 
 - **Link your account** by scanning a QR code from a local web page, and keep it connected without marking you as "online", so your phone keeps getting notifications.

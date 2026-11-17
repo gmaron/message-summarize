@@ -56,8 +56,10 @@ export interface CommandContext {
   readonly linkTiming: LinkTiming
   /** Replaces the configured providers. For tests. */
   readonly summarizer?: Summarizer | null
-  /** Called right after `link`, `unlink` or `retry` takes the lock of an account. For tests: they widen that window. */
+  /** Called right after `link`, `unlink`, `retry` or `import` takes the lock of an account. For tests: they widen that window. */
   readonly afterLock?: () => void | Promise<void>
+  /** Called after each step of an import (session, database, config, built, renamed). For tests: they interrupt it. */
+  readonly afterImportStep?: (step: 'session' | 'database' | 'config' | 'built' | 'renamed') => void | Promise<void>
   readonly daemonTiming?: {
     readonly heartbeatMs?: number
     readonly sweepMs?: number
