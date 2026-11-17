@@ -16,6 +16,7 @@ export const account = (over: Partial<AccountView> = {}): AccountView => ({
   timezone: 'America/Argentina/Buenos_Aires',
   language: 'en',
   configValid: true,
+  configIssues: [],
   ...over,
 })
 

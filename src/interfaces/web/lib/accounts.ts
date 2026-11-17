@@ -11,6 +11,8 @@ export interface AccountActions {
   readonly digest: boolean
   readonly preview: boolean
   readonly schedules: boolean
+  /** Always: with an invalid configuration the dialog says what is wrong. */
+  readonly settings: boolean
   /** Opens the link dialog: the account is not linked, or a link is in progress. */
   readonly link: boolean
   /** The daemon says that linking again fixes the block. */
@@ -28,6 +30,7 @@ export function accountActions(account: AccountView): AccountActions {
     digest: ['connected', 'connecting', 'reconnecting'].includes(account.state),
     preview: account.configValid && account.maskedNumber !== null && account.state !== 'linking',
     schedules: account.configValid,
+    settings: true,
     link:
       account.configValid &&
       (account.state === 'linking' || (account.state === 'idle' && account.maskedNumber === null)),

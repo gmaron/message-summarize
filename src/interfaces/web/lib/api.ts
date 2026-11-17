@@ -1,4 +1,12 @@
-import type { AccountView, LinkSnapshot, PreviewView, SchedulesView, ScheduleView } from './types.js'
+import type {
+  AccountView,
+  LinkSnapshot,
+  PreviewView,
+  SchedulesView,
+  ScheduleView,
+  SettingsIssue,
+  SettingsView,
+} from './types.js'
 
 /** What the page needs of a response: the browser's `fetch` gives more. */
 export interface HttpResponse {
@@ -21,6 +29,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly issue?: string,
+    /** For a 422 `invalidConfig`: what is wrong with each option. */
+    readonly issues?: readonly SettingsIssue[],
   ) {
     super(code)
     this.name = 'ApiError'
@@ -45,13 +55,14 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     })
     if (reply.status === 204) return undefined as T
-    const data = (await reply.json().catch(() => ({}))) as { error?: unknown; issue?: unknown }
+    const data = (await reply.json().catch(() => ({}))) as { error?: unknown; issue?: unknown; issues?: unknown }
     if (!reply.ok) {
       if (reply.status === 401) onUnauthorized()
       throw new ApiError(
         reply.status,
         typeof data.error === 'string' ? data.error : 'internal',
         typeof data.issue === 'string' ? data.issue : undefined,
+        Array.isArray(data.issues) ? (data.issues as SettingsIssue[]) : undefined,
       )
     }
     return data as T
@@ -75,6 +86,10 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       request<ScheduleView>('PUT', `${account(id)}/schedules/${scheduleId}`, { days: input.days, time: input.time }),
     deleteSchedule: (id: string, scheduleId: number) =>
       request<undefined>('DELETE', `${account(id)}/schedules/${scheduleId}`),
+    settings: (id: string) => request<SettingsView>('GET', `${account(id)}/settings`),
+    /** `patch` has only the options to change, nested as in config.json; `null` removes the account's own value. */
+    saveSettings: (id: string, patch: Record<string, unknown>) =>
+      request<SettingsView>('PUT', `${account(id)}/settings`, patch),
     /** Where the image of the current QR is. `version` changes on every `qr` event so the browser asks again. */
     qrUrl: (id: string, version: number) => `${account(id)}/link/qr.svg?v=${version}`,
   }

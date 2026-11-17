@@ -44,6 +44,20 @@ export type WebErrorCode =
   | 'invalidSchedule'
   | 'notRunning'
   | 'tooSoon'
+  | 'concurrentEdit'
+
+/** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
+export type WebConfigIssueCode =
+  | SettingsIssueCode
+  | 'invalidJson'
+  | 'unknownOption'
+  | 'notOneOf'
+  | 'required'
+  | 'invalidTimezone'
+  | 'invalidPort'
+  | 'invalidUrl'
+  | 'concurrentEdit'
+  | 'installationOnly'
 
 /** Why a digest asked from the web (or a scheduled one) produced nothing: codes, never text (`digest` and `preview` events). */
 export type DigestErrorCode = 'noProvider' | 'promptFile' | 'concurrentRun' | 'invalidWindow' | 'failed'
@@ -201,6 +215,8 @@ export interface Catalog {
       required(option: string): string
       invalidTimezone(option: string): string
       invalidPort(option: string): string
+      invalidUrl(option: string): string
+      readonly concurrentEdit: string
       /** An option of the installation's config.json that an account's file cannot set. */
       installationOnly(option: string): string
       readonly noProvider: string
@@ -427,6 +443,26 @@ export interface Catalog {
 }
 
 /** The unit states the web labels (`UnitState` plus `notLinked`, which an idle account without a number shows). */
+/**
+ * The fields of the settings form, as keys of the catalog (the options they edit are the dotted names of
+ * `PUT /api/accounts/:id/settings`: `providerPrimary` is `provider.primary`).
+ */
+export type SettingsFieldKey =
+  | 'unreadOnly'
+  | 'flagUnsaved'
+  | 'hideRest'
+  | 'maxCharsPerConversation'
+  | 'defaultWindowHours'
+  | 'language'
+  | 'timezone'
+  | 'ownerName'
+  | 'providerPrimary'
+  | 'providerBackup'
+  | 'claudeModel'
+  | 'claudeTimeoutMs'
+  | 'ollamaBaseUrl'
+  | 'ollamaModel'
+
 export type WebStateName = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking' | 'notLinked'
 
 /**
@@ -442,6 +478,8 @@ export interface WebTexts {
   readonly digestErrors: Readonly<Record<DigestErrorCode, string>>
   /** Why a schedule sent to `POST /api/accounts/:id/schedules` was refused (`issue`). */
   readonly scheduleIssues: Readonly<Record<ScheduleIssue, string>>
+  /** Why an option of the settings was refused: the reason alone (the page puts it next to the field). `{allowed}` for `notOneOf`. */
+  readonly configIssues: Readonly<Record<WebConfigIssueCode, string>>
   readonly ui: {
     readonly title: string
     readonly loading: string
@@ -472,6 +510,8 @@ export interface WebTexts {
       readonly blockedSince: string
       /** `{when}`: when the web's retry becomes available. */
       readonly retryAvailable: string
+      /** Heading of the list of problems of an invalid configuration. */
+      readonly configIssues: string
     }
     readonly retryConfirm: { readonly confirm: string; readonly yes: string; readonly no: string }
     readonly states: Readonly<Record<WebStateName, string>>
@@ -480,6 +520,7 @@ export interface WebTexts {
       readonly digestNow: string
       readonly preview: string
       readonly schedules: string
+      readonly settings: string
       readonly link: string
       readonly relink: string
       readonly retry: string
@@ -534,6 +575,31 @@ export interface WebTexts {
       readonly edit: string
       readonly delete: string
       readonly saving: string
+    }
+    readonly settings: {
+      /** `{account}`. */
+      readonly title: string
+      /** Said once on top: changes apply without restarting or reconnecting. */
+      readonly appliesLive: string
+      readonly groups: { readonly digest: string; readonly languageTime: string; readonly provider: string }
+      readonly fields: Readonly<Record<SettingsFieldKey, { readonly label: string; readonly hint?: string }>>
+      readonly languageNames: Readonly<Record<Language, string>>
+      readonly providerNames: Readonly<Record<'claude-cli' | 'ollama', string>>
+      /** The choice of "no provider" (primary) or "no backup". */
+      readonly none: string
+      /** How the page says where a value comes from. */
+      readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
+      /** Under the text fields that inherit when they are left empty. */
+      readonly emptyInherits: string
+      /** Under the Ollama address when its host is not this machine. */
+      readonly remoteOllama: string
+      readonly save: string
+      readonly saving: string
+      readonly saved: string
+      readonly noChanges: string
+      /** `{option}`, `{reason}`: a problem that belongs to no field of the form. */
+      readonly issue: string
+      readonly issuesHeading: string
     }
     readonly preview: {
       /** `{account}`. */

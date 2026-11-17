@@ -69,6 +69,7 @@ describe('msum daemon: the local web (RF-01, RNF-03)', () => {
           timezone: expect.any(String),
           language: 'en',
           configValid: true,
+          configIssues: [],
         },
       ])
       // the full number never leaves the process

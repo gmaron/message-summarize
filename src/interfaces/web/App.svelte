@@ -5,6 +5,7 @@
   import LinkDialog from './components/LinkDialog.svelte'
   import PreviewDialog from './components/PreviewDialog.svelte'
   import SchedulesDialog from './components/SchedulesDialog.svelte'
+  import SettingsDialog from './components/SettingsDialog.svelte'
   import type { Api } from './lib/api.js'
   import type { Controller } from './lib/controller.js'
   import { errorText } from './lib/digest.js'
@@ -24,7 +25,7 @@
     document.title = ui.title
   })
 
-  type Dialog = { kind: 'link' | 'schedules' | 'preview'; id: string }
+  type Dialog = { kind: 'link' | 'schedules' | 'settings' | 'preview'; id: string }
   let dialog: Dialog | null = $state.raw(null)
   const accountOf = (id: string) => app.accounts?.find((account) => account.id === id) ?? null
 
@@ -87,6 +88,7 @@
                 ondigest={() => controller.digestNow(account.id)}
                 onpreview={() => openPreview(account.id)}
                 onschedules={() => (dialog = { kind: 'schedules', id: account.id })}
+                onsettings={() => (dialog = { kind: 'settings', id: account.id })}
                 onlink={() => openLink(account.id)}
                 onretry={() => retry(account.id)}
               />
@@ -105,6 +107,8 @@
       <LinkDialog {controller} {api} {texts} id={account.id} link={app.links[account.id]} onclose={close} />
     {:else if dialog.kind === 'schedules'}
       <SchedulesDialog {api} {texts} {account} onclose={close} />
+    {:else if dialog.kind === 'settings'}
+      <SettingsDialog {api} {texts} {account} onclose={close} />
     {:else}
       <PreviewDialog {controller} {texts} {account} preview={app.previews[account.id]} onclose={close} />
     {/if}

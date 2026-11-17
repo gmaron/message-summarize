@@ -15,6 +15,7 @@ import { removeWebAddress, writeWebAddress } from './web-address.js'
 import { digestRoutes } from './web-digest.js'
 import { accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
+import { settingsRoutes } from './web-settings.js'
 import { ensureWebToken } from './web-token.js'
 
 /**
@@ -119,6 +120,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     },
     ...accountRoutes(source),
     ...scheduleRoutes(source, () => void publishAccounts()),
+    ...settingsRoutes(source, () => void publishAccounts()),
     ...digestRoutes({ ...source, previews }),
   ]
 

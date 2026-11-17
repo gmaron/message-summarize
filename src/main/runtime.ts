@@ -42,6 +42,7 @@ export interface RuntimeOptions {
  */
 export interface Runtime {
   readonly layout: AccountLayout
+  /** The configuration in force now: `reconfigure` swaps it. A digest in progress keeps the one it started with. */
   readonly config: AppConfig
   readonly clock: Clock
   readonly renderers: Renderers
@@ -55,20 +56,28 @@ export interface Runtime {
   readonly ownIds: OwnConversationIds
   /** Null when no provider was chosen. */
   readonly generateDigest: GenerateDigest | null
+  /**
+   * Applies another configuration to the running account without touching the connection or the database: the
+   * renderers (language, time zone), the summarizer and the digest use case are built again from it (the summarizer by
+   * `buildSummarizer`, so the local-only router stays outermost), and capture reads the new exclusion patterns on its
+   * next event. A digest already running keeps what it started with.
+   */
+  reconfigure(config: AppConfig): void
   close(): void
 }
 
 export function createRuntime(options: RuntimeOptions): Runtime {
-  const { layout, config, env } = options
+  const { layout, env } = options
   const clock = options.clock ?? systemClock
   const now = (): number => clock.now()
+  let config = options.config
 
   const db = openDatabase(layout.dbFile)
   try {
     const store = new SqliteDigestStore(db, now)
     const identity = new SqliteAccountIdentity(db, now)
     const repository = new SqliteCaptureRepository(new SqliteCaptureWriter(db, now))
-    const renderers = createRenderers(config.language, config.timezone)
+    const source = new SqliteDigestSource(db)
 
     const ownIds = new OwnConversationIds()
     const bound = identity.get()
@@ -77,28 +86,41 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     const capture = createCaptureMessages({
       repository,
       clock,
+      // Read through `config` on every event: a reconfiguration applies to the next message.
       excludePatterns: () => config.digest.excludePatterns,
       ownConversationIds: () => ownIds.get(),
     })
 
-    const summarizer = options.summarizer === undefined ? buildSummarizer(config, env) : options.summarizer
-    const generateDigest =
-      summarizer === null
-        ? null
-        : createGenerateDigest({
-            source: new SqliteDigestSource(db),
-            summarizer,
-            store,
-            clock,
-            renderers,
-            ownConversationIds: () => ownIds.get(),
-          })
+    // A summarizer given in the options (tests) is fixed: a reconfiguration does not replace it.
+    const makeParts = (settings: AppConfig): { renderers: Renderers; generateDigest: GenerateDigest | null } => {
+      const renderers = createRenderers(settings.language, settings.timezone)
+      const summarizer = options.summarizer === undefined ? buildSummarizer(settings, env) : options.summarizer
+      return {
+        renderers,
+        generateDigest:
+          summarizer === null
+            ? null
+            : createGenerateDigest({
+                source,
+                summarizer,
+                store,
+                clock,
+                renderers,
+                ownConversationIds: () => ownIds.get(),
+              }),
+      }
+    }
+    let parts = makeParts(config)
 
     return {
       layout,
-      config,
+      get config() {
+        return config
+      },
       clock,
-      renderers,
+      get renderers() {
+        return parts.renderers
+      },
       db,
       store,
       outbox: new SqliteOutboxRepository(store),
@@ -106,7 +128,15 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       repository,
       capture,
       ownIds,
-      generateDigest,
+      get generateDigest() {
+        return parts.generateDigest
+      },
+      reconfigure: (next) => {
+        // Built before anything is swapped: if it throws, the runtime keeps the configuration it had.
+        const rebuilt = makeParts(next)
+        config = next
+        parts = rebuilt
+      },
       close: () => db.close(),
     }
   } catch (error) {

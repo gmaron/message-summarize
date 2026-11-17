@@ -9,6 +9,7 @@ import type {
 } from '../infrastructure/whatsapp/connection.js'
 import { type SelfChatSource, WhatsAppSelfChatDelivery } from '../infrastructure/whatsapp/self-chat-delivery.js'
 import { type BlockedReason, readBlocked, writeBlocked } from './blocked.js'
+import type { AppConfig } from './config.js'
 import { errorCode, type Logger } from './logger.js'
 import { runDigest } from './run-digest.js'
 import type { Runtime } from './runtime.js'
@@ -59,6 +60,8 @@ export interface DaemonOptions {
   readonly writesMarker?: boolean
   /** Told how every digest of this account goes (started, finished, failed, skipped): the web shows it live. Counts and codes only. */
   readonly onDigest?: (event: DigestEvent) => void
+  /** Called after a new configuration was applied (`applyConfig`): the language, time zone and next run may be others. */
+  readonly onConfigApplied?: () => void
   /** Called after the set of schedules changed on a reload (RF-61): the next run of the account is another. */
   readonly onSchedulesChanged?: () => void
 }
@@ -136,6 +139,7 @@ export class Daemon {
   private readonly onState: (state: UnitState) => void
   private readonly onDigest: (event: DigestEvent) => void
   private readonly onSchedulesChanged: () => void
+  private readonly onConfigApplied: () => void
   private state: UnitState | null = null
   private readonly scheduleSource: (() => readonly string[]) | null
   private readonly scheduleReloadMs: number
@@ -173,6 +177,7 @@ export class Daemon {
     this.onState = options.onState ?? (() => {})
     this.onDigest = options.onDigest ?? (() => {})
     this.onSchedulesChanged = options.onSchedulesChanged ?? (() => {})
+    this.onConfigApplied = options.onConfigApplied ?? (() => {})
     this.scheduleSource = options.scheduleSource ?? null
     this.scheduleReloadMs = options.scheduleReloadMs ?? DEFAULT_SCHEDULE_RELOAD_MS
     this.deliverPending = new DeliverPending(
@@ -241,6 +246,26 @@ export class Daemon {
     // Open already: no status event will come for it, so it is checked here (`unverified` keeps it to once).
     if (this.connection.status.state === 'connected' && this.unverified && this.blockedReason === null) {
       this.handleConnected()
+    }
+  }
+
+  /**
+   * Runs from now on with another configuration (RF-73), WITHOUT touching the connection: the runtime swaps its
+   * renderers, summarizer and patterns (see `Runtime.reconfigure`), and the scheduler moves to the new time zone with the
+   * same set of schedules (RF-62). A digest in progress keeps the configuration it started with; the single-flight guard
+   * and the catch-up state are untouched.
+   */
+  applyConfig(config: AppConfig): void {
+    this.runtime.reconfigure(config)
+    this.scheduler.setTimezone(config.timezone)
+    this.logger.info('config.applied', { count: this.scheduler.count })
+    if (this.scheduler.count > 0 && this.runtime.generateDigest === null) {
+      this.logger.warn('schedules.noProvider', { count: this.scheduler.count })
+    }
+    try {
+      this.onConfigApplied()
+    } catch (error) {
+      this.logger.error('digest.reportFailed', { code: errorCode(error) })
     }
   }
 

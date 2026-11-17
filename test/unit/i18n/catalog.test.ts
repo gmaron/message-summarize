@@ -139,6 +139,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   ],
   'cli.argErrors.invalidDays': [['x']],
   'cli.config.invalidPort': [['web.port']],
+  'cli.config.invalidUrl': [['provider.ollama.baseUrl']],
   'cli.config.installationOnly': [['web']],
   'cli.web.listening': [['127.0.0.1', 8787]],
   'cli.web.failed': [['127.0.0.1', 8787, 'EADDRINUSE']],

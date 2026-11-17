@@ -15,6 +15,7 @@ import { linkLockHolder } from './link-lock.js'
 import { accountLayoutOf } from './paths.js'
 import { earliestNextRun } from './schedule-format.js'
 import type { UnitState } from './unit-state.js'
+import { issueViews, type SettingsIssueView } from './web-settings.js'
 
 /** One account as the web shows it (RF-04, RF-71). Never the full number, never anything of the messages. */
 export interface AccountView {
@@ -42,6 +43,8 @@ export interface AccountView {
   readonly language: Language
   /** False when the account's configuration is invalid: the daemon leaves it idle and the fields above are partial. */
   readonly configValid: boolean
+  /** What is wrong with the configuration when it is not valid (empty otherwise): the option and a code the page translates. */
+  readonly configIssues: readonly SettingsIssueView[]
 }
 
 /** What the web needs to know about the installation. */
@@ -94,6 +97,7 @@ export async function describeAccounts(source: AccountsSource): Promise<AccountV
         timezone: systemTimezone(),
         language: await languageHint(ctx.layout.configFile, account.configFile),
         configValid: false,
+        configIssues: issueViews(loaded.error),
       })
       continue
     }
@@ -117,6 +121,7 @@ export async function describeAccounts(source: AccountsSource): Promise<AccountV
       timezone: config.timezone,
       language: config.language,
       configValid: true,
+      configIssues: [],
     })
   }
   return views

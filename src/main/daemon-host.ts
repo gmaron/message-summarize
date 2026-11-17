@@ -11,7 +11,7 @@ import {
   WEB_RETRY_MIN_WAIT_MS,
   writeBlocked,
 } from './blocked.js'
-import { type AppConfig, describeConfigIssue, loadEffectiveConfig } from './config.js'
+import { type AppConfig, configStamp, describeConfigIssue, loadEffectiveConfig, readConfigObject } from './config.js'
 import { type CommandContext, hasSession } from './context.js'
 import { type CountingCapture, countingCapture } from './counting-capture.js'
 import { Daemon, type DaemonConnection, type DigestEvent } from './daemon.js'
@@ -227,6 +227,14 @@ export class DaemonHost {
     { state: UnitState; since: number; writing: Promise<void>; unwritten: boolean }
   >()
   private readonly crashing = new Set<string>()
+  /** What the config files of each running unit looked like when its configuration was last read (see `configStamp`). */
+  private readonly configStamps = new Map<string, string>()
+  /** The problems of the last invalid configuration found on a running unit, so each is logged once. */
+  private readonly invalidConfigs = new Map<string, string>()
+  /** The code of the last failure to apply a configuration of each unit, so a failure that repeats is logged once. */
+  private readonly reloadFailures = new Map<string, string>()
+  /** The refresh of each account that is going (see `refreshConfig`). */
+  private readonly refreshes = new Map<string, Promise<void>>()
   /**
    * THE record of which accounts are blocked and why: one entry per blocked account, filled from `blocked.json` or, when
    * the marker could not be written, from memory. A blocked account has no unit. `persisted` says the marker was on disk
@@ -283,6 +291,112 @@ export class DaemonHost {
       unitMaxFailures: timing.unitMaxFailures ?? DEFAULT_UNIT_MAX_FAILURES,
       linkHeartbeatMs: this.linkHeartbeatMs,
     }
+  }
+
+  /**
+   * Reads the configuration of a running account again and applies it WITHOUT closing its socket (RF-73): the runtime and
+   * the scheduler follow the new values from the next digest on. Called after the web saves a change, and by every look of
+   * the host (a file edited by hand is noticed by its modification time and size). With nothing changed it does nothing.
+   *
+   * A configuration that is not valid (a hand edit) is NOT applied: the unit keeps the last valid one, `account.configInvalid`
+   * is logged once per set of problems, and the account view lists them. Fixing the file applies it. An account with no unit
+   * is not touched here: its next start reads the files.
+   */
+  async reloadConfig(id: string): Promise<void> {
+    await this.refreshConfig(id)
+  }
+
+  /**
+   * One refresh at a time per account: a refresh that starts while another is going waits for it, and takes its own
+   * stamp and reads the files AFTER that. Two overlapping refreshes could otherwise apply an older read after a newer
+   * one, with the stamp already matching so nothing would correct it.
+   */
+  private refreshConfig(id: string): Promise<void> {
+    const previous = this.refreshes.get(id) ?? Promise.resolve()
+    const run = previous.then(() => this.refreshConfigNow(id))
+    const tail = run.catch(() => undefined)
+    this.refreshes.set(id, tail)
+    void tail.then(() => {
+      if (this.refreshes.get(id) === tail) this.refreshes.delete(id)
+    })
+    return run
+  }
+
+  /**
+   * The privacy lists of an invalid configuration (RF-14, RF-43): whatever the raw files say, when each is a list of
+   * non-empty texts, joined to the ones the unit already has (the union rule of `mergeConfigJson`). An invalid file can
+   * make the privacy of the unit stricter, never looser. A list of the wrong shape, or a file that is not JSON, adds nothing.
+   */
+  private async privacyOfInvalid(files: readonly string[], current: AppConfig): Promise<AppConfig | null> {
+    const found: Record<'localOnlyPatterns' | 'excludePatterns', string[]> = {
+      localOnlyPatterns: [...current.localOnlyPatterns],
+      excludePatterns: [...current.digest.excludePatterns],
+    }
+    const before = JSON.stringify(found)
+    for (const file of files) {
+      const read = await readConfigObject(file)
+      if (!read.ok) continue
+      for (const key of ['localOnlyPatterns', 'excludePatterns'] as const) {
+        const value = read.value[key]
+        if (!Array.isArray(value) || !value.every((p) => typeof p === 'string' && p.trim() !== '')) continue
+        found[key] = [...new Set([...found[key], ...(value as string[])])]
+      }
+    }
+    if (JSON.stringify(found) === before) return null
+    return {
+      ...current,
+      localOnlyPatterns: found.localOnlyPatterns,
+      digest: { ...current.digest, excludePatterns: found.excludePatterns },
+    }
+  }
+
+  private async refreshConfigNow(id: string): Promise<void> {
+    const unit = this.units.get(id)
+    if (unit === undefined || unit.daemon.blocked !== null || this.links.has(id)) return
+    const account = accountLayoutOf(this.ctx.layout, id)
+    const files = [this.ctx.layout.configFile, account.configFile]
+    // Taken BEFORE reading: a write that lands in between makes the next look read again.
+    const stamp = await configStamp(files)
+    if (this.configStamps.get(id) === stamp) return
+    this.configStamps.set(id, stamp)
+    const logger = scopedLogger(this.ctx.logger, { account: id })
+    try {
+      const loaded = await this.loadConfig(files[0] as string, account.configFile)
+      // Gone, or replaced by another unit, while the files were read.
+      if (this.units.get(id) !== unit || unit.daemon.blocked !== null) return
+      if (!loaded.ok) {
+        const signature = loaded.error.map((issue) => `${issue.option}:${issue.code}`).join(',')
+        if (this.invalidConfigs.get(id) !== signature) {
+          this.invalidConfigs.set(id, signature)
+          logger.error('account.configInvalid', { count: loaded.error.length })
+        }
+        // The last valid configuration stays, with the privacy entries the invalid files add: never looser.
+        const stricter = await this.privacyOfInvalid(files, unit.runtime.config)
+        if (stricter !== null && this.units.get(id) === unit) unit.daemon.applyConfig(stricter)
+        this.notifyChange()
+        return
+      }
+      this.invalidConfigs.delete(id)
+      if (JSON.stringify(loaded.value) !== JSON.stringify(unit.runtime.config)) {
+        this.languages.set(id, loaded.value.language)
+        unit.daemon.applyConfig(loaded.value)
+      }
+      this.reloadFailures.delete(id)
+      this.notifyChange()
+    } catch (error) {
+      // Looked at again on the next look, but said once per kind of failure.
+      this.configStamps.delete(id)
+      const code = errorCode(error)
+      if (this.reloadFailures.get(id) !== code) {
+        this.reloadFailures.set(id, code)
+        logger.error('config.reloadFailed', { code })
+      }
+    }
+  }
+
+  /** Reads the effective configuration of an account. A seam: tests slow it down to interleave two refreshes. */
+  protected loadConfig(rootFile: string, accountFile: string) {
+    return loadEffectiveConfig(rootFile, accountFile)
   }
 
   /** The `Daemon` of an account that has a unit, for diagnostics and tests. */
@@ -442,6 +556,8 @@ export class DaemonHost {
     for (const [id, since] of this.connectedSince) {
       if (this.failures.has(id) && Date.now() - since >= this.timing.unitStableMs) this.failures.delete(id)
     }
+    // A config file edited by hand (or by another process) while the unit runs: applied without reconnecting.
+    for (const id of [...this.units.keys()]) await this.refreshConfig(id)
     const starts: Promise<void>[] = []
     for (const id of ids) {
       const wanted = await this.decide(id)
@@ -603,6 +719,8 @@ export class DaemonHost {
         // already closed
       }
     }
+    // Before reading: an edit that lands while the unit starts is seen by the next look (see `refreshConfig`).
+    const stamp = await configStamp([this.ctx.layout.configFile, account.configFile])
     const loaded = await loadEffectiveConfig(this.ctx.layout.configFile, account.configFile)
     if (!loaded.ok) {
       await abandon()
@@ -632,6 +750,8 @@ export class DaemonHost {
       return
     }
     this.idleReasons.delete(id)
+    this.configStamps.set(id, stamp)
+    this.invalidConfigs.delete(id)
     // A unit is being started, so nothing is blocked: whatever the host remembered of an earlier block is dropped, and
     // cannot make a later block look cleared (or not cleared).
     this.blocks.delete(id)
@@ -674,6 +794,8 @@ export class DaemonHost {
         onDigest: (event) => this.emitDigest({ ...event, account: id }),
         // Another process (`msum schedule`) changed them: the next run the web shows is another.
         onSchedulesChanged: () => this.notifyChange(),
+        // A new configuration (time zone, language) moves the next run the web shows.
+        onConfigApplied: () => this.notifyChange(),
         // The host owns the order of a block: release the account first, write the marker after (see `blockUnit`).
         writesMarker: false,
         onBlocked: (reason) => {
@@ -1171,6 +1293,9 @@ export class DaemonHost {
     }
     this.units.delete(id)
     this.connectedSince.delete(id)
+    this.configStamps.delete(id)
+    this.invalidConfigs.delete(id)
+    this.reloadFailures.delete(id)
     scopedLogger(this.ctx.logger, { account: id }).info('account.unitStopped', { reason })
     try {
       await unit.daemon.stop()

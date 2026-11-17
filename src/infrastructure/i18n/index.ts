@@ -11,6 +11,8 @@ export type {
   ImportSummary,
   Language,
   LinkErrorCode,
+  SettingsFieldKey,
+  WebConfigIssueCode,
   WebErrorCode,
   WebStateName,
   WebTexts,

@@ -166,6 +166,9 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       invalidTimezone: (option) =>
         `La opción "${option}" no es una zona horaria válida (por ejemplo "America/Argentina/Buenos_Aires").`,
       invalidPort: (option) => `La opción "${option}" tiene que ser un número de puerto entre 1 y 65535.`,
+      invalidUrl: (option) =>
+        `La opción "${option}" tiene que ser una dirección http o https absoluta (por ejemplo "http://127.0.0.1:11434").`,
+      concurrentEdit: 'El archivo de configuración cambió mientras se guardaba: no se escribió nada. Probá de nuevo.',
       installationOnly: (option) =>
         `La opción "${option}" solo se puede poner en el config.json del directorio de datos, no en el de una cuenta.`,
       noProvider:

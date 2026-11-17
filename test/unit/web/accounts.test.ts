@@ -43,7 +43,7 @@ describe('the buttons of a card', () => {
 
   it('offers neither link nor schedules for an account whose configuration is not valid', () => {
     const a = account({ state: 'idle', maskedNumber: null, configValid: false })
-    expect(accountActions(a)).toMatchObject({ link: false, schedules: false, preview: false })
+    expect(accountActions(a)).toMatchObject({ link: false, schedules: false, preview: false, settings: true })
   })
 
   it('checks the id as the daemon does', () => {

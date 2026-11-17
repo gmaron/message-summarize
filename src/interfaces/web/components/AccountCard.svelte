@@ -4,6 +4,7 @@
   import { blockedText, digestMessage, errorText, stateText } from '../lib/digest.js'
   import { formatDateTime } from '../lib/format.js'
   import { fmt } from '../lib/i18n.js'
+  import { issueReason, optionLabel } from '../lib/settings.js'
   import type { DigestUi } from '../lib/state.js'
   import type { AccountView } from '../lib/types.js'
 
@@ -15,6 +16,7 @@
     ondigest,
     onpreview,
     onschedules,
+    onsettings,
     onlink,
     onretry,
   }: {
@@ -25,6 +27,7 @@
     ondigest: () => void
     onpreview: () => void
     onschedules: () => void
+    onsettings: () => void
     onlink: () => void
     onretry: () => void
   } = $props()
@@ -54,7 +57,17 @@
   </header>
 
   {#if !account.configValid}
-    <p class="note error">{ui.account.invalidConfig}</p>
+    <div class="note error">
+      <p>{ui.account.invalidConfig}</p>
+      {#if account.configIssues.length > 0}
+        <p>{ui.account.configIssues}</p>
+        <ul>
+          {#each account.configIssues as issue (`${issue.option}:${issue.code}`)}
+            <li>{fmt(ui.settings.issue, { option: optionLabel(issue.option, texts), reason: issueReason(issue, texts) })}</li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
   {/if}
   {#if account.state === 'blocked' && account.blockedReason !== null}
     <p class="note warn">{blockedText(account.blockedReason, texts)}</p>
@@ -116,6 +129,7 @@
       </button>
       <button type="button" disabled={!actions.preview} onclick={onpreview}>{ui.actions.preview}</button>
       <button type="button" disabled={!actions.schedules} onclick={onschedules}>{ui.actions.schedules}</button>
+      <button type="button" disabled={!actions.settings} onclick={onsettings}>{ui.actions.settings}</button>
       {#if actions.link}
         <button type="button" onclick={onlink}>{ui.actions.link}</button>
       {/if}
@@ -157,6 +171,11 @@
 
   p {
     margin: 0;
+  }
+
+  .note ul {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
   }
 
   .small {

@@ -1,6 +1,12 @@
-import type { BlockedReason, DigestErrorCode, Language, LinkErrorCode } from '../../../infrastructure/i18n/index.js'
+import type {
+  BlockedReason,
+  DigestErrorCode,
+  Language,
+  LinkErrorCode,
+  WebConfigIssueCode,
+} from '../../../infrastructure/i18n/index.js'
 
-export type { BlockedReason, DigestErrorCode, Language, LinkErrorCode }
+export type { BlockedReason, DigestErrorCode, Language, LinkErrorCode, WebConfigIssueCode }
 
 /** What the daemon says about the connection of an account. */
 export type UnitState = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking'
@@ -24,6 +30,41 @@ export interface AccountView {
   readonly timezone: string
   readonly language: Language
   readonly configValid: boolean
+  /** What is wrong when it is not valid: the option and a code to translate. */
+  readonly configIssues: readonly SettingsIssue[]
+}
+
+/** A problem of the configuration, as the API says it. */
+export interface SettingsIssue {
+  readonly option: string
+  readonly code: WebConfigIssueCode
+  readonly allowed?: readonly string[]
+}
+
+export type SettingSource = 'account' | 'installation' | 'default'
+export type ProviderName = 'claude-cli' | 'ollama'
+
+/** `GET /api/accounts/:id/settings`: the effective values (nested as in config.json) and where each comes from. */
+export interface SettingsView {
+  readonly values: {
+    readonly language: Language
+    readonly timezone: string
+    readonly ownerName: string | null
+    readonly unreadOnly: boolean
+    readonly flagUnsaved: boolean
+    readonly hideRest: boolean
+    readonly maxCharsPerConversation: number
+    readonly defaultWindowHours: number
+    readonly concurrency: number
+    readonly provider: {
+      readonly primary: ProviderName | null
+      readonly backup: ProviderName | null
+      readonly claudeCli: { readonly model: string; readonly timeoutMs: number }
+      readonly ollama: { readonly baseUrl: string; readonly model: string | null }
+    }
+  }
+  readonly sources: Readonly<Record<string, SettingSource>>
+  readonly options: { readonly providers: readonly ProviderName[]; readonly languages: readonly Language[] }
 }
 
 /** A schedule as the API gives it: days as cron numbers (0 is Sunday). */
