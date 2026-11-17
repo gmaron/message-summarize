@@ -46,7 +46,12 @@
     {:else if current.phase === 'syncing'}
       <p>{current.sync?.done ? t.syncDone : t.connected}</p>
       {#if !current.sync?.done}
-        <progress aria-label={t.syncing}></progress>
+        {#if current.sync?.percent !== undefined}
+          <progress aria-label={t.syncing} max="100" value={current.sync.percent}></progress>
+          <p class="percent">{fmt(t.percent, { percent: current.sync.percent })}</p>
+        {:else}
+          <progress aria-label={t.syncing}></progress>
+        {/if}
       {/if}
     {:else if current.phase === 'done'}
       <p class="note ok">{t.done}</p>

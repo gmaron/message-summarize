@@ -132,3 +132,9 @@ progress {
 .muted {
   color: var(--muted);
 }
+
+.percent {
+  margin: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

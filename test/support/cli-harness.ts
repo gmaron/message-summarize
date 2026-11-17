@@ -6,6 +6,8 @@ import type { CaptureMessages } from '../../src/application/capture-messages.js'
 import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
 import { ok, type Result } from '../../src/domain/result.js'
 import type {
+  HistorySyncListener,
+  HistorySyncProgress,
   WhatsAppSocket,
   WhatsAppStatus,
   WhatsAppStatusListener,
@@ -40,6 +42,7 @@ export class FakeConnection implements ManagedConnection {
   /** What happens when `start()` is called (the test decides: show a QR, connect...). */
   onStart: () => void | Promise<void> = () => {}
   private readonly listeners = new Set<WhatsAppStatusListener>()
+  private readonly historyListeners = new Set<HistorySyncListener>()
 
   /**
    * A new unit starts from a clean status. This object is reused by every unit of a test, so the status a previous one
@@ -59,6 +62,17 @@ export class FakeConnection implements ManagedConnection {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  emitHistory(progress: HistorySyncProgress): void {
+    for (const listener of [...this.historyListeners]) listener(progress)
+  }
+
+  onHistorySync(listener: HistorySyncListener): () => void {
+    this.historyListeners.add(listener)
+    return () => {
+      this.historyListeners.delete(listener)
     }
   }
 

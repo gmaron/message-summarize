@@ -13,3 +13,9 @@ export function weekdayName(day: number, locale: string, style: 'short' | 'long'
   // 7 January 2024 was a Sunday.
   return new Intl.DateTimeFormat(locale, { weekday: style, timeZone: 'UTC' }).format(Date.UTC(2024, 0, 7 + day))
 }
+
+/** A percentage of progress as a whole number from 0 to 100, or null when the value is not a number (unknown progress). */
+export function percentOf(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.min(100, Math.max(0, Math.round(value)))
+}

@@ -3,7 +3,15 @@ import makeWASocket, { type BaileysEventMap, Browsers } from 'baileys'
 import { loadSecureAuthState } from './auth-state.js'
 import type { SocketFactory, WhatsAppSocket } from './connection.js'
 import { selfChatJid } from './jid.js'
-import type { WaChat, WaContact, WaGroup, WaHistorySet, WaMessagesUpsert, WaMessageUpdate } from './wa-types.js'
+import type {
+  WaChat,
+  WaContact,
+  WaGroup,
+  WaHistorySet,
+  WaHistoryStatus,
+  WaMessagesUpsert,
+  WaMessageUpdate,
+} from './wa-types.js'
 
 /**
  * The ONE place that creates a Baileys socket, and so the place where its configuration is fixed (RNF-17, RNF-04).
@@ -84,6 +92,7 @@ type Assignable<From, To> = [From] extends [To] ? true : never
 export const payloadShapes: [
   Assignable<BaileysEventMap['messages.upsert'], WaMessagesUpsert>,
   Assignable<BaileysEventMap['messaging-history.set'], WaHistorySet>,
+  Assignable<BaileysEventMap['messaging-history.status'], WaHistoryStatus>,
   Assignable<BaileysEventMap['messages.update'], readonly WaMessageUpdate[]>,
   Assignable<BaileysEventMap['chats.upsert'], readonly WaChat[]>,
   Assignable<BaileysEventMap['chats.update'], readonly WaChat[]>,
@@ -92,4 +101,4 @@ export const payloadShapes: [
   Assignable<BaileysEventMap['lid-mapping.update'], { lid: string; pn: string }>,
   Assignable<BaileysEventMap['groups.upsert'], readonly WaGroup[]>,
   Assignable<BaileysEventMap['groups.update'], readonly WaGroup[]>,
-] = [true, true, true, true, true, true, true, true, true, true]
+] = [true, true, true, true, true, true, true, true, true, true, true]

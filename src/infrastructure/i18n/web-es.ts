@@ -141,6 +141,7 @@ export const webEs: WebTexts = {
       chats: '{count} chats',
       messages: '{count} mensajes',
       syncDone: 'Sincronización completa',
+      percent: '{percent} %',
       done: 'Cuenta vinculada.',
       failed: 'No se pudo vincular la cuenta.',
       tryAgain: 'Volver a intentar',

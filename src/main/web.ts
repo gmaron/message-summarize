@@ -28,6 +28,8 @@ export interface WebEvents extends Record<string, unknown> {
     readonly account: string
     readonly chats: number
     readonly messages: number
+    /** 0 to 100 when the platform reports the progress of the sync. */
+    readonly percent?: number
     readonly done: boolean
   }
   readonly link: { readonly account: string; readonly state: string; readonly error?: LinkErrorCode }
@@ -137,6 +139,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
         account: event.account,
         chats: event.chats,
         messages: event.messages,
+        ...(event.percent === undefined ? {} : { percent: event.percent }),
         done: event.done,
       })
     } else {

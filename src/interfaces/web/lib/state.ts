@@ -1,3 +1,4 @@
+import { percentOf } from './format.js'
 import type {
   AccountView,
   DigestErrorCode,
@@ -109,8 +110,18 @@ export function applyServerEvent(state: AppState, name: string, raw: unknown): A
     }
     case 'sync': {
       if (account === null) return state
-      const sync = { chats: num(data.chats) ?? 0, messages: num(data.messages) ?? 0, done: data.done === true }
-      return withLink(state, account, (link) => ({ ...link, phase: link.phase === 'done' ? 'done' : 'syncing', sync }))
+      const reported = percentOf(data.percent)
+      return withLink(state, account, (link) => {
+        // the bar never goes back, even if events arrive out of order
+        const percent = reported === null ? link.sync?.percent : Math.max(reported, link.sync?.percent ?? 0)
+        const sync: SyncProgress = {
+          chats: num(data.chats) ?? 0,
+          messages: num(data.messages) ?? 0,
+          ...(percent === undefined ? {} : { percent }),
+          done: data.done === true,
+        }
+        return { ...link, phase: link.phase === 'done' ? 'done' : 'syncing', sync }
+      })
     }
     case 'link': {
       if (account === null || !LINK_PHASES.includes(data.state as LinkPhase)) return state

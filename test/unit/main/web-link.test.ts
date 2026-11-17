@@ -475,6 +475,84 @@ async function syncing(w: World, id: string): Promise<void> {
   await until(() => w.eventsOf('link').some((e) => e.data.state === 'syncing'), 'syncing')
 }
 
+describe('progress of the initial history sync (RF-02)', () => {
+  const syncEvents = (w: World) => w.eventsOf('sync').map((e) => e.data)
+
+  it('publishes a percent that never goes back and stays within 0 to 100, in the events and in the snapshot', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    Object.assign(w.h.ctx.linkTiming, { syncPublishMs: 0 })
+    await syncing(w, 'alpha')
+    // no percent is claimed before the platform reports one
+    expect(await linkState(w, 'alpha')).toMatchObject({ state: 'syncing', sync: { done: false } })
+    expect(((await linkState(w, 'alpha')) as { sync: { percent?: number } }).sync.percent).toBeUndefined()
+    w.h.connection.emitHistory({ percent: 40, complete: false })
+    await until(() => syncEvents(w).some((d) => d.percent === 40), 'the first percent')
+    w.h.connection.emitHistory({ percent: 25, complete: false }) // out of order: ignored
+    w.h.connection.emitHistory({ percent: null, complete: false })
+    w.h.connection.emitHistory({ percent: 250, complete: false }) // clamped
+    await until(() => syncEvents(w).some((d) => d.percent === 100), 'the clamped percent')
+    const seen = syncEvents(w)
+      .map((d) => d.percent)
+      .filter((p): p is number => typeof p === 'number')
+    expect(seen.length).toBeGreaterThan(1)
+    expect(seen.every((p, i) => p >= 0 && p <= 100 && (i === 0 || p >= (seen[i - 1] ?? 0)))).toBe(true)
+    expect(seen).not.toContain(25)
+    expect(await linkState(w, 'alpha')).toMatchObject({ state: 'syncing', sync: { percent: 100 } })
+    await w.api('DELETE', '/api/accounts/alpha/link')
+  })
+
+  it('ends the wait as soon as the history reports complete, long before the quiet heuristic would', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    await syncing(w, 'alpha')
+    // a minimum wait of 10 s that a complete history skips, and a short quiet period
+    Object.assign(w.h.ctx.linkTiming, { quietMs: 100, minAfterConnectMs: 10_000 })
+    const t0 = Date.now()
+    w.h.connection.emitHistory({ percent: 100, complete: true, explicit: true })
+    await until(() => w.eventsOf('link').some((e) => e.data.state === 'done'), 'done')
+    expect(Date.now() - t0).toBeLessThan(3_000)
+    const last = syncEvents(w).at(-1)
+    expect(last).toMatchObject({ account: 'alpha', done: true, percent: 100 })
+    expect(await linkState(w, 'alpha')).toMatchObject({ state: 'done', sync: { done: true, percent: 100 } })
+  })
+
+  it('also ends when the completion was inferred (paused), without inventing a percent', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    await syncing(w, 'alpha')
+    Object.assign(w.h.ctx.linkTiming, { quietMs: 100, minAfterConnectMs: 10_000 })
+    w.h.connection.emitHistory({ percent: 60, complete: false })
+    w.h.connection.emitHistory({ percent: null, complete: true, explicit: false })
+    await until(() => w.eventsOf('link').some((e) => e.data.state === 'done'), 'done')
+    expect(syncEvents(w).at(-1)).toMatchObject({ done: true, percent: 60 })
+  })
+
+  it('after the history reports complete it still waits for the quiet period (a late chunk is captured first)', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    await syncing(w, 'alpha')
+    Object.assign(w.h.ctx.linkTiming, { quietMs: 400, minAfterConnectMs: 10_000 })
+    w.h.connection.emitHistory({ percent: 100, complete: true, explicit: true })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(w.eventsOf('link').some((e) => e.data.state === 'done')).toBe(false)
+    expect(await w.h.connection.receive(message('LATE', 'ana'))).toBe(true)
+    const lastActivity = Date.now()
+    await until(() => w.eventsOf('link').some((e) => e.data.state === 'done'), 'done')
+    expect(Date.now() - lastActivity).toBeGreaterThanOrEqual(350)
+    expect(syncEvents(w).at(-1)).toMatchObject({ done: true, messages: 1 })
+  })
+
+  it('falls back to the quiet heuristic when no status ever comes', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    Object.assign(w.h.ctx.linkTiming, { quietMs: 20, minAfterConnectMs: 0, maxAfterConnectMs: 5_000 })
+    w.h.connection.onStart = () => w.h.connection.emit({ state: 'qr', qr: QR1 })
+    await waitingForQr(w, 'alpha')
+    writeFileSync(join(w.h.accountOf('alpha').authDir, 'creds.json'), JSON.stringify({ me: { id: ME } }))
+    w.h.connection.emit({ state: 'connected' })
+    await until(() => w.eventsOf('link').some((e) => e.data.state === 'done'), 'done by quiet period')
+    const last = syncEvents(w).at(-1)
+    expect(last).toMatchObject({ done: true })
+    expect(last?.percent).toBeUndefined()
+  })
+})
+
 describe('a connection that ends after the account was bound (ban protection)', () => {
   it.each([
     ['forbidden', { state: 'error', reason: 'forbidden' } as const, 'forbidden'],

@@ -10,6 +10,43 @@ import { account } from './support.js'
 
 const start = () => initialState('en')
 
+describe('sync percent', () => {
+  const sync = (s: ReturnType<typeof start>, data: Record<string, unknown>) =>
+    applyServerEvent(s, 'sync', { account: 'a', chats: 1, messages: 1, done: false, ...data })
+
+  it('is kept when known, absent when not, clamped, and never goes back', () => {
+    let s = sync(start(), {})
+    expect(s.links.a?.sync).toEqual({ chats: 1, messages: 1, done: false })
+    s = sync(s, { percent: 30 })
+    expect(s.links.a?.sync?.percent).toBe(30)
+    s = sync(s, { percent: 10 })
+    expect(s.links.a?.sync?.percent).toBe(30)
+    s = sync(s, {}) // an event without percent keeps the last one
+    expect(s.links.a?.sync?.percent).toBe(30)
+    s = sync(s, { percent: 'x' })
+    expect(s.links.a?.sync?.percent).toBe(30)
+    s = sync(s, { percent: 140.4 })
+    expect(s.links.a?.sync?.percent).toBe(100)
+    s = sync(s, { percent: 100, done: true })
+    expect(s.links.a?.sync).toEqual({ chats: 1, messages: 1, percent: 100, done: true })
+  })
+
+  it('a link that starts again forgets the percent of the previous one', () => {
+    let s = sync(start(), { percent: 80 })
+    s = applyServerEvent(s, 'link', { account: 'a', state: 'waitingQr' })
+    expect(s.links.a?.sync).toBeNull()
+    expect(sync(s, {}).links.a?.sync?.percent).toBeUndefined()
+  })
+
+  it('comes with the snapshot of a page that reconnects', () => {
+    const link = linkFromSnapshot(EMPTY_LINK, {
+      state: 'syncing',
+      sync: { chats: 2, messages: 5, percent: 42, done: false },
+    })
+    expect(link.sync).toEqual({ chats: 2, messages: 5, percent: 42, done: false })
+  })
+})
+
 describe('applyServerEvent', () => {
   it('replaces the accounts', () => {
     const next = applyServerEvent(start(), 'accounts', { accounts: [account()] })

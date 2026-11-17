@@ -510,6 +510,8 @@ export interface WebTexts {
       /** `{count}`. */
       readonly messages: string
       readonly syncDone: string
+      /** `{percent}` is a whole number from 0 to 100. */
+      readonly percent: string
       readonly done: string
       readonly failed: string
       readonly tryAgain: string

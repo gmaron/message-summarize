@@ -2,7 +2,11 @@ import { DeliverPending } from '../application/deliver-pending.js'
 import type { DigestErrorCode } from '../infrastructure/i18n/index.js'
 import { CronerScheduler } from '../infrastructure/scheduling/croner-scheduler.js'
 import { reconcileAccount } from '../infrastructure/whatsapp/account-binding.js'
-import type { WhatsAppStatus, WhatsAppStatusListener } from '../infrastructure/whatsapp/connection.js'
+import type {
+  HistorySyncListener,
+  WhatsAppStatus,
+  WhatsAppStatusListener,
+} from '../infrastructure/whatsapp/connection.js'
 import { type SelfChatSource, WhatsAppSelfChatDelivery } from '../infrastructure/whatsapp/self-chat-delivery.js'
 import { type BlockedReason, readBlocked, writeBlocked } from './blocked.js'
 import { errorCode, type Logger } from './logger.js'
@@ -16,6 +20,11 @@ export interface DaemonConnection extends SelfChatSource {
   stop(): Promise<void>
   readonly status: WhatsAppStatus
   onStatus(listener: WhatsAppStatusListener): () => void
+  /**
+   * Progress of the initial history sync (RF-02), when the platform reports it. Optional: a connection that does not
+   * have it is waited on with the quiet heuristic only.
+   */
+  onHistorySync?(listener: HistorySyncListener): () => void
 }
 
 export interface DaemonOptions {

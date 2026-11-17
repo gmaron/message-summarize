@@ -101,6 +101,18 @@ export interface WaHistorySet {
   contacts?: readonly WaContact[] | null
   messages?: readonly WaMessage[] | null
   lidPnMappings?: readonly { lid: string; pn: string }[] | null
+  /** Baileys' `HistorySyncType` (a number): see `HISTORY_SYNC_RECENT`. */
+  syncType?: number | null
+  /** 0 to 100, how much of the sync of this `syncType` the server has sent. */
+  progress?: number | null
+}
+
+/** `messaging-history.status`: a milestone of a history sync. No content. */
+export interface WaHistoryStatus {
+  syncType?: number | null
+  status?: string | null
+  /** The server sent progress 100. False: completion was inferred because no more chunks arrived. */
+  explicit?: boolean | null
 }
 
 export interface WaMessagesUpsert {

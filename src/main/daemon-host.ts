@@ -97,6 +97,7 @@ export type LinkEvent =
       readonly account: string
       readonly chats: number
       readonly messages: number
+      readonly percent?: number
       readonly done: boolean
     }
   | { readonly type: 'link'; readonly account: string; readonly state: LinkPhase; readonly error?: LinkErrorCode }
@@ -1012,7 +1013,14 @@ export class DaemonHost {
         }
         phase = snapshot.state
       },
-      onSync: (progress) => this.emitLink({ type: 'sync', account: id, ...progress }),
+      onSync: (progress) => {
+        // The snapshot a page finds when it (re)connects carries the latest progress, not the one of the last state change.
+        const current = this.linkSnapshots.get(id)
+        if (current !== undefined && (current.state === 'syncing' || current.state === 'done')) {
+          this.linkSnapshots.set(id, { ...current, sync: progress })
+        }
+        this.emitLink({ type: 'sync', account: id, ...progress })
+      },
       // The account is bound and its session is real: whatever it was blocked for no longer applies (as `msum link`).
       onBound: async () => {
         await clearBlocked(account.blockedFile)

@@ -487,6 +487,127 @@ describe('events reach the capture, in order', () => {
   })
 })
 
+describe('history sync progress (RF-02)', () => {
+  const RECENT = 3
+  const BOOTSTRAP = 0
+
+  async function started() {
+    const t = setup({ me: () => ({ id: ME, lid: ME_LID }) })
+    await t.connection.start()
+    const seen: unknown[] = []
+    t.connection.onHistorySync((p) => seen.push(p))
+    return { t, seen, ev: t.last().ev }
+  }
+
+  it('reports the percent of the RECENT history after the chunk was stored, and nothing else of it', async () => {
+    const { t, seen, ev } = await started()
+    ev.emit('messaging-history.set', {
+      chats: [{ id: ANA, unreadCount: 0 }],
+      messages: [{ key: { remoteJid: ANA, id: 'H1' }, message: { conversation: 'secret text' }, messageTimestamp: 5 }],
+      syncType: RECENT,
+      progress: 37.4,
+    })
+    await t.flush()
+    expect(seen).toEqual([{ percent: 37, complete: false }])
+    expect(t.calls.length).toBeGreaterThan(0) // the chunk itself still reached the capture
+    expect(JSON.stringify(seen)).not.toContain('secret')
+  })
+
+  it('clamps the percent and ignores other sync types and a missing progress', async () => {
+    const { t, seen, ev } = await started()
+    ev.emit('messaging-history.set', { chats: [], syncType: RECENT, progress: 180 })
+    ev.emit('messaging-history.set', { chats: [], syncType: RECENT, progress: -3 })
+    ev.emit('messaging-history.set', { chats: [], syncType: BOOTSTRAP, progress: 50 })
+    ev.emit('messaging-history.set', { chats: [], syncType: 4, progress: 50 })
+    ev.emit('messaging-history.set', { chats: [], syncType: RECENT, progress: null })
+    ev.emit('messaging-history.set', { chats: [] })
+    await t.flush()
+    expect(seen).toEqual([
+      { percent: 100, complete: false },
+      { percent: 0, complete: false },
+    ])
+  })
+
+  it('the explicit completion needs the stored 100 chunk AND the status, in either order; the bootstrap status does not count', async () => {
+    const { t, seen, ev } = await started()
+    ev.emit('messaging-history.status', { syncType: BOOTSTRAP, status: 'complete', explicit: true })
+    ev.emit('messaging-history.status', { syncType: RECENT, status: 'other' })
+    await t.flush()
+    expect(seen).toEqual([])
+    // the status comes first (the notification said 100, the chunk is not stored yet): not complete
+    ev.emit('messaging-history.status', { syncType: RECENT, status: 'complete', explicit: true })
+    await t.flush()
+    expect(seen).toEqual([])
+    ev.emit('messaging-history.set', { chats: [{ id: ANA, unreadCount: 0 }], syncType: RECENT, progress: 100 })
+    await t.flush()
+    expect(seen).toEqual([
+      { percent: 100, complete: false },
+      { percent: 100, complete: true, explicit: true },
+    ])
+  })
+
+  it('the stored 100 chunk first, then the status: complete only when the status comes', async () => {
+    const { t, seen, ev } = await started()
+    ev.emit('messaging-history.set', { chats: [], syncType: RECENT, progress: 100 })
+    await t.flush()
+    expect(seen).toEqual([{ percent: 100, complete: false }])
+    ev.emit('messaging-history.status', { syncType: RECENT, status: 'complete', explicit: true })
+    await t.flush()
+    expect(seen.at(-1)).toEqual({ percent: 100, complete: true, explicit: true })
+  })
+
+  it('a status complete is reported only after the chunk is stored (the capture is slow)', async () => {
+    const { t, seen, ev } = await started()
+    ev.emit('messaging-history.status', { syncType: RECENT, status: 'complete', explicit: true })
+    ev.emit('messaging-history.set', {
+      chats: [{ id: ANA, unreadCount: 0 }],
+      messages: [{ key: { remoteJid: ANA, id: 'H9' }, message: { conversation: 'x' }, messageTimestamp: 5 }],
+      syncType: RECENT,
+      progress: 100,
+    })
+    await t.flush()
+    const completeAt = t.calls.length
+    expect(completeAt).toBeGreaterThan(0)
+    expect(seen.filter((p) => (p as { complete: boolean }).complete)).toHaveLength(1)
+  })
+
+  it('paused is the inferred completion, without a percent', async () => {
+    const { t, seen, ev } = await started()
+    ev.emit('messaging-history.status', { syncType: RECENT, status: 'paused', explicit: false })
+    await t.flush()
+    expect(seen).toEqual([{ percent: null, complete: true, explicit: false }])
+  })
+
+  it('a listener can unsubscribe, and one that throws does not break the others or the capture', async () => {
+    const t = setup()
+    await t.connection.start()
+    const seen: unknown[] = []
+    const off = t.connection.onHistorySync((p) => seen.push(p))
+    t.connection.onHistorySync(() => {
+      throw new Error('bad listener')
+    })
+    const second: unknown[] = []
+    t.connection.onHistorySync((p) => second.push(p))
+    const ev = t.last().ev
+    ev.emit('messaging-history.set', { chats: [], syncType: RECENT, progress: 10 })
+    await t.flush()
+    off()
+    ev.emit('messaging-history.set', { chats: [], syncType: RECENT, progress: 20 })
+    await t.flush()
+    expect(seen).toEqual([{ percent: 10, complete: false }])
+    expect(second).toHaveLength(2)
+    expect(t.warnings).toContain('history-listener-failed')
+  })
+
+  it('events of a closed socket are ignored', async () => {
+    const { t, seen, ev } = await started()
+    await t.connection.stop()
+    ev.emit('messaging-history.status', { syncType: RECENT, status: 'complete', explicit: true })
+    await t.flush()
+    expect(seen).toEqual([])
+  })
+})
+
 describe('read only (RNF-17)', () => {
   it('a whole session never touches a method that sends, sets presence or sends receipts', async () => {
     const t = setup({ me: () => ({ id: ME, lid: ME_LID }) })

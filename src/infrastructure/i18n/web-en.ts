@@ -142,6 +142,7 @@ export const webEn: WebTexts = {
       chats: '{count} chats',
       messages: '{count} messages',
       syncDone: 'Sync complete',
+      percent: '{percent}%',
       done: 'Account linked.',
       failed: 'The account could not be linked.',
       tryAgain: 'Try again',

@@ -16,6 +16,8 @@ export interface SyncProgress {
   readonly chats: number
   /** Messages stored so far. */
   readonly messages: number
+  /** 0 to 100, never going back, when the platform reports it (RF-02). Absent: the progress is not known. */
+  readonly percent?: number
   readonly done: boolean
 }
 
@@ -37,7 +39,7 @@ export type LinkFlowResult =
 
 export interface LinkFlowOptions {
   readonly runtime: Runtime
-  readonly connection: Pick<DaemonConnection, 'start' | 'onStatus' | 'selfChat' | 'status'>
+  readonly connection: Pick<DaemonConnection, 'start' | 'onStatus' | 'onHistorySync' | 'selfChat' | 'status'>
   readonly activity: CountingCapture
   readonly timing: LinkTiming
   /** Every change of the snapshot (a new QR included). */
@@ -64,9 +66,11 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 /**
  * What `msum link` does, as a state the web can read (RF-01, RF-02): connect, wait for the QR to be scanned (a new one
  * replaces the old every time WhatsApp renews it), check the account that was scanned against the bound one (RF-51),
- * and wait until the initial history stops arriving. It uses the same quiet heuristic as the command, with the same
- * timing: at least `minAfterConnectMs`, then until nothing was captured for `quietMs`, never more than
- * `maxAfterConnectMs`.
+ * and wait until the initial history is in. When the connection reports the progress of the history sync, the percent is
+ * published (it never goes back) and, once the sync reports complete, the wait ends after the quiet period (without the
+ * minimum wait). Otherwise (older servers, or the
+ * report never comes) it falls back to the quiet heuristic, with the same timing as the command: at least
+ * `minAfterConnectMs`, then until nothing was captured for `quietMs`, never more than `maxAfterConnectMs`.
  *
  * It does not stop the connection: when it succeeds the daemon goes on using it. The caller cleans up after a failure.
  */
@@ -80,6 +84,8 @@ export class LinkFlow {
   private stopWaiting = false
   private syncTimer: ReturnType<typeof setTimeout> | null = null
   private lastSync = 0
+  private percent: number | null = null
+  private historyComplete = false
 
   constructor(private readonly options: LinkFlowOptions) {}
 
@@ -112,7 +118,12 @@ export class LinkFlow {
 
   private progress(done: boolean): SyncProgress {
     const { activity } = this.options
-    return { chats: activity.chats(), messages: activity.messages(), done }
+    return {
+      chats: activity.chats(),
+      messages: activity.messages(),
+      ...(this.percent === null ? {} : { percent: this.percent }),
+      done,
+    }
   }
 
   private publishSync(done: boolean): void {
@@ -152,6 +163,17 @@ export class LinkFlow {
       else if (status.state === 'error') this.terminate(FAILURE_REASONS[status.reason] ?? 'failed')
     })
     activity.onActivity = () => this.queueSync()
+    const unsubscribeHistory = connection.onHistorySync?.((history) => {
+      const known = history.percent
+      if (known !== null && Number.isFinite(known)) {
+        const next = Math.min(100, Math.max(0, Math.round(known)))
+        if (this.percent === null || next > this.percent) {
+          this.percent = next
+          this.queueSync()
+        }
+      }
+      if (history.complete) this.historyComplete = true
+    })
     let timer: ReturnType<typeof setTimeout> | undefined
     let bound = false
     const failed = (error: LinkErrorCode): LinkFlowResult => {
@@ -194,7 +216,10 @@ export class LinkFlow {
         const now = Date.now()
         const elapsed = now - connectedAt
         if (elapsed >= timing.maxAfterConnectMs) break
-        if (elapsed >= timing.minAfterConnectMs && now - activity.lastActivity() >= timing.quietMs) break
+        // A complete history skips the minimum wait, not the quiet period: what Baileys still holds back (its buffer flush)
+        // and the trailing name chunks arrive after the report.
+        const quiet = now - activity.lastActivity() >= timing.quietMs
+        if (quiet && (this.historyComplete || elapsed >= timing.minAfterConnectMs)) break
       }
       if (this.terminal !== null) return failed(this.terminal)
       this.syncing = false
@@ -208,6 +233,7 @@ export class LinkFlow {
       this.syncTimer = null
       activity.onActivity = () => {}
       unsubscribe()
+      unsubscribeHistory?.()
     }
   }
 }

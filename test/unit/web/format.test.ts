@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateTime, weekdayName } from '../../../src/interfaces/web/lib/format.js'
+import { formatDateTime, percentOf, weekdayName } from '../../../src/interfaces/web/lib/format.js'
 import { fmt, pickLanguage, textsFor } from '../../../src/interfaces/web/lib/i18n.js'
 
 describe('formatDateTime', () => {
@@ -45,5 +45,22 @@ describe('language and texts', () => {
     expect(textsFor('en').locale).toBe('en-GB')
     expect(fmt('{count} chats of {x}', { count: 3 })).toBe('3 chats of {x}')
     expect(fmt(textsFor('en').ui.link.title, { account: 'alpha' })).toContain('alpha')
+  })
+})
+
+describe('percentOf', () => {
+  it('rounds and clamps to 0..100, and is null for what is not a number', () => {
+    expect(percentOf(0)).toBe(0)
+    expect(percentOf(42.6)).toBe(43)
+    expect(percentOf(-5)).toBe(0)
+    expect(percentOf(130)).toBe(100)
+    for (const bad of [undefined, null, '50', Number.NaN, Number.POSITIVE_INFINITY]) expect(percentOf(bad)).toBeNull()
+  })
+})
+
+describe('the percent text', () => {
+  it('exists in both languages with the {percent} slot', () => {
+    expect(fmt(textsFor('en').ui.link.percent, { percent: 42 })).toBe('42%')
+    expect(fmt(textsFor('es').ui.link.percent, { percent: 42 })).toBe('42 %')
   })
 })

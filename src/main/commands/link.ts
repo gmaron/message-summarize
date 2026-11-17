@@ -30,7 +30,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * account is connected and the initial history has been captured, then stops cleanly. A stale qr.png is deleted at
  * the start, and Ctrl+C / SIGTERM delete it and stop the connection.
  *
- * "The history has been received" cannot be observed directly, so it is approximated: after connecting, wait at least
+ * "The history has been received" is known when the connection reports that the history sync is complete (Baileys does
+ * for the recent history). When it does not (or it never comes) it is approximated: after connecting, wait at least
  * `minAfterConnectMs`, then until nothing was captured for `quietMs`, and never more than `maxAfterConnectMs`.
  *
  * The account is created when it does not exist (`default` when there is none and no id was given). One that is
@@ -136,6 +137,10 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           else if (status.state === 'error') settle({ kind: 'failed', reason: status.reason })
         })
 
+        let historyComplete = false
+        const unsubscribeHistory = connection.onHistorySync?.((history) => {
+          if (history.complete) historyComplete = true
+        })
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
           await connection.start()
@@ -175,7 +180,10 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
             const now = Date.now()
             const elapsed = now - connectedAt
             if (elapsed >= timing.maxAfterConnectMs) break
-            if (elapsed >= timing.minAfterConnectMs && now - counted.lastActivity() >= timing.quietMs) break
+            // A complete history skips the minimum wait, not the quiet period: Baileys' buffer flush and the trailing
+            // name chunks come after the report, and a chunk that was acknowledged is never sent again.
+            const quiet = now - counted.lastActivity() >= timing.quietMs
+            if (quiet && (historyComplete || elapsed >= timing.minAfterConnectMs)) break
           }
           await connection.stop()
           if (interrupted) return EXIT_INTERRUPTED
@@ -188,6 +196,7 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
         } finally {
           clearTimeout(timer)
           unsubscribe()
+          unsubscribeHistory?.()
           await connection.stop().catch(() => undefined)
           // The QR is a pairing credential: never left behind.
           await rm(account.qrFile, { force: true })

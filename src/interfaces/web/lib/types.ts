@@ -44,6 +44,8 @@ export type LinkPhase = 'idle' | 'waitingQr' | 'qr' | 'syncing' | 'done' | 'fail
 export interface SyncProgress {
   readonly chats: number
   readonly messages: number
+  /** 0 to 100 when the platform reports it; absent when the progress is not known. */
+  readonly percent?: number
   readonly done: boolean
 }
 
