@@ -1,10 +1,11 @@
 import { isExcluded } from '../domain/exclusion.js'
 import { isMassAtReceipt } from '../domain/mass.js'
-import type { Conversation } from '../domain/model.js'
+import type { Conversation, Message } from '../domain/model.js'
 import { resolveConversationName, unmaskedName } from '../domain/names.js'
 import type {
   ConversationMetadata,
   MessageEdited,
+  MessageOrigin,
   MessageReceived,
   MessagesRead,
   ParticipantInfo,
@@ -63,7 +64,7 @@ export interface CaptureMessages {
  * Unread semantics mirror the previous tool's listener: a NEW live incoming message adds one unread; a NEW live own
  * message marks the conversation as read (every incoming message read, counter 0) unless it is a mass message
  * (RF-33), which is sent without opening the chat. Either effect is applied by the repository atomically with the
- * insert. History replays and edits never touch the counter. A live counter of 0 means "read on the phone" (same
+ * insert. History replays and edits never touch the counter, not even an edit of a message that was never seen. A live counter of 0 means "read on the phone" (same
  * effect as an own message); markedUnread is stored; a live positive count is ignored, because the counter is kept
  * by `receiveMessage`.
  */
@@ -84,11 +85,28 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       participantId: isGroup ? null : id,
       address: id,
     }
-    const conversation: Conversation = { ...base, name: unmaskedName(eventName ?? null) ?? base.name }
-    const person =
-      conversation.participantId === null ? null : await repository.findParticipant(conversation.participantId)
-    const { name } = resolveConversationName(conversation, person, { unnamedGroup: '' })
-    return isExcluded(patterns, id, name)
+    const person = base.participantId === null ? null : await repository.findParticipant(base.participantId)
+    // Both names count: the one the event brings and the one already stored. Neither replaces the other, so a
+    // pattern that matches either excludes the chat (a rename must not let an excluded chat through).
+    const names = new Set<string | null>([base.name, unmaskedName(eventName ?? null)])
+    for (const candidate of names) {
+      const { name } = resolveConversationName({ ...base, name: candidate }, person, { unnamedGroup: '' })
+      if (isExcluded(patterns, id, name)) return true
+    }
+    return false
+  }
+
+  /** What a message that was not stored before does to the unread state (RF-12, RF-33). */
+  async function newMessageEffect(message: Message, origin: MessageOrigin): Promise<UnreadEffect> {
+    if (origin !== 'live') return 'none'
+    if (!message.fromMe) return 'increment'
+    const mass =
+      message.text !== null &&
+      isMassAtReceipt(
+        message.text,
+        await repository.countOtherConversationsWithOwnText(message.conversationId, message.text),
+      )
+    return mass ? 'none' : 'markRead'
   }
 
   return {
@@ -98,16 +116,7 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       if (sender !== undefined) await repository.upsertParticipant(sender)
       if (await dropped(id, isGroup, conversationName)) return { stored: false, isNew: false, downloadAudio: false }
 
-      let effect: UnreadEffect = 'none'
-      if (origin === 'live') {
-        if (!message.fromMe) effect = 'increment'
-        else {
-          const mass =
-            message.text !== null &&
-            isMassAtReceipt(message.text, await repository.countOtherConversationsWithOwnText(id, message.text))
-          effect = mass ? 'none' : 'markRead'
-        }
-      }
+      const effect = await newMessageEffect(message, origin)
       const { isNew, hasTranscript } = await repository.insertMessage(message, { isGroup }, effect)
 
       const recent = origin === 'live' || message.timestamp >= clock.now() - audioHistoryDays * DAY_MS
@@ -118,6 +127,8 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       if (deps.ownConversationIds().includes(message.conversationId)) return null
       if (sender !== undefined) await repository.upsertParticipant(sender)
       if (await dropped(message.conversationId, isGroup, conversationName)) return null
+      // An edit never touches the unread counters, even when it is the first sight of the message (as the previous
+      // tool did): it is stored, but only a message that arrives as a message counts.
       return repository.recordEdit(message, editedAt, { isGroup })
     },
 

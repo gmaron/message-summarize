@@ -121,6 +121,16 @@ export function describeCaptureRepositoryContract(backend: PersistenceBackend): 
         expect(await texts(f)).toEqual(['third'])
       })
 
+      it('an edit with a null text never erases the stored text, and still counts as the edit', async () => {
+        const f = make()
+        await f.repository.insertMessage(message({ id: 'a', text: 'original' }))
+        expect(await f.repository.recordEdit(message({ id: 'a', text: null }), 5_000)).toBe('applied')
+        expect(await texts(f)).toEqual(['original'])
+        expect(await f.repository.recordEdit(message({ id: 'a', text: 'older' }), 4_000)).toBe('ignored')
+        expect(await f.repository.recordEdit(message({ id: 'a', text: 'later' }), 6_000)).toBe('applied')
+        expect(await texts(f)).toEqual(['later'])
+      })
+
       it('a replay of the original does not undo an edit', async () => {
         const f = make()
         await f.repository.insertMessage(message({ id: 'a', text: 'original' }))

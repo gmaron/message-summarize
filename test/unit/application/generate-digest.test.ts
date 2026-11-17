@@ -50,12 +50,21 @@ function addChat(source: InMemorySource, id: string, name: string, texts: [numbe
   })
 }
 
-function setup(options: { pointer?: number | null; summarizer?: FakeSummarizer } = {}) {
+function setup(
+  options: { pointer?: number | null; summarizer?: FakeSummarizer; ownConversationIds?: () => readonly string[] } = {},
+) {
   const source = new InMemorySource()
   const store = new InMemoryStore(options.pointer ?? null)
   const summarizer = options.summarizer ?? new FakeSummarizer()
   const clock = new FixedClock(UNTIL)
-  const run = createGenerateDigest({ source, summarizer, store, clock, renderers })
+  const run = createGenerateDigest({
+    source,
+    summarizer,
+    store,
+    clock,
+    renderers,
+    ...(options.ownConversationIds === undefined ? {} : { ownConversationIds: options.ownConversationIds }),
+  })
   return { source, store, summarizer, clock, run }
 }
 
@@ -231,6 +240,18 @@ describe('GenerateDigest: filters', () => {
     expect(summarizer.calls).toHaveLength(1)
     expect(summarizer.calls[0]?.transcript).toContain('normal chat')
     expect(summarizer.calls.some((c) => c.transcript.includes('secret chat'))).toBe(false)
+  })
+
+  it('never sends the content of the own chat to the Summarizer, under any of its ids', async () => {
+    const own = ['5491100000009', '9990000000009']
+    const { source, summarizer, run } = setup({ ownConversationIds: () => own })
+    addChat(source, '5491100000009', 'Yo', [[at(1), 'note in my own chat']])
+    addChat(source, '9990000000009', 'Yo LID', [[at(1), 'note in my own LID chat']])
+    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'normal chat']])
+    await run(request())
+    expect(summarizer.calls).toHaveLength(1)
+    expect(summarizer.calls[0]?.transcript).toContain('normal chat')
+    expect(summarizer.calls.some((c) => c.transcript.includes('own'))).toBe(false)
   })
 
   it('skips a conversation where only the owner wrote', async () => {

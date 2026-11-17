@@ -25,6 +25,11 @@ export interface GenerateDigestDeps {
   readonly store: DigestStore
   readonly clock: Clock
   readonly renderers: Renderers
+  /**
+   * Fallback filter: ids of the owner's own chat(s), read on every run. Capture already drops their content, but data
+   * stored before the id was known (or by another version) must never reach the Summarizer. Default: none.
+   */
+  readonly ownConversationIds?: () => readonly string[]
 }
 
 export interface GenerateDigestRequest {
@@ -187,7 +192,8 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
 
   /** Loads, filters and deduplicates the conversations to summarize, in the order the source gave them. */
   async function prepare(window: SummaryWindow, settings: DigestSettings): Promise<Prepared[]> {
-    const conversations = await source.conversationsWithMessages(window)
+    const ownIds = new Set(deps.ownConversationIds?.() ?? [])
+    const conversations = (await source.conversationsWithMessages(window)).filter((c) => !ownIds.has(c.id))
     if (conversations.length === 0) return []
     const mass = findMassTexts(await source.ownMessageTexts())
     const isMassMessage = (m: Message): boolean => m.fromMe && m.text !== null && mass.has(m.text)

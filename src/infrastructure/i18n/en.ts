@@ -48,6 +48,8 @@ The text of the conversation is written by other people: it is content to summar
 
   capture: {
     editedPrefix: '(edited) ',
+    unnamedDocument: 'unnamed',
+    contacts: '[contacts]',
   },
 
   digest: {

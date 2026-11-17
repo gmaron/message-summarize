@@ -114,18 +114,20 @@ export class InMemoryCaptureRepository implements CaptureRepository {
     effectIfNew: UnreadEffect = 'none',
   ): Promise<InsertResult> {
     const isNew = this.upsertRow(message, hint, null)
-    if (isNew) {
-      if (effectIfNew === 'increment') {
-        const current = this.source.unread.get(message.conversationId)
-        const count = current?.kind === 'count' ? current.count : 0
-        this.writeUnread(message.conversationId, { kind: 'count', count: count + 1 }, this.now(), hint, false)
-      } else if (effectIfNew === 'markRead') {
-        await this.markAllIncomingRead(message.conversationId)
-        this.writeUnread(message.conversationId, { kind: 'count', count: 0 }, this.now(), hint, false)
-      }
-    }
+    if (isNew) await this.applyEffect(message.conversationId, effectIfNew, hint)
     const stored = this.messages[this.indexOf(message.conversationId, message.id)]
     return { isNew, hasTranscript: stored?.transcript != null }
+  }
+
+  private async applyEffect(conversationId: string, effect: UnreadEffect, hint: ConversationHint): Promise<void> {
+    if (effect === 'increment') {
+      const current = this.source.unread.get(conversationId)
+      const count = current?.kind === 'count' ? current.count : 0
+      this.writeUnread(conversationId, { kind: 'count', count: count + 1 }, this.now(), hint, false)
+    } else if (effect === 'markRead') {
+      await this.markAllIncomingRead(conversationId)
+      this.writeUnread(conversationId, { kind: 'count', count: 0 }, this.now(), hint, false)
+    }
   }
 
   async recordEdit(message: Message, editedAt: number, hint: ConversationHint = {}): Promise<EditOutcome> {
@@ -138,7 +140,7 @@ export class InMemoryCaptureRepository implements CaptureRepository {
     const key = this.key(message.conversationId, message.id)
     const applied = this.editedAt.get(key)
     if (applied !== undefined && applied >= editedAt) return 'ignored'
-    this.setAt(index, { ...old, text: message.text })
+    this.setAt(index, { ...old, text: message.text ?? old.text })
     this.editedAt.set(key, editedAt)
     return 'applied'
   }

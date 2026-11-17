@@ -202,6 +202,41 @@ describe('CaptureMessages: exclusion (RF-14)', () => {
     })
   })
 
+  describe('the event name and the stored name both count', () => {
+    it('a group renamed to something innocent is still excluded by the stored name', async () => {
+      const { capture, repository } = setup(['proveedores'])
+      await repository.upsertConversation(
+        conversation({ id: 'g1', isGroup: true, name: 'Grupo Proveedores', participantId: null }),
+      )
+      const outcome = await capture.receiveMessage(
+        received({ conversationId: 'g1' }, { isGroup: true, conversationName: 'Family' }),
+      )
+      expect(outcome.stored).toBe(false)
+    })
+
+    it('a group with an innocent stored name is excluded by the name the event carries', async () => {
+      const { capture, repository } = setup(['proveedores'])
+      await repository.upsertConversation(
+        conversation({ id: 'g1', isGroup: true, name: 'Family', participantId: null }),
+      )
+      const outcome = await capture.receiveMessage(
+        received({ conversationId: 'g1' }, { isGroup: true, conversationName: 'Grupo Proveedores' }),
+      )
+      expect(outcome.stored).toBe(false)
+    })
+
+    it('a chat that matches neither is stored', async () => {
+      const { capture, repository } = setup(['proveedores'])
+      await repository.upsertConversation(
+        conversation({ id: 'g1', isGroup: true, name: 'Family', participantId: null }),
+      )
+      const outcome = await capture.receiveMessage(
+        received({ conversationId: 'g1' }, { isGroup: true, conversationName: 'Friends' }),
+      )
+      expect(outcome.stored).toBe(true)
+    })
+  })
+
   describe('every content event of a chat excluded by name is dropped', () => {
     type Chat = { id: string; isGroup: boolean; seed(c: ReturnType<typeof setup>): Promise<void> }
     const chats: [string, Chat][] = [
@@ -422,7 +457,24 @@ describe('CaptureMessages: edits (RF-11)', () => {
     expect(await capture.editMessage(edited({ senderName: 'Ana' }))).toBe('inserted')
     const [stored] = await source.messagesInWindow('c1', all)
     expect(stored).toMatchObject({ id: 'a', text: '(edited) new', senderName: 'Ana', fromMe: false })
+  })
+
+  it('an incoming edit of a message never seen leaves the unread state unchanged (as the previous tool)', async () => {
+    const { capture, source } = setup()
+    expect(await capture.editMessage(edited())).toBe('inserted')
     expect(await source.unreadState('c1')).toEqual({ kind: 'unknown' })
+    // with a counter already there, it does not move either
+    await capture.receiveMessage(received({ id: 'other', timestamp: 2_000 }))
+    await capture.editMessage(edited({ id: 'unseen-2' }))
+    expect(await source.unreadState('c1')).toEqual({ kind: 'count', count: 1 })
+  })
+
+  it('an own edit of a message never seen does not mark the chat as read', async () => {
+    const { capture, source } = setup()
+    await capture.receiveMessage(received({ id: 'in1', timestamp: 1_000 }))
+    await capture.editMessage(edited({ id: 'mine', fromMe: true, senderId: null, text: '(edited) ok' }))
+    expect(await source.unreadState('c1')).toEqual({ kind: 'count', count: 1 })
+    expect((await source.messagesInWindow('c1', all)).find((m) => m.id === 'in1')?.read).toBe(false)
   })
 
   it('when the original arrives after the edit, the edited text stays', async () => {
@@ -432,7 +484,7 @@ describe('CaptureMessages: edits (RF-11)', () => {
     expect(outcome.isNew).toBe(false)
     const [stored] = await source.messagesInWindow('c1', all)
     expect([stored?.text, stored?.timestamp]).toEqual(['(edited) new', 1_000])
-    expect(await source.unreadState('c1')).toEqual({ kind: 'unknown' }) // not counted twice, not counted at all
+    expect(await source.unreadState('c1')).toEqual({ kind: 'unknown' }) // not counted by the edit, not counted by the late original
   })
 
   it('a replay of the original after the edit does not undo it', async () => {
@@ -522,6 +574,9 @@ describe('capture to digest, on SQLite', () => {
   const until = ba(3, 10, 12, 0)
   const hourAt = (hour: number) => ba(3, 10, hour, 0)
 
+  // The same patterns for capture and for the digest, as the composition root will configure them.
+  const EXCLUDED = ['excluded', 'proveedores', 'mariana']
+
   function sqliteSetup(unreadOnly = false) {
     const temp = new TempDatabase()
     const db = temp.open()
@@ -531,7 +586,7 @@ describe('capture to digest, on SQLite', () => {
     const capture = createCaptureMessages({
       repository,
       clock,
-      excludePatterns: () => ['excluded', 'proveedores', 'mariana'],
+      excludePatterns: () => EXCLUDED,
       ownConversationIds: () => [],
     })
     const summarizer = new FakeSummarizer()
@@ -541,7 +596,7 @@ describe('capture to digest, on SQLite', () => {
         until,
         from: hourAt(0),
         preview: true,
-        settings: { ...DEFAULT_SETTINGS, unreadOnly },
+        settings: { ...DEFAULT_SETTINGS, unreadOnly, excludePatterns: EXCLUDED },
         promptTemplate: null,
         platformName: 'WhatsApp',
       })
@@ -623,6 +678,32 @@ describe('capture to digest, on SQLite', () => {
       for (const secret of ['price list', 'private note', 'lost original', 'Proveedores', 'Mariana']) {
         expect(sent).not.toContain(secret)
       }
+    } finally {
+      temp.dispose()
+    }
+  })
+
+  it('content captured before the name is known stays stored, and the digest still excludes it', async () => {
+    const { temp, repository, capture, summarizer, digest } = sqliteSetup()
+    try {
+      // The messages of a group arrive before any metadata: nothing says yet that it is excluded.
+      expect((await capture.receiveMessage(live('g1', 'g-late', 9, 'late secret one'))).stored).toBe(true)
+      await capture.receiveMessage(live('a1', 'p-ana', 9, 'lunch tomorrow?'))
+      // Then the name arrives.
+      await capture.conversationMetadata({
+        conversation: conversation({ id: 'g-late', isGroup: true, name: 'Grupo Proveedores', participantId: null }),
+      })
+      // Stored, not deleted (documented in the CaptureRepository port)...
+      expect(await repository.findConversation('g-late')).toMatchObject({ name: 'Grupo Proveedores' })
+      // ...later content is dropped...
+      expect((await capture.receiveMessage(live('g2', 'g-late', 10, 'late secret two'))).stored).toBe(false)
+      // ...and the digest never sends any of it.
+      const result = await digest()
+      expect(result.ok && result.value.summarized).toBe(1)
+      const sent = JSON.stringify(summarizer.calls)
+      expect(sent).toContain('lunch tomorrow?')
+      expect(sent).not.toContain('late secret')
+      expect(sent).not.toContain('Proveedores')
     } finally {
       temp.dispose()
     }

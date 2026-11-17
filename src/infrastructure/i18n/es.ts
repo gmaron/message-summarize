@@ -47,6 +47,8 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
 
   capture: {
     editedPrefix: '(editado) ',
+    unnamedDocument: 'sin nombre',
+    contacts: '[contactos]',
   },
 
   digest: {

@@ -47,6 +47,10 @@ export interface Catalog {
   readonly capture: {
     /** Goes before the text of an edited message, so the digest shows that it was edited (legacy "(editado) "). */
     readonly editedPrefix: string
+    /** Name of a document that has none, inside the text of a document message (legacy "sin nombre"). */
+    readonly unnamedDocument: string
+    /** Label of a message that shares several contacts (the singular is `transcript.kinds.contact`). */
+    readonly contacts: string
   }
 
   readonly digest: {

@@ -48,6 +48,9 @@ export interface InsertResult {
  *   unread to read.
  * - Any write that needs a conversation creates a stub row when there is none (no name, address = id). The `hint`
  *   says whether it is a group; a hint never changes an existing conversation.
+ * - Content captured before the name of its chat is known stays stored (the repository cannot know a name that has
+ *   not arrived). RF-14 is enforced again at digest time with the final name, so such content never reaches a
+ *   summarizer once the chat turns out to be excluded; it is simply not deleted from the database.
  * - The unread state is stamped with the time it was set: live updates win over the initial snapshot (RF-12). The
  *   stamp of live writes comes from the repository's own clock.
  */
@@ -74,7 +77,9 @@ export interface CaptureRepository {
 
   /**
    * RF-11: `message` is the edited message under the id of the original, with the edited text. It replaces the text
-   * of the original, or is stored as the message when the original is missing. See `EditOutcome`.
+   * of the original, or is stored as the message when the original is missing. See `EditOutcome`. A null text never
+   * erases the text already stored.
+   * An edit never touches the unread state, even when it is stored as the message ('inserted').
    */
   recordEdit(message: Message, editedAt: number, hint?: ConversationHint): Promise<EditOutcome>
 

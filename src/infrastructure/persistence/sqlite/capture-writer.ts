@@ -75,18 +75,20 @@ export class SqliteCaptureWriter {
   insertMessage(message: Message, hint: ConversationHint = {}, effectIfNew: UnreadEffect = 'none'): InsertResult {
     return inTransaction(this.db, () => {
       const isNew = this.upsertMessageRow(message, hint, null)
-      if (isNew) {
-        if (effectIfNew === 'increment') this.incrementUnread(message.conversationId, hint)
-        else if (effectIfNew === 'markRead') {
-          this.markAllIncomingRead(message.conversationId)
-          this.setUnread(message.conversationId, { kind: 'count', count: 0 }, hint)
-        }
-      }
+      if (isNew) this.applyEffect(message.conversationId, effectIfNew, hint)
       const row = this.db
         .prepare('SELECT transcript IS NOT NULL AS has FROM messages WHERE conversation_id = ? AND id = ?')
         .get(message.conversationId, message.id) as { has: number }
       return { isNew, hasTranscript: row.has === 1 }
     })
+  }
+
+  private applyEffect(conversationId: string, effect: UnreadEffect, hint: ConversationHint): void {
+    if (effect === 'increment') this.incrementUnread(conversationId, hint)
+    else if (effect === 'markRead') {
+      this.markAllIncomingRead(conversationId)
+      this.setUnread(conversationId, { kind: 'count', count: 0 }, hint)
+    }
   }
 
   /** Writes the row and returns true when it is new. `editedAt` is set for a message that is stored by an edit. */
@@ -137,7 +139,7 @@ export class SqliteCaptureWriter {
   editMessage(conversationId: string, id: string, text: string | null, editedAt: number): boolean {
     const result = this.db
       .prepare(
-        `UPDATE messages SET text = ?, edited_at = ?
+        `UPDATE messages SET text = COALESCE(?, text), edited_at = ?
          WHERE conversation_id = ? AND id = ? AND (edited_at IS NULL OR edited_at < ?)`,
       )
       .run(text, editedAt, conversationId, id, editedAt)
@@ -147,7 +149,8 @@ export class SqliteCaptureWriter {
   /**
    * RF-11 for a platform that may deliver an edit before its original (or never): `message` is the edited message
    * under the id of the original. If the original is stored the edit replaces its text (when newer than the edit
-   * already applied); otherwise the edited message is stored as the message itself, marked as edited.
+   * already applied); otherwise the edited message is stored as the message itself, marked as edited. An edit never
+   * touches the unread state. An edit with a null text never erases the text already stored.
    */
   recordEdit(message: Message, editedAt: number, hint: ConversationHint = {}): EditOutcome {
     return inTransaction(this.db, () => {
