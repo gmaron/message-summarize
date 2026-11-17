@@ -208,6 +208,12 @@ export function createWebServer(options: WebServerOptions): WebServer {
       body = parseJson(raw)
     }
     const result = await match.route.handler({ params: match.params, query: url.searchParams, body })
+    // 204 has no body (and no Content-Length that would say otherwise).
+    if (result.status === 204) {
+      res.writeHead(204)
+      res.end()
+      return
+    }
     sendJson(res, result.status ?? 200, result.body ?? {})
   }
 

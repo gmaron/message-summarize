@@ -97,6 +97,9 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
       notLinking: 'La cuenta no se está vinculando.',
       busy: 'El daemon está haciendo otra operación sobre esta cuenta. Esperá a que termine.',
       restricted: 'Este daemon corre una sola cuenta (--account): no puede crear ni vincular otras.',
+      invalidSchedule: 'El horario no es válido: revisá los días y la hora.',
+      notRunning:
+        'El daemon no está corriendo esta cuenta (no está vinculada, está bloqueada o está arrancando): no puede enviar un digest ahora.',
     },
     linkErrors: {
       timeout: 'Pasó el tiempo sin que se escaneara el QR. Volvé a intentar.',
@@ -108,6 +111,18 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
       replaced: 'Otra sesión con las mismas credenciales tomó el control (440).',
       cancelled: 'La vinculación se canceló.',
       failed: 'No se pudo vincular la cuenta.',
+    },
+    digestErrors: {
+      noProvider: 'Esta cuenta no tiene un proveedor de resúmenes configurado.',
+      promptFile: 'No se puede leer el archivo del prompt personalizado.',
+      concurrentRun: 'Otro digest terminó primero: este no se guardó. Volvé a intentar.',
+      invalidWindow: 'La ventana de tiempo del digest no es válida.',
+      failed: 'El digest falló. Revisá los logs.',
+    },
+    scheduleIssues: {
+      noDays: 'Elegí al menos un día.',
+      invalidDay: 'Un día no es válido.',
+      invalidTime: 'La hora no es válida: usá HH:MM.',
     },
   },
 

@@ -6,7 +6,7 @@ import { type BlockedReason, clearBlocked, FIXED_BY_LINKING, readBlocked, writeB
 import { type AppConfig, describeConfigIssue, loadEffectiveConfig } from './config.js'
 import { type CommandContext, hasSession } from './context.js'
 import { type CountingCapture, countingCapture } from './counting-capture.js'
-import { Daemon, type DaemonConnection } from './daemon.js'
+import { Daemon, type DaemonConnection, type DigestEvent } from './daemon.js'
 import type { DaemonLock } from './daemon-lock.js'
 import { LinkFlow, type LinkFlowResult, type LinkPhase, type LinkSnapshot } from './link-flow.js'
 import { acquireLinkLock, LINK_HEARTBEAT_MS, linkLockHolder } from './link-lock.js'
@@ -109,6 +109,15 @@ export type StartLinkResult =
         | 'busy'
         | 'cancelled'
     }
+
+/** How a digest of an account went, as the host reports it (see `onDigest`). */
+export type HostDigestEvent = DigestEvent & { readonly account: string }
+
+export type DigestNowResult =
+  /** `deferred`: the connection is not settled, so the digest waits for the catch-up (see `DigestTrigger`). */
+  | { readonly ok: true; readonly deferred: boolean }
+  /** The account has no unit that can run a digest: it is not linked, blocked, starting, stopping or being linked. */
+  | { readonly ok: false; readonly reason: 'notRunning' | 'busy' }
 
 export type RetryAccountResult =
   | { readonly ok: true }
@@ -222,6 +231,7 @@ export class DaemonHost {
   /** The last link of each account (also after it ended) as `GET /api/accounts/:id/link` says it. In memory only. */
   private readonly linkSnapshots = new Map<string, LinkSnapshot>()
   private readonly linkListeners = new Set<(event: LinkEvent) => void>()
+  private readonly digestListeners = new Set<(event: HostDigestEvent) => void>()
   private readonly linkLockPid: number
   private readonly linkHeartbeatMs: number
   private readonly writeMarker: (file: string, reason: BlockedReason, at: number) => Promise<void>
@@ -301,6 +311,59 @@ export class DaemonHost {
         }
       }
     })
+  }
+
+  /** Calls `listener` for every digest of every account: started, finished, failed or skipped. Returns the way to stop listening. */
+  onDigest(listener: (event: HostDigestEvent) => void): () => void {
+    this.digestListeners.add(listener)
+    return () => {
+      this.digestListeners.delete(listener)
+    }
+  }
+
+  private emitDigest(event: HostDigestEvent): void {
+    for (const listener of [...this.digestListeners]) {
+      try {
+        listener(event)
+      } catch (error) {
+        this.ctx.logger.error('daemon.listenerFailed', { code: errorCode(error) })
+      }
+    }
+    // The last digest (where it ended) and the next run are part of what the web shows of an account.
+    if (event.state !== 'busy') this.notifyChange()
+  }
+
+  /**
+   * The runtime of the account's running unit, or undefined when it has none. A preview borrows it: the host closes it
+   * when the unit stops, so a user of it must expect to fail at that point.
+   */
+  runtimeOf(id: string): Runtime | undefined {
+    const unit = this.units.get(id)
+    return unit === undefined || unit.daemon.blocked !== null ? undefined : unit.runtime
+  }
+
+  /** True while a link or a retry of this host holds the account (a temporary runtime must not be opened on it then). */
+  isClaimed(id: string): boolean {
+    return this.links.has(id)
+  }
+
+  /**
+   * "Summarize now" (RF-63): starts a digest on the account's running unit and returns at once; how it goes is told through
+   * `onDigest`. It needs a unit because delivery needs the account's connection (`msum digest` stays for offline use).
+   * `busy` (nothing started) when a digest of the account is running, scheduled ones included (RF-66): known at once, the
+   * check and the claim of the slot happen in the same synchronous step.
+   */
+  digestNow(id: string): DigestNowResult {
+    const unit = this.units.get(id)
+    if (this.stopping !== null || unit === undefined || unit.daemon.blocked !== null || this.links.has(id)) {
+      return { ok: false, reason: 'notRunning' }
+    }
+    if (unit.daemon.digestBusy) return { ok: false, reason: 'busy' }
+    // Decided in the same step as the call, so what is answered is what happens. `runDigestNow` never rejects: every
+    // failure inside it is reported as an event.
+    const deferred = !unit.daemon.settled
+    void unit.daemon.runDigestNow('manual')
+    return { ok: true, deferred }
   }
 
   /** The ids of the accounts that have a unit running (or idling because they are blocked). */
@@ -408,6 +471,8 @@ export class DaemonHost {
     const marker = await readBlocked(account.blockedFile)
     const entry = this.blocks.get(id)
     if (marker !== null) {
+      // A block that changes reason while the account stays blocked is no change of state: said here (the web shows it).
+      if (entry !== undefined && entry.reason !== marker.reason) this.notifyChange()
       this.blocks.set(id, { reason: marker.reason, persisted: true, warned: false })
       this.setIdle(id, `blocked:${marker.reason}`, 'blocked', marker.reason)
       return false
@@ -595,6 +660,9 @@ export class DaemonHost {
             if (!this.connectedSince.has(id)) this.connectedSince.set(id, Date.now())
           } else this.connectedSince.delete(id)
         },
+        onDigest: (event) => this.emitDigest({ ...event, account: id }),
+        // Another process (`msum schedule`) changed them: the next run the web shows is another.
+        onSchedulesChanged: () => this.notifyChange(),
         // The host owns the order of a block: release the account first, write the marker after (see `blockUnit`).
         writesMarker: false,
         onBlocked: (reason) => {

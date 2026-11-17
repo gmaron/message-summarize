@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
+import { type DigestErrorCode, getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
 import { EventBus } from '../interfaces/http/events.js'
 import { isLoopbackHost } from '../interfaces/http/hosts.js'
 import type { Route } from '../interfaces/http/router.js'
@@ -9,9 +9,12 @@ import type { WebConfig } from './config.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
 import { errorCode } from './logger.js'
+import { PreviewService } from './preview.js'
 import { type AccountView, describeAccounts } from './web-accounts.js'
 import { removeWebAddress, writeWebAddress } from './web-address.js'
+import { digestRoutes } from './web-digest.js'
 import { accountRoutes } from './web-routes.js'
+import { scheduleRoutes } from './web-schedules.js'
 import { ensureWebToken } from './web-token.js'
 
 /**
@@ -28,6 +31,21 @@ export interface WebEvents extends Record<string, unknown> {
     readonly done: boolean
   }
   readonly link: { readonly account: string; readonly state: string; readonly error?: LinkErrorCode }
+  /** How a digest of an account goes (RF-63, RF-65): the one asked for, the scheduled and the missed. Counts and codes. */
+  readonly digest: {
+    readonly account: string
+    readonly state: 'started' | 'deferred' | 'done' | 'empty' | 'failed' | 'busy'
+    readonly summarized?: number
+    readonly failed?: number
+    readonly parts?: number
+    readonly error?: DigestErrorCode
+  }
+  /** A preview ended (RF-64). Without its content: that is private, and the page asks for it. */
+  readonly preview: {
+    readonly account: string
+    readonly state: 'done' | 'empty' | 'failed'
+    readonly error?: DigestErrorCode
+  }
 }
 
 /** Where the built web is: `web/` next to the compiled code (`dist/web`). */
@@ -44,6 +62,8 @@ export interface StartWebOptions {
   readonly web: WebConfig
   /** The language of the installation, for what is printed here. */
   readonly language: Language
+  /** How long a finished preview is kept in memory. Default 30 minutes. For tests. */
+  readonly previewTtlMs?: number
 }
 
 /**
@@ -59,16 +79,14 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
   const listenHost = ctx.web?.host ?? options.web.host
   const listenPort = ctx.web?.port ?? options.web.port
   const source = { ctx, installation, host }
-  const routes: Route[] = [
-    {
-      method: 'GET',
-      path: '/api/accounts',
-      handler: async () => ({ body: { accounts: await describeAccounts(source) } }),
-    },
-    ...accountRoutes(source),
-  ]
-
   const bus = new EventBus<WebEvents>()
+  const previews = new PreviewService({
+    ctx,
+    host,
+    onEvent: (event) => bus.publish('preview', event),
+    accountStamp: (id) => installation.accounts().find((row) => row.id === id)?.createdAt ?? null,
+    ...(options.previewTtlMs === undefined ? {} : { ttlMs: options.previewTtlMs }),
+  })
   let publishing = false
   let again = false
   const publishAccounts = async (): Promise<void> => {
@@ -89,8 +107,24 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       publishing = false
     }
   }
-  const unsubscribeChange = host.onChange(() => void publishAccounts())
+  const routes: Route[] = [
+    {
+      method: 'GET',
+      path: '/api/accounts',
+      handler: async () => ({ body: { accounts: await describeAccounts(source) } }),
+    },
+    ...accountRoutes(source),
+    ...scheduleRoutes(source, () => void publishAccounts()),
+    ...digestRoutes({ ...source, previews }),
+  ]
+
+  const unsubscribeChange = host.onChange(() => {
+    previews.prune()
+    void publishAccounts()
+  })
   const unsubscribeLink = host.onLink((event) => {
+    // A new link may bind another number: what was summarized before is not that account's any more.
+    if (event.type === 'link') previews.forget(event.account)
     if (event.type === 'qr') bus.publish('qr', { account: event.account, qr: event.qr })
     else if (event.type === 'sync') {
       bus.publish('sync', {
@@ -107,9 +141,13 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       })
     }
   })
+  const unsubscribeDigest = host.onDigest(({ account, ...event }) => bus.publish('digest', { account, ...event }))
   const unsubscribe = (): void => {
     unsubscribeChange()
     unsubscribeLink()
+    unsubscribeDigest()
+    // Previews are dropped and their temporary runtimes closed: private text does not outlive the web.
+    previews.stop()
   }
 
   let server: WebServer | null = null

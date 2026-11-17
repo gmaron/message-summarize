@@ -12,7 +12,7 @@ export interface AccountRoutesSource {
 }
 
 /** The account named in the path, or a 404: an id that is not valid is never looked up, let alone used as a path. */
-function knownAccount(source: AccountRoutesSource, params: Readonly<Record<string, string>>): string {
+export function knownAccount(source: AccountRoutesSource, params: Readonly<Record<string, string>>): string {
   const id = params.id ?? ''
   if (!isValidAccountId(id) || !source.installation.accounts().some((row) => row.id === id)) {
     throw new HttpError(404, 'notFound')

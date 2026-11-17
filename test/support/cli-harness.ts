@@ -41,6 +41,15 @@ export class FakeConnection implements ManagedConnection {
   onStart: () => void | Promise<void> = () => {}
   private readonly listeners = new Set<WhatsAppStatusListener>()
 
+  /**
+   * A new unit starts from a clean status. This object is reused by every unit of a test, so the status a previous one
+   * left (loggedOut, error, qr) would be fed to the next as if it had just happened. While some unit is still listening
+   * the status is the live one and stays.
+   */
+  freshStatus(): void {
+    if (this.listeners.size === 0) this.status = { state: 'stopped' }
+  }
+
   emit(status: WhatsAppStatus): void {
     this.status = status
     for (const listener of [...this.listeners]) listener(status)
@@ -206,6 +215,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     logger: createLogger(sink, sink, () => clock.time),
     clock,
     connectionFactory: async (_runtime, hooks) => {
+      connection.freshStatus()
       connection.hooks = hooks
       return connection
     },

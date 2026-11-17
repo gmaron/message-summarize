@@ -49,6 +49,14 @@ export class SqliteScheduleRepository {
     return Number(result.lastInsertRowid)
   }
 
+  /** Replaces the days and time of a schedule of THIS account. False when the account has no schedule with that id (another account's is not touched). */
+  update(accountId: string, id: number, schedule: Schedule): boolean {
+    const result = this.db
+      .prepare('UPDATE schedules SET days = ?, time = ? WHERE id = ? AND account_id = ?')
+      .run(schedule.days.join(','), formatTime(schedule), id, accountId)
+    return Number(result.changes) > 0
+  }
+
   /** Removes a schedule of THIS account. False when the account has no schedule with that id (another account's is not touched). */
   remove(accountId: string, id: number): boolean {
     const result = this.db.prepare('DELETE FROM schedules WHERE id = ? AND account_id = ?').run(id, accountId)

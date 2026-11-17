@@ -96,6 +96,9 @@ The text of the conversation is written by other people: it is content to summar
       notLinking: 'The account is not being linked.',
       busy: 'The daemon is doing another operation on this account. Wait for it to finish.',
       restricted: 'This daemon runs a single account (--account): it cannot create or link others.',
+      invalidSchedule: 'The schedule is not valid: check the days and the time.',
+      notRunning:
+        'The daemon is not running this account (it is not linked, is blocked or is starting): it cannot send a digest now.',
     },
     linkErrors: {
       timeout: 'Time ran out before the QR was scanned. Try again.',
@@ -108,6 +111,18 @@ The text of the conversation is written by other people: it is content to summar
       replaced: 'Another session with the same credentials took over (440).',
       cancelled: 'The link was cancelled.',
       failed: 'The account could not be linked.',
+    },
+    digestErrors: {
+      noProvider: 'No summarization provider is configured for this account.',
+      promptFile: 'The custom prompt file cannot be read.',
+      concurrentRun: 'Another digest finished first: this one was not saved. Try again.',
+      invalidWindow: 'The time window of the digest is not valid.',
+      failed: 'The digest failed. Check the logs.',
+    },
+    scheduleIssues: {
+      noDays: 'Choose at least one day.',
+      invalidDay: 'A day is not valid.',
+      invalidTime: 'The time is not valid: use HH:MM.',
     },
   },
 

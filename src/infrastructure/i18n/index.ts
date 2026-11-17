@@ -5,6 +5,7 @@ import { es } from './es.js'
 export type {
   BlockedReason,
   Catalog,
+  DigestErrorCode,
   HeadlineParts,
   ImportLiveSignal,
   ImportSummary,

@@ -1,4 +1,5 @@
 import type { MessageKind } from '../../domain/model.js'
+import type { ScheduleIssue } from '../../domain/schedule.js'
 import type { SettingsIssueCode } from '../../domain/settings.js'
 import type { WindowError } from '../../domain/window.js'
 
@@ -40,6 +41,11 @@ export type WebErrorCode =
   | 'notLinking'
   | 'busy'
   | 'restricted'
+  | 'invalidSchedule'
+  | 'notRunning'
+
+/** Why a digest asked from the web (or a scheduled one) produced nothing: codes, never text (`digest` and `preview` events). */
+export type DigestErrorCode = 'noProvider' | 'promptFile' | 'concurrentRun' | 'invalidWindow' | 'failed'
 
 /** Why a link made from the web ended without linking (`link` event and `GET /api/accounts/:id/link`): codes, never text. */
 export type LinkErrorCode =
@@ -161,6 +167,9 @@ export interface Catalog {
     readonly notBuilt: { readonly title: string; readonly message: string }
     readonly errors: Readonly<Record<WebErrorCode, string>>
     readonly linkErrors: Readonly<Record<LinkErrorCode, string>>
+    readonly digestErrors: Readonly<Record<DigestErrorCode, string>>
+    /** Why a schedule sent to `POST /api/accounts/:id/schedules` was refused (`issue`). */
+    readonly scheduleIssues: Readonly<Record<ScheduleIssue, string>>
   }
 
   readonly errors: {
