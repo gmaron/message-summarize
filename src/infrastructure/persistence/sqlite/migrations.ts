@@ -100,7 +100,22 @@ CREATE TABLE outbox (
 CREATE INDEX outbox_pending ON outbox (id) WHERE sent_at IS NULL;
 `
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, description: 'Initial schema', sql: SCHEMA_V1 }]
+/**
+ * Migration 2: the account this database belongs to (RF-51). One row at most: the phone-number identifier of the
+ * account that was linked first. The digest is only ever delivered to it, even if another phone is linked later.
+ */
+const SCHEMA_V2 = `
+CREATE TABLE account (
+  id        INTEGER PRIMARY KEY CHECK (id = 1),
+  jid       TEXT NOT NULL CHECK (jid <> ''),
+  linked_at INTEGER NOT NULL
+);
+`
+
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
+  { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
+]
 
 /** The highest migration version applied to this database, 0 for a database with none. */
 export function currentVersion(db: Database): number {

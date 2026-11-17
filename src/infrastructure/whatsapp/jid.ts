@@ -34,6 +34,18 @@ export const isGroupJid = (jid: string): boolean => serverOf(jid) === 'g.us'
 export const isBroadcastJid = (jid: string): boolean => serverOf(jid) === 'broadcast'
 export const isNewsletterJid = (jid: string): boolean => serverOf(jid) === 'newsletter'
 
+/**
+ * The "message yourself" chat of an authenticated account: its own phone-number JID, normalized. Null unless `user.id`
+ * is an individual phone-number JID ("digits@s.whatsapp.net", with or without device). A LID, a group, a broadcast
+ * list, an empty or missing id all give null: the digest is never sent to anything else (RF-51).
+ */
+export function selfChatJid(user: { readonly id?: string | null | undefined } | null | undefined): string | null {
+  const id = user?.id
+  if (typeof id !== 'string' || id === '') return null
+  const normalized = normalizeJid(id)
+  return /^\d+@s\.whatsapp\.net$/.test(normalized) ? normalized : null
+}
+
 /** What the digest shows for an individual chat with no name: "+5491100000001", or the raw id when it is no number. */
 export function addressOf(jid: string): string {
   const decoded = decode(jid)

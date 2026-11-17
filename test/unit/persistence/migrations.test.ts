@@ -31,8 +31,9 @@ describe('openDatabase and migrations', () => {
     const t = fresh()
     const db = t.open()
     expect(currentVersion(db)).toBe(MIGRATIONS.length)
-    expect(currentVersion(db)).toBe(1)
+    expect(currentVersion(db)).toBe(2)
     expect(tables(db)).toEqual([
+      'account',
       'conversations',
       'digest_pointer',
       'digests',
@@ -50,7 +51,19 @@ describe('openDatabase and migrations', () => {
     first.close()
     const second = t.open()
     expect(second.prepare('SELECT version, applied_at FROM schema_version').all()).toEqual(applied)
-    expect(currentVersion(second)).toBe(1)
+    expect(currentVersion(second)).toBe(2)
+  })
+
+  it('upgrades a database at version 1 to 2 without touching its data', () => {
+    const t = fresh()
+    const first = openDatabase(t.path, { migrations: MIGRATIONS.slice(0, 1) })
+    first.exec('INSERT INTO digest_pointer (id, pointer) VALUES (1, 77)')
+    expect(currentVersion(first)).toBe(1)
+    first.close()
+    const upgraded = t.open()
+    expect(currentVersion(upgraded)).toBe(2)
+    expect(upgraded.prepare('SELECT pointer FROM digest_pointer').all()).toEqual([{ pointer: 77 }])
+    expect(upgraded.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 0 })
   })
 
   it('uses WAL, foreign keys and a busy timeout', () => {

@@ -1,13 +1,17 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Baileys opens a WebSocket as soon as a socket is made, so it is replaced: the test looks at HOW it is configured.
 const made = vi.hoisted(() => ({
   options: [] as Record<string, unknown>[],
   /** Calls to the members of the full socket that the wrapper must never expose. */
   sent: [] as string[],
+  /** Arguments of every sendMessage call of the full socket. */
+  messages: [] as unknown[][],
+  /** The authenticated user the full socket reports. */
+  user: undefined as { id: string; lid?: string } | undefined,
 }))
 vi.mock('baileys', async (importOriginal) => {
   const actual = await importOriginal<typeof import('baileys')>()
@@ -16,10 +20,15 @@ vi.mock('baileys', async (importOriginal) => {
     return {
       ev: { on() {}, off() {} },
       end() {},
-      user: { id: '5491100000009:1@s.whatsapp.net' },
+      get user() {
+        return made.user
+      },
       groupMetadata: async () => ({ subject: 'Vecinos' }),
       signalRepository: { lidMapping: { getPNForLID: async () => '5491100000001@s.whatsapp.net' } },
-      sendMessage: () => made.sent.push('sendMessage'),
+      sendMessage: async (...args: unknown[]) => {
+        made.sent.push('sendMessage')
+        made.messages.push(args)
+      },
       sendPresenceUpdate: () => made.sent.push('sendPresenceUpdate'),
       readMessages: () => made.sent.push('readMessages'),
     }
@@ -32,8 +41,13 @@ const { BAILEYS_SOCKET_OPTIONS, baileysSocketFactory } = await import(
 )
 
 const dirs: string[] = []
+beforeEach(() => {
+  made.user = { id: '5491100000009:1@s.whatsapp.net', lid: '99900000009:1@lid' }
+})
 afterEach(() => {
   made.options.length = 0
+  made.sent.length = 0
+  made.messages.length = 0
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -91,9 +105,17 @@ describe('the Baileys socket configuration', () => {
     expect(options.auth).toBeDefined()
     expect(options.browser).toEqual(['Mac OS', 'message-summarize', '14.4.1'])
     // A real wrapper: only these members exist, and none of them sends.
-    expect(Object.keys(session.socket).sort()).toEqual(['end', 'ev', 'groupMetadata', 'signalRepository', 'user'])
+    expect(Object.keys(session.socket).sort()).toEqual([
+      'end',
+      'ev',
+      'groupMetadata',
+      'sendTextToSelf',
+      'signalRepository',
+      'user',
+    ])
     const full = session.socket as unknown as Record<string, unknown>
     expect(full.sendMessage).toBeUndefined()
+    expect(full.sendRawMessage).toBeUndefined()
     expect(full.sendPresenceUpdate).toBeUndefined()
     expect(full.readMessages).toBeUndefined()
     expect(made.sent).toEqual([])
@@ -113,5 +135,46 @@ describe('the Baileys socket configuration', () => {
         (console[method] as unknown as Record<symbol, unknown>)[Symbol.for('message-summarize.console-guard')],
       ).toBe(true)
     }
+  })
+})
+
+describe('sendTextToSelf, the only way to send (RF-50, RF-51, RNF-17)', () => {
+  it('sends a plain text to the own phone-number jid, without device, and nothing else', async () => {
+    const { session } = await create()
+    await session.socket.sendTextToSelf('*Resumen*\n_hola_')
+    expect(made.messages).toEqual([['5491100000009@s.whatsapp.net', { text: '*Resumen*\n_hola_', linkPreview: null }]])
+    expect(made.sent).toEqual(['sendMessage']) // no presence update, no read receipt
+  })
+
+  it('never uses the LID, and takes no recipient from the caller', async () => {
+    const { session } = await create()
+    expect(session.socket.sendTextToSelf.length).toBe(1)
+    await (session.socket.sendTextToSelf as (...args: unknown[]) => Promise<void>)(
+      'text',
+      '5491100000001@s.whatsapp.net',
+    )
+    expect(made.messages.map((m) => m[0])).toEqual(['5491100000009@s.whatsapp.net'])
+  })
+
+  it('follows the user of the socket at the moment of sending', async () => {
+    const { session } = await create()
+    made.user = { id: '5491100000010:2@s.whatsapp.net' }
+    await session.socket.sendTextToSelf('hi')
+    expect(made.messages.map((m) => m[0])).toEqual(['5491100000010@s.whatsapp.net'])
+  })
+
+  it.each([
+    ['no user', undefined],
+    ['an empty id', { id: '' }],
+    ['a LID', { id: '99900000009:1@lid' }],
+    ['a group', { id: '120363000000000001@g.us' }],
+    ['a broadcast list', { id: 'status@broadcast' }],
+    ['something that is not a jid', { id: 'hello' }],
+  ])('rejects and sends nothing when the user is %s', async (_name, user) => {
+    const { session } = await create()
+    made.user = user
+    await expect(session.socket.sendTextToSelf('private digest')).rejects.toThrow()
+    expect(made.sent).toEqual([])
+    expect(made.messages).toEqual([])
   })
 })

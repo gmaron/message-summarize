@@ -1,6 +1,9 @@
+import type { AccountIdentity } from '../../src/application/ports/account-identity.js'
 import type { Clock } from '../../src/application/ports/clock.js'
+import type { DeliveryChannel, DeliveryFailure } from '../../src/application/ports/delivery-channel.js'
 import type { DigestSource } from '../../src/application/ports/digest-source.js'
 import type { CommitConflict, DigestCommit, DigestStore } from '../../src/application/ports/digest-store.js'
+import type { OutboxItem, OutboxRepository } from '../../src/application/ports/outbox.js'
 import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
 import type { OwnMessageText } from '../../src/domain/mass.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../src/domain/model.js'
@@ -158,6 +161,70 @@ export class InMemoryStore implements DigestStore {
   /** Every digest kept in the history. */
   get history(): NonNullable<DigestCommit['digest']>[] {
     return this.commits.flatMap((c) => (c.digest === null ? [] : [c.digest]))
+  }
+}
+
+/** In-memory OutboxRepository, following the contract of the port. */
+export class InMemoryOutbox implements OutboxRepository {
+  private nextId = 1
+  private readonly rows: { id: number; text: string; sent: boolean }[] = []
+
+  /** Queues parts, as a digest commit does. */
+  enqueue(...parts: string[]): void {
+    for (const text of parts) this.rows.push({ id: this.nextId++, text, sent: false })
+  }
+
+  async pending(): Promise<readonly OutboxItem[]> {
+    return this.rows.filter((r) => !r.sent).map(({ id, text }) => ({ id, text }))
+  }
+
+  async markSent(id: number): Promise<boolean> {
+    const row = this.rows.find((r) => r.id === id)
+    if (row === undefined || row.sent) return false
+    row.sent = true
+    return true
+  }
+}
+
+/** In-memory AccountIdentity, following the contract of the port. */
+export class InMemoryAccountIdentity implements AccountIdentity {
+  private jid: string | null
+
+  constructor(bound: string | null = null) {
+    this.jid = bound
+  }
+
+  get(): string | null {
+    return this.jid
+  }
+
+  bind(id: string): boolean {
+    if (id === '') throw new RangeError('the account id is empty')
+    this.jid ??= id
+    return this.jid === id
+  }
+}
+
+/** A DeliveryChannel that records what it was asked to send. `script` decides each call (default: ok). */
+export class FakeChannel implements DeliveryChannel {
+  /** Every text the channel accepted, in order. */
+  readonly delivered: string[] = []
+  /** Every call, accepted or not. */
+  readonly attempts: string[] = []
+  private calls = 0
+
+  constructor(
+    private readonly script: (
+      text: string,
+      call: number,
+    ) => Promise<Result<void, DeliveryFailure>> | Result<void, DeliveryFailure> = () => ok(undefined),
+  ) {}
+
+  async deliver(text: string): Promise<Result<void, DeliveryFailure>> {
+    this.attempts.push(text)
+    const result = await this.script(text, this.calls++)
+    if (result.ok) this.delivered.push(text)
+    return result
   }
 }
 

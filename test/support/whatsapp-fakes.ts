@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import type { CaptureMessages } from '../../src/application/capture-messages.js'
 import type { WhatsAppSocket } from '../../src/infrastructure/whatsapp/connection.js'
 import type { SocketFactory, SocketSession } from '../../src/infrastructure/whatsapp/index.js'
+import { selfChatJid } from '../../src/infrastructure/whatsapp/jid.js'
 
 /** Every call of the capture use case, in order, with the method name. */
 export interface RecordedCall {
@@ -56,7 +57,7 @@ export const FORBIDDEN_SOCKET_METHODS = [
 ] as const
 
 /** What the adapter is allowed to touch on a socket. */
-const ALLOWED_SOCKET_MEMBERS = new Set(['ev', 'user', 'end', 'groupMetadata', 'signalRepository'])
+const ALLOWED_SOCKET_MEMBERS = new Set(['ev', 'user', 'end', 'groupMetadata', 'signalRepository', 'sendTextToSelf'])
 
 export interface FakeSocket {
   /** The object handed to the adapter: a proxy that records every member read, allowed or not. */
@@ -71,6 +72,10 @@ export interface FakeSocket {
   groupSubjects: Record<string, string>
   lidToPhone: Record<string, string>
   groupQueries: string[]
+  /** What `sendTextToSelf` sent. `to` is where the real wrapper would send it: the own phone-number JID of `user`. */
+  sent: { to: string; text: string }[]
+  /** Makes `sendTextToSelf` reject, as a failed send does. */
+  sendFails: boolean
   listenerCount(): number
 }
 
@@ -91,6 +96,8 @@ export function fakeSocket(): FakeSocket {
     groupSubjects: {},
     lidToPhone: {},
     groupQueries: [],
+    sent: [],
+    sendFails: false,
     listenerCount: () => ev.eventNames().reduce((sum, name) => sum + ev.listenerCount(name), 0),
   }
   const target: Record<string, unknown> = {
@@ -103,6 +110,13 @@ export function fakeSocket(): FakeSocket {
       const subject = state.groupSubjects[jid]
       if (subject === undefined) throw new Error('not found')
       return { subject }
+    },
+    // Like the real wrapper: the destination comes from `user`, never from the caller.
+    sendTextToSelf: async (text: string) => {
+      const to = selfChatJid(state.user)
+      if (to === null) throw new Error('no authenticated phone-number user')
+      if (state.sendFails) throw new Error('send failed')
+      state.sent.push({ to, text })
     },
     signalRepository: {
       lidMapping: { getPNForLID: async (lid: string) => state.lidToPhone[lid] ?? null },

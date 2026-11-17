@@ -6,6 +6,7 @@ import {
   isLid,
   isNewsletterJid,
   normalizeJid,
+  selfChatJid,
 } from '../../../src/infrastructure/whatsapp/jid.js'
 import { OwnConversationIds } from '../../../src/infrastructure/whatsapp/own-ids.js'
 
@@ -50,5 +51,31 @@ describe('OwnConversationIds', () => {
     expect(own.get()).toEqual(['5491100000009@s.whatsapp.net', '99900000009@lid'])
     expect(own.has('5491100000009:3@s.whatsapp.net')).toBe(true)
     expect(own.has('5491100000001@s.whatsapp.net')).toBe(false)
+  })
+})
+
+describe('selfChatJid', () => {
+  it('is the normalized phone-number jid of the user', () => {
+    expect(selfChatJid({ id: '5491100000009:12@s.whatsapp.net' })).toBe('5491100000009@s.whatsapp.net')
+    expect(selfChatJid({ id: '5491100000009@c.us' })).toBe('5491100000009@s.whatsapp.net')
+    expect(selfChatJid({ id: '5491100000009_1:3@s.whatsapp.net' })).toBe('5491100000009@s.whatsapp.net')
+  })
+
+  it('is null for anything that is not an individual phone-number jid', () => {
+    expect(selfChatJid(undefined)).toBeNull()
+    expect(selfChatJid(null)).toBeNull()
+    expect(selfChatJid({})).toBeNull()
+    expect(selfChatJid({ id: null })).toBeNull()
+    expect(selfChatJid({ id: '' })).toBeNull()
+    expect(selfChatJid({ id: 'plain' })).toBeNull()
+    expect(selfChatJid({ id: '99900000009:1@lid' })).toBeNull()
+    expect(selfChatJid({ id: '120363000000000001@g.us' })).toBeNull()
+    expect(selfChatJid({ id: 'status@broadcast' })).toBeNull()
+    expect(selfChatJid({ id: '120363000000000002@newsletter' })).toBeNull()
+    expect(selfChatJid({ id: '@s.whatsapp.net' })).toBeNull()
+    expect(selfChatJid({ id: 'abc@s.whatsapp.net' })).toBeNull()
+    expect(selfChatJid({ id: '5491100000009@s.whatsapp.net.evil' })).toBeNull()
+    expect(selfChatJid({ id: '5491100000009@s.whatsappXnet' })).toBeNull()
+    expect(selfChatJid({ id: '5491100000009@s.whatsapp-net' })).toBeNull()
   })
 })

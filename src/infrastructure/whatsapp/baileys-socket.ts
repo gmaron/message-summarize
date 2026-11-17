@@ -2,6 +2,7 @@ import './console-guard.js'
 import makeWASocket, { type BaileysEventMap, Browsers } from 'baileys'
 import { loadSecureAuthState } from './auth-state.js'
 import type { SocketFactory, WhatsAppSocket } from './connection.js'
+import { selfChatJid } from './jid.js'
 import type { WaChat, WaContact, WaGroup, WaHistorySet, WaMessagesUpsert, WaMessageUpdate } from './wa-types.js'
 
 /**
@@ -12,8 +13,8 @@ import type { WaChat, WaContact, WaGroup, WaHistorySet, WaMessagesUpsert, WaMess
  * - The logger is silent. Baileys logs message content, keys and session data at several levels; none of it may reach
  *   a log (RNF-04), so it all goes nowhere.
  *
- * The adapter never calls a method that sends, changes presence or sends read receipts, and `WhatsAppSocket` does not
- * even have them.
+ * The adapter never changes presence or sends read receipts, and `WhatsAppSocket` does not even have those. The only
+ * thing it can send is a text to the account's own chat, through `sendTextToSelf`.
  */
 export const BAILEYS_SOCKET_OPTIONS = {
   markOnlineOnConnect: false,
@@ -35,6 +36,19 @@ const silentLogger: BaileysLogger = {
   error: () => undefined,
 }
 
+type BaileysSocket = ReturnType<typeof makeWASocket>
+
+/**
+ * The ONLY function in the adapter that sends anything (RF-51, RNF-17). The destination is the phone-number JID of the
+ * authenticated user, computed here; it is never a parameter and never the LID. Plain text only: it sets no presence
+ * and sends no read receipt. The read-only guard test allows `sendMessage` inside this function and nowhere else.
+ */
+async function sendTextToSelf(socket: BaileysSocket, text: string): Promise<void> {
+  const jid = selfChatJid(socket.user)
+  if (jid === null) throw new Error('no authenticated phone-number user')
+  await socket.sendMessage(jid, { text, linkPreview: null })
+}
+
 export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
   const { state, saveCreds, settle } = await loadSecureAuthState(authDir)
   const socket = makeWASocket({
@@ -53,6 +67,7 @@ export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
       return socket.user
     },
     end: (error) => socket.end(error),
+    sendTextToSelf: (text) => sendTextToSelf(socket, text),
     groupMetadata: (jid) => socket.groupMetadata(jid),
     signalRepository: {
       lidMapping: { getPNForLID: (lid) => socket.signalRepository.lidMapping.getPNForLID(lid) },

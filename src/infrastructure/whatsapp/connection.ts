@@ -32,9 +32,9 @@ export type WhatsAppStatus =
 export type WhatsAppStatusListener = (status: WhatsAppStatus) => void
 
 /**
- * The only things the adapter uses of a socket. Deliberately narrow: no way to send, to touch presence or to send
- * read receipts. A new capability (commit 10: sending the digest to the own chat) is a new, equally narrow method
- * here, never the raw socket.
+ * The only things the adapter uses of a socket. Deliberately narrow: no way to touch presence or to send read
+ * receipts, and the one way to send (`sendTextToSelf`) can only reach the account's own chat. A new capability is a
+ * new, equally narrow method here, never the raw socket.
  */
 export interface WhatsAppSocket {
   readonly ev: {
@@ -45,6 +45,12 @@ export interface WhatsAppSocket {
   readonly user?: { readonly id: string; readonly lid?: string | undefined } | undefined
   /** Closes the connection. */
   end(error: Error | undefined): void
+  /**
+   * The ONLY way to send. Sends a plain text message to the "message yourself" chat of the authenticated account. The
+   * destination is computed inside from `user` (its phone-number JID, never the LID); there is no recipient
+   * parameter. Rejects, sending nothing, when there is no authenticated phone-number user (RF-51).
+   */
+  sendTextToSelf(text: string): Promise<void>
   /** Read-only query of the subject of a group. */
   groupMetadata(jid: string): Promise<{ readonly subject?: string | undefined }>
   readonly signalRepository?: {
@@ -112,8 +118,9 @@ export const backoffDelay = (policy: BackoffPolicy, attempt: number): number =>
  * One account's link with WhatsApp (RF-01, RF-04, RF-05). It keeps the socket private and turns what the socket says
  * into (a) status events and (b) calls to the capture use case, through the pure translation.
  *
- * It is read only (RNF-17): it never sends a message, never touches presence, never sends read receipts, and the
- * socket is created with `markOnlineOnConnect: false` (see `baileys-socket.ts`).
+ * It is read only (RNF-17) except for one thing: the digest sent to the account's own chat, through `selfChat()`,
+ * which `WhatsAppSelfChatDelivery` uses. It never sends anything else, never touches presence, never sends read
+ * receipts, and the socket is created with `markOnlineOnConnect: false` (see `baileys-socket.ts`).
  *
  * TODO (transcription commit, RF-15): downloading an audio must NOT pass `reuploadRequest` to Baileys: that sends a media
  * retry request to the sender, which is a message out. A media that cannot be downloaded is simply skipped.
@@ -164,6 +171,21 @@ export class WhatsAppConnection {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  /**
+   * What the delivery adapter may use of the live socket: the account and the one send method. Null unless the
+   * connection is open, so nothing is sent while connecting, reconnecting or stopped (RF-52).
+   */
+  selfChat(): Pick<WhatsAppSocket, 'user' | 'sendTextToSelf'> | null {
+    const socket = this.session?.socket
+    if (socket === undefined || this.current.state !== 'connected') return null
+    return {
+      get user() {
+        return socket.user
+      },
+      sendTextToSelf: (text) => socket.sendTextToSelf(text),
     }
   }
 
