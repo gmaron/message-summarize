@@ -24,10 +24,10 @@ import {
   MAIN_ME_CHAT,
   MAIN_POINTER,
   makeOld,
+  standardData,
   TALLER_ME,
   TALLER_ME_CHAT,
   tallerOptions,
-  standardData,
 } from '../../support/legacy-fixture.js'
 
 afterEach(() => {
@@ -178,7 +178,7 @@ describe('msum import: the main installation', () => {
     expect(output).toContain('1 digests that were waiting to be sent')
     expect(output).toContain('internal state: agenda_resync_v1, eventos_last_ts')
     expect(output).toContain('settings without an equivalent: ')
-    for (const name of ['opcionInventada', 'leerImagenes', 'diasDeAudiosDelHistorial', 'whisper', 'web']) {
+    for (const name of ['opcionInventada', 'leerImagenes', 'whisper.modelo', 'web']) {
       expect(output).toContain(name)
     }
     expect(output).toContain('(1 messages were edited')
@@ -249,6 +249,9 @@ describe('msum import: the main installation', () => {
         claudeCli: { model: 'opus' },
         ollama: { model: 'modelo-de-prueba', numCtx: 8192 },
       },
+      // the language of whisper (RF-23): the 14 days of history audio are this program's default, so not written; the
+      // model of the fixture is not a known one, so it is reported and not written; transcription is not turned on
+      transcription: { language: 'es' },
       promptFile: 'prompt.md',
     })
     // the account really runs with them: the file is valid with the installation's
@@ -399,8 +402,14 @@ describe('msum import: instances', () => {
 
   it('an instance without a prompt of its own takes the root one; --account names the account', async () => {
     const { h, root } = await setup()
-    buildLegacy(root, { config: LEGACY_CONFIG, prompt: LEGACY_PROMPT }, { taller: { ...tallerOptions(), prompt: null } })
-    expect(await run(h, 'import', '--from', root, '--instance', 'taller', '--account', 'celular-de-taller', '--yes')).toBe(0)
+    buildLegacy(
+      root,
+      { config: LEGACY_CONFIG, prompt: LEGACY_PROMPT },
+      { taller: { ...tallerOptions(), prompt: null } },
+    )
+    expect(
+      await run(h, 'import', '--from', root, '--instance', 'taller', '--account', 'celular-de-taller', '--yes'),
+    ).toBe(0)
     expect(await accounts(h)).toEqual(['celular-de-taller'])
     expect(readFileSync(join(h.accountOf('celular-de-taller').dir, 'prompt.md'), 'utf8')).toContain(
       'Sos el asistente de {{name}}.',
@@ -942,11 +951,17 @@ describe('msum import: the daemon never starts an account that is being imported
     try {
       Object.assign(h.ctx, {
         afterImportStep: async (step: string) => {
-          if (step === 'renamed') await world.lookAround('gamma')
+          if (step !== 'renamed') return
+          await world.lookAround('gamma')
+          // The account is in place with its session, and the host has looked at the installation (it started gamma): it
+          // must not have started this one, which the import still holds.
+          expect(world.opened).not.toContain('default')
         },
       })
       expect(await run(h, 'import', '--from', root, '--yes')).toBe(0)
-      expect(world.opened).toEqual(['gamma'].filter((id) => world.opened.includes(id)))
+      // Not asserted here that "default" is still closed: the host polls on its own, so right after the import it may
+      // have started the account already (the line that said so was a race, and failed on a loaded machine). That it did
+      // not start it DURING the import is what the test above and the order below check.
       await (await import('../../support/cli-harness.js')).until(
         () => world.opened.includes('default'),
         'default to start',

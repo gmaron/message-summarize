@@ -204,6 +204,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     waitForShutdown: () => stopped,
     probes: {
       commandVersion: async () => '1.0.0 (fake)',
+      commandProbe: async () => ({ started: true, ok: true, line: '1.0.0 (fake)' }),
       ollamaReachable: async () => true,
       ...options.probes,
     },

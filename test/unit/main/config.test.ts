@@ -49,6 +49,16 @@ describe('parseConfig defaults', () => {
         claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: 180_000 },
         ollama: { baseUrl: 'http://127.0.0.1:11434', model: null, numCtx: 16384, keepAlive: '1m', timeoutMs: 180_000 },
       },
+      transcription: {
+        enabled: false,
+        whisperCommand: 'whisper-cli',
+        ffmpegCommand: 'ffmpeg',
+        model: null,
+        language: 'auto',
+        timeoutMs: 300_000,
+        historyAudioDays: 14,
+        maxMediaMb: 500,
+      },
     })
   })
 
@@ -185,6 +195,133 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
       'timezone',
       'concurrency',
     ])
+  })
+})
+
+describe('transcription options (RF-15, RF-21, RF-23)', () => {
+  const transcriptionOf = (input: unknown) => {
+    const result = parse(input)
+    if (!result.ok) throw new Error(JSON.stringify(result.error))
+    return result.value.transcription
+  }
+
+  it('is off by default, with whisper-cli and ffmpeg, automatic language and a five minute limit', () => {
+    expect(transcriptionOf({})).toEqual({
+      enabled: false,
+      whisperCommand: 'whisper-cli',
+      ffmpegCommand: 'ffmpeg',
+      model: null,
+      language: 'auto',
+      timeoutMs: 300_000,
+      historyAudioDays: 14,
+      maxMediaMb: 500,
+    })
+  })
+
+  it('takes every option, and the other options of the section keep their defaults', () => {
+    expect(
+      transcriptionOf({
+        transcription: {
+          enabled: true,
+          whisperCommand: '/opt/whisper/bin/whisper-cli',
+          ffmpegCommand: '/usr/local/bin/ffmpeg',
+          model: 'small',
+          language: 'es',
+          timeoutMs: 60_000,
+          historyAudioDays: 30,
+          maxMediaMb: 100,
+        },
+      }),
+    ).toEqual({
+      enabled: true,
+      whisperCommand: '/opt/whisper/bin/whisper-cli',
+      ffmpegCommand: '/usr/local/bin/ffmpeg',
+      model: 'small',
+      language: 'es',
+      timeoutMs: 60_000,
+      historyAudioDays: 30,
+      maxMediaMb: 100,
+    })
+    expect(transcriptionOf({ transcription: { enabled: true } })).toMatchObject({ enabled: true, language: 'auto' })
+  })
+
+  it('turning it on without a model is valid: the product works and doctor reports it (RF-21)', () => {
+    expect(parse({ transcription: { enabled: true } }).ok).toBe(true)
+  })
+
+  it('accepts "auto" and language codes of two or three letters, and nothing else (RF-23)', () => {
+    for (const language of ['auto', 'es', 'en', 'pt', 'haw']) {
+      expect(parse({ transcription: { language } }).ok, language).toBe(true)
+    }
+    for (const language of ['Spanish', 'ES', 'e', '', 'es-AR', '-x', 'es;ls', 'autom']) {
+      expect(issuesOf({ transcription: { language } })[0]?.option, language).toBe('transcription.language')
+    }
+    expect(issuesOf({ transcription: { language: 'Spanish' } })).toEqual([
+      { option: 'transcription.language', code: 'invalidLanguage' },
+    ])
+    expect(issuesOf({ transcription: { language: 7 } })).toEqual([
+      { option: 'transcription.language', code: 'notString' },
+    ])
+  })
+
+  it('names the option and the reason for each invalid value', () => {
+    expect(issuesOf({ transcription: 'yes' })).toEqual([{ option: 'transcription', code: 'notObject' }])
+    expect(issuesOf({ transcription: { enabled: 'yes' } })).toEqual([
+      { option: 'transcription.enabled', code: 'notBoolean' },
+    ])
+    expect(issuesOf({ transcription: { whisperCommand: '' } })).toEqual([
+      { option: 'transcription.whisperCommand', code: 'emptyString' },
+    ])
+    expect(issuesOf({ transcription: { ffmpegCommand: 3 } })).toEqual([
+      { option: 'transcription.ffmpegCommand', code: 'notString' },
+    ])
+    expect(issuesOf({ transcription: { model: '  ' } })).toEqual([
+      { option: 'transcription.model', code: 'emptyString' },
+    ])
+    expect(issuesOf({ transcription: { timeoutMs: 0 } })).toEqual([
+      { option: 'transcription.timeoutMs', code: 'notPositive' },
+    ])
+    expect(issuesOf({ transcription: { timeoutMs: 1.5 } })).toEqual([
+      { option: 'transcription.timeoutMs', code: 'notInteger' },
+    ])
+    expect(issuesOf({ transcription: { historyAudioDays: 0 } })).toEqual([
+      { option: 'transcription.historyAudioDays', code: 'notPositive' },
+    ])
+    expect(issuesOf({ transcription: { historyAudioDays: 'many' } })).toEqual([
+      { option: 'transcription.historyAudioDays', code: 'notNumber' },
+    ])
+    expect(issuesOf({ transcription: { maxMediaMb: -5 } })).toEqual([
+      { option: 'transcription.maxMediaMb', code: 'notPositive' },
+    ])
+    expect(issuesOf({ transcription: { maxMediaMb: 1.5 } })).toEqual([
+      { option: 'transcription.maxMediaMb', code: 'notInteger' },
+    ])
+    expect(issuesOf({ transcription: { enable: true } })).toEqual([
+      { option: 'transcription.enable', code: 'unknownOption' },
+    ])
+  })
+
+  it('explains an invalid language in both languages, naming the option', () => {
+    const issue: ConfigIssue = { option: 'transcription.language', code: 'invalidLanguage' }
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('transcription.language')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('"auto"')
+    expect(describeConfigIssue(getCatalog('es'), issue)).toContain('detectar el idioma')
+  })
+
+  it('the account overrides the installation per key, so one account can have its own language (RF-23)', () => {
+    expect(
+      mergeConfigJson(
+        { transcription: { enabled: true, model: 'base', language: 'es' } },
+        { transcription: { language: 'en' } },
+      ),
+    ).toEqual({ transcription: { enabled: true, model: 'base', language: 'en' } })
+    expect(mergeConfigJson({ transcription: { enabled: true } }, { transcription: { enabled: false } })).toEqual({
+      transcription: { enabled: false },
+    })
+    // a value of the wrong shape is kept so the validation reports it
+    expect(mergeConfigJson({ transcription: { enabled: true } }, { transcription: 'x' })).toEqual({
+      transcription: 'x',
+    })
   })
 })
 

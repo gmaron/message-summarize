@@ -50,6 +50,9 @@ export type Command =
   | ({ readonly name: 'retry' } & AccountArg)
   | ({ readonly name: 'import' } & ImportArgs)
   | { readonly name: 'accounts' }
+  /** `msum whisper models`: the known models. `msum whisper download <name>`: one of them, verified. */
+  | { readonly name: 'whisper'; readonly action: 'models' }
+  | { readonly name: 'whisper'; readonly action: 'download'; readonly model: string }
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
       readonly name: 'schedule'
@@ -86,6 +89,7 @@ const COMMANDS = [
   'schedule',
   'retry',
   'import',
+  'whisper',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -142,8 +146,10 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
 
   if (values.help || command === undefined || command === 'help') return ok({ name: 'help' })
   if (!(COMMANDS as readonly string[]).includes(command)) return err({ kind: 'unknownCommand', value: command })
-  // `schedule` has a subcommand (and `rm` an id); the other commands take no positional arguments.
-  if (command !== 'schedule' && rest.length > 0) return err({ kind: 'unexpectedArgument', value: rest[0] as string })
+  // `schedule` and `whisper` have a subcommand (and `rm` an id, `download` a name); the other commands take no positional arguments.
+  if (command !== 'schedule' && command !== 'whisper' && rest.length > 0) {
+    return err({ kind: 'unexpectedArgument', value: rest[0] as string })
+  }
 
   const accepted =
     command === 'schedule'
@@ -193,6 +199,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     }
     case 'schedule':
       return parseSchedule(rest, values, account)
+    case 'whisper':
+      return parseWhisper(rest)
     case 'import':
       return parseImport(values, account)
     case 'link':
@@ -203,6 +211,20 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     default:
       return ok({ name: command as 'init' | 'accounts' })
   }
+}
+
+/** `msum whisper [models|download <name>]`. The name is checked against the table of models by the command. */
+function parseWhisper(rest: readonly string[]): Result<Command, ArgError> {
+  const [action = 'models', ...more] = rest
+  if (action !== 'models' && action !== 'download') return err({ kind: 'unknownSubcommand', value: action })
+  if (action === 'models') {
+    if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
+    return ok({ name: 'whisper', action: 'models' })
+  }
+  const [model, ...extra] = more
+  if (model === undefined || model.trim() === '') return err({ kind: 'missingValue', value: '<name>' })
+  if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: extra[0] as string })
+  return ok({ name: 'whisper', action: 'download', model })
 }
 
 /** `msum schedule [ls|add|rm]`: the subcommand, and its arguments validated. */

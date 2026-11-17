@@ -112,9 +112,43 @@ CREATE TABLE account (
 );
 `
 
+/**
+ * Migration 3: audio download and transcription (RF-15, RF-20), as TWO durable queues on the messages table (so nothing
+ * received is lost to a restart, RNF-08). All null for a message that has no audio to handle:
+ * - transcribe_status: 'download_pending' (capture stored how to download the file; the download worker takes it),
+ *   'pending' (file stored, waiting for its transcript), 'done' (transcript stored) or 'failed' (the download or the
+ *   transcription failed for good: see transcribe_error). Null: nothing was asked.
+ * - media_ref: the file of the audio, relative to the account's media directory (never an absolute path, so the data
+ *   directory can move).
+ * - transcribe_error: a short internal reason for a failure. Never shown in a digest.
+ * - dl_*: the DOWNLOAD DESCRIPTOR, only while the status is 'download_pending'. `dl_media_key` is the decryption key of
+ *   that one file: a secret, kept only in this database (0600) and never logged or printed. All of dl_* is cleared (NULL)
+ *   as soon as the file is stored or the download failed for good. `dl_attempts` counts the transient failures and
+ *   `dl_next_attempt_at` says when the next try is due (backoff).
+ * The transcript itself is the `transcript` column of migration 1.
+ */
+const SCHEMA_V3 = `
+ALTER TABLE messages ADD COLUMN media_ref TEXT;
+ALTER TABLE messages ADD COLUMN transcribe_status TEXT
+  CHECK (transcribe_status IN ('download_pending', 'pending', 'done', 'failed'));
+ALTER TABLE messages ADD COLUMN transcribe_error TEXT;
+ALTER TABLE messages ADD COLUMN dl_direct_path TEXT;
+ALTER TABLE messages ADD COLUMN dl_media_key BLOB;
+ALTER TABLE messages ADD COLUMN dl_mimetype TEXT;
+ALTER TABLE messages ADD COLUMN dl_file_length INTEGER;
+ALTER TABLE messages ADD COLUMN dl_attempts INTEGER NOT NULL DEFAULT 0;
+-- When a download that failed for a moment may be tried again (epoch ms, exponential backoff). Null: due now.
+ALTER TABLE messages ADD COLUMN dl_next_attempt_at INTEGER;
+-- The transcription queue, oldest first: only the audios that wait.
+CREATE INDEX messages_pending_audio ON messages (timestamp, seq) WHERE transcribe_status = 'pending';
+-- The download queue, oldest first.
+CREATE INDEX messages_download_queue ON messages (timestamp, seq) WHERE transcribe_status = 'download_pending';
+`
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
   { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
+  { version: 3, description: 'Audio transcription', sql: SCHEMA_V3 },
 ]
 
 /** The highest migration version applied to this database, 0 for a database with none. */

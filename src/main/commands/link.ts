@@ -62,6 +62,14 @@ function countingCapture(capture: CaptureMessages): { readonly capture: CaptureM
       touch()
       return capture.transcriptReady(event)
     },
+    queueMedia: (event) => {
+      touch()
+      return capture.queueMedia(event)
+    },
+    mediaFailed: (event) => {
+      touch()
+      return capture.mediaFailed(event)
+    },
   }
   return { capture: wrapped, lastActivity: () => last }
 }
@@ -141,6 +149,8 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
         const counted = countingCapture(runtime.capture)
         const connection = await ctx.connectionFactory(runtime, {
           capture: counted.capture,
+          // Link only captures: the audios stay queued for the daemon's worker (one whisper per installation, RNF-09).
+          downloadAudios: false,
           onWarning: (code) => logger.warn('adapter.warning', { code }),
         })
         if (relinking) await connection.clearSession()
@@ -220,6 +230,8 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
             if (elapsed >= timing.maxAfterConnectMs) break
             if (elapsed >= timing.minAfterConnectMs && now - counted.lastActivity() >= timing.quietMs) break
           }
+          // The audios of the history are in the durable download queue: stopping aborts the download in progress, and the
+          // daemon downloads the rest when it connects. There is nothing to wait for here.
           await connection.stop()
           if (interrupted) return EXIT_INTERRUPTED
           // The account is freshly linked: whatever it was blocked for before (a dead session, or a connection that was

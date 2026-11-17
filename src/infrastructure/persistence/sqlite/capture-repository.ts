@@ -1,6 +1,7 @@
 import type {
   CaptureRepository,
   ConversationHint,
+  DownloadDescriptor,
   EditOutcome,
   InsertResult,
   UnreadEffect,
@@ -38,6 +39,15 @@ export class SqliteCaptureRepository implements CaptureRepository {
   }
   async setTranscript(conversationId: string, messageId: string, transcript: string): Promise<boolean> {
     return this.writer.setTranscript(conversationId, messageId, transcript)
+  }
+  async queueDownload(conversationId: string, messageId: string, descriptor: DownloadDescriptor): Promise<boolean> {
+    return this.writer.queueDownload(conversationId, messageId, descriptor)
+  }
+  async setMedia(conversationId: string, messageId: string, mediaRef: string): Promise<boolean> {
+    return this.writer.setMedia(conversationId, messageId, mediaRef)
+  }
+  async setMediaFailure(conversationId: string, messageId: string, reason: string): Promise<boolean> {
+    return this.writer.setMediaFailure(conversationId, messageId, reason)
   }
   async markReadThrough(conversationId: string, messageIds: readonly string[]): Promise<void> {
     this.writer.markReadThrough(conversationId, messageIds)

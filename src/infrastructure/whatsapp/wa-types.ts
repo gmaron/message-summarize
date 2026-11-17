@@ -22,7 +22,19 @@ export interface WaContent {
   extendedTextMessage?: { text?: string | null } | null
   imageMessage?: { caption?: string | null } | null
   videoMessage?: { caption?: string | null } | null
-  audioMessage?: object | null
+  /**
+   * What is read of an audio. ALL of it is written by the sender, so none of it is trusted: `fileLength` (bytes, to refuse
+   * a huge download), `mimetype` (to pick the format), `directPath` (where on WhatsApp's media host the file is: checked
+   * with `isSafeDirectPath`), `mediaKey` (the decryption key of the file: a secret, stored only in the account database).
+   * `url` is never used: it could point anywhere.
+   */
+  audioMessage?: {
+    fileLength?: WaNumber
+    mimetype?: string | null
+    directPath?: string | null
+    mediaKey?: Uint8Array | string | null
+    url?: string | null
+  } | null
   documentMessage?: { fileName?: string | null; title?: string | null; caption?: string | null } | null
   stickerMessage?: object | null
   locationMessage?: { name?: string | null; address?: string | null } | null

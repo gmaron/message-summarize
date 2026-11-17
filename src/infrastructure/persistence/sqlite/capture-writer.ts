@@ -1,5 +1,6 @@
 import type {
   ConversationHint,
+  DownloadDescriptor,
   EditOutcome,
   InsertResult,
   UnreadEffect,
@@ -9,6 +10,13 @@ import { MESSAGE_KINDS } from '../../../domain/model.js'
 import { unmaskedName } from '../../../domain/names.js'
 import type { Database } from './database.js'
 import { inTransaction } from './transaction.js'
+
+/**
+ * Clears the download descriptor of a row: the decryption key of the file is not kept a moment longer than the download
+ * needs it (it is cleared when the file is stored or the download failed for good).
+ */
+export const CLEAR_DESCRIPTOR =
+  'dl_direct_path = NULL, dl_media_key = NULL, dl_mimetype = NULL, dl_file_length = NULL, dl_attempts = 0, dl_next_attempt_at = NULL'
 
 /**
  * SQL condition inside the upsert of a message: the stored row is a provisional message created by an edit
@@ -87,9 +95,12 @@ export class SqliteCaptureWriter {
       const isNew = this.upsertMessageRow(message, hint, null)
       if (isNew) this.applyEffect(message.conversationId, effectIfNew, hint)
       const row = this.db
-        .prepare('SELECT transcript IS NOT NULL AS has FROM messages WHERE conversation_id = ? AND id = ?')
-        .get(message.conversationId, message.id) as { has: number }
-      return { isNew, hasTranscript: row.has === 1 }
+        .prepare(
+          `SELECT transcript IS NOT NULL AS has, transcribe_status IS NOT NULL AS handled
+           FROM messages WHERE conversation_id = ? AND id = ?`,
+        )
+        .get(message.conversationId, message.id) as { has: number; handled: number }
+      return { isNew, hasTranscript: row.has === 1, mediaHandled: row.handled === 1 }
     })
   }
 
@@ -186,9 +197,54 @@ export class SqliteCaptureWriter {
   }
 
   setTranscript(conversationId: string, id: string, transcript: string): boolean {
+    // A message that was waiting in the transcription queue leaves it (status 'done'); one that was not stays out.
     const result = this.db
-      .prepare('UPDATE messages SET transcript = ? WHERE conversation_id = ? AND id = ?')
+      .prepare(
+        `UPDATE messages SET transcript = ?,
+           transcribe_status = CASE WHEN transcribe_status IS NULL THEN NULL ELSE 'done' END,
+           transcribe_error = NULL
+         WHERE conversation_id = ? AND id = ?`,
+      )
       .run(transcript, conversationId, id)
+    return Number(result.changes) === 1
+  }
+
+  /** The file of an audio was stored: it joins the queue, unless it has a transcript (then it is just recorded). */
+  setMedia(conversationId: string, id: string, mediaRef: string): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE messages SET media_ref = ?,
+           transcribe_status = CASE WHEN transcript IS NULL THEN 'pending' ELSE 'done' END,
+           transcribe_error = NULL, ${CLEAR_DESCRIPTOR}
+         WHERE conversation_id = ? AND id = ? AND kind = 'audio'`,
+      )
+      .run(mediaRef, conversationId, id)
+    return Number(result.changes) === 1
+  }
+
+  /**
+   * How to download the audio is stored with it and it joins the DURABLE download queue (RNF-08). Only a new request:
+   * an audio with no transcript and no status yet. `mediaKey` is a secret and stays in this database only.
+   */
+  queueDownload(conversationId: string, id: string, descriptor: DownloadDescriptor): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE messages SET transcribe_status = 'download_pending', transcribe_error = NULL, dl_attempts = 0,
+           dl_direct_path = ?, dl_media_key = ?, dl_mimetype = ?, dl_file_length = ?
+         WHERE conversation_id = ? AND id = ? AND kind = 'audio' AND transcript IS NULL AND transcribe_status IS NULL`,
+      )
+      .run(descriptor.directPath, descriptor.mediaKey, descriptor.mimetype, descriptor.fileLength, conversationId, id)
+    return Number(result.changes) === 1
+  }
+
+  /** The download failed for good: recorded, descriptor cleared, not asked for again. A message with a transcript is left alone. */
+  setMediaFailure(conversationId: string, id: string, reason: string): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE messages SET transcribe_status = 'failed', transcribe_error = ?, ${CLEAR_DESCRIPTOR}
+         WHERE conversation_id = ? AND id = ? AND kind = 'audio' AND transcript IS NULL`,
+      )
+      .run(reason, conversationId, id)
     return Number(result.changes) === 1
   }
 

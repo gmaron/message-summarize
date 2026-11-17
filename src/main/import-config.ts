@@ -1,3 +1,5 @@
+import { basename } from 'node:path'
+import { findModelByFile } from '../infrastructure/transcription/index.js'
 import { type AppConfig, mergeConfigJson, parseConfig } from './config.js'
 
 type Obj = Record<string, unknown>
@@ -26,7 +28,7 @@ export interface PrivacyBlock {
 }
 
 /** Options of the previous tool that have no equivalent here, and why they do not matter (see the README). */
-const KNOWN_UNMAPPED = ['leerImagenes', 'diasDeAudiosDelHistorial', 'whisper', 'web']
+const KNOWN_UNMAPPED = ['leerImagenes', 'web']
 
 const isStringList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -48,9 +50,15 @@ const isStringList = (value: unknown): value is string[] =>
  * |                            | Ollama model is set: the previous tool fell back to Ollama when Claude failed) |
  * | claude.comando / .modelo   | provider.claudeCli.command / .model |
  * | ollama.url / .modelo / .contexto | provider.ollama.baseUrl / .model / .numCtx |
+ * | diasDeAudiosDelHistorial   | transcription.historyAudioDays     |
+ * | whisper.idioma             | transcription.language             |
+ * | whisper.modelo             | transcription.model, only when its file is `ggml-<name>.bin` of a known model (the
+ * |                            | file itself is not copied: `msum whisper download <name>` gets it) |
  *
- * `leerImagenes`, `diasDeAudiosDelHistorial`, `whisper`, `web` and any other option have no equivalent: they are
- * reported. The previous tool had no language, time zone or schedules in its configuration (the schedules lived in the
+ * Transcription is NEVER turned on by the import (`transcription.enabled` is not written): it starts downloading the
+ * audios of the account, so the user turns it on once the model is there.
+ *
+ * `leerImagenes`, `web` and any other option have no equivalent: they are reported. The previous tool had no language, time zone or schedules in its configuration (the schedules lived in the
  * cron of its sandbox or in launchd), so none of those is written.
  *
  * Only what differs from `baseline` (what the account would get from the installation's config.json) is written, and
@@ -79,6 +87,8 @@ export function mapLegacyConfig(
     'proveedor',
     'claude',
     'ollama',
+    'diasDeAudiosDelHistorial',
+    'whisper',
   ])
   for (const key of Object.keys(legacy)) if (!understood.has(key)) unmapped.push(key)
   for (const key of KNOWN_UNMAPPED) if (key in legacy && !unmapped.includes(key)) unmapped.push(key)
@@ -120,6 +130,23 @@ export function mapLegacyConfig(
     }
   }
   if (Object.keys(provider).length > 0) candidates.set('provider', { value: provider, from: 'proveedor' })
+
+  // Transcription: the days of history audio, the language and (when it is a known model) the model of whisper.
+  const transcription: Obj = {}
+  if ('diasDeAudiosDelHistorial' in legacy) transcription.historyAudioDays = legacy.diasDeAudiosDelHistorial
+  const whisper = isObject(legacy.whisper) ? legacy.whisper : {}
+  if ('idioma' in whisper) transcription.language = whisper.idioma
+  if (typeof whisper.modelo === 'string') {
+    const known = findModelByFile(basename(whisper.modelo))
+    if (known === undefined) unmapped.push('whisper.modelo')
+    else transcription.model = known.name
+  }
+  if (Object.keys(transcription).length > 0) {
+    candidates.set('transcription', {
+      value: transcription,
+      from: 'whisper' in legacy ? 'whisper' : 'diasDeAudiosDelHistorial',
+    })
+  }
 
   const { baseline } = installation
   const build = (): Obj => {
@@ -230,6 +257,18 @@ export function mapLegacyConfig(
     put(['ollama', 'model'], oll.model, baseline.provider.ollama.model)
     put(['ollama', 'numCtx'], oll.numCtx, baseline.provider.ollama.numCtx)
     if (Object.keys(out).length > 0) config.provider = out
+  }
+  const mappedTranscription = isObject(raw.transcription) ? raw.transcription : null
+  if (mappedTranscription !== null) {
+    const out: Obj = {}
+    for (const key of ['historyAudioDays', 'language', 'model'] as const) {
+      const value = mappedTranscription[key]
+      if (value !== undefined && differs(value, baseline.transcription[key])) {
+        out[key] = value
+        note(`transcription.${key}`)
+      }
+    }
+    if (Object.keys(out).length > 0) config.transcription = out
   }
 
   return { config, written, unmapped: [...new Set(unmapped)], invalid: [...new Set(invalid)], blocked }

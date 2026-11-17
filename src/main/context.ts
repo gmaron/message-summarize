@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Clock } from '../application/ports/clock.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
+import type { Transcriber } from '../application/ports/transcriber.js'
 import { type Catalog, getCatalog } from '../infrastructure/i18n/index.js'
+import type { WhisperModel } from '../infrastructure/transcription/index.js'
 import type { CliIo } from '../interfaces/cli/run.js'
 import { type AppConfig, describeConfigIssue, languageHint, loadEffectiveConfig } from './config.js'
 import type { Logger } from './logger.js'
@@ -31,10 +33,22 @@ export const DEFAULT_LINK_TIMING: LinkTiming = {
   pollMs: 500,
 }
 
+/** What running `<command> <arguments>` for a probe said. */
+export interface CommandProbe {
+  /** False when the program could not be started (it is not installed, or not executable). */
+  readonly started: boolean
+  /** True when it exited with code 0. */
+  readonly ok: boolean
+  /** The first non-empty line of what it printed (standard output, else standard error), or null. */
+  readonly line: string | null
+}
+
 /** What `doctor` asks of the outside world. Tests replace them. */
 export interface DoctorProbes {
   /** The output of `<command> --version`, or null when it could not be run. */
   commandVersion(command: string, env: NodeJS.ProcessEnv): Promise<string | null>
+  /** Runs `<command> <args>` and reports how it went. For programs that have no `--version` (whisper.cpp). */
+  commandProbe(command: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<CommandProbe>
   /** Whether an Ollama server answers at this base URL. */
   ollamaReachable(baseUrl: string): Promise<boolean>
 }
@@ -56,6 +70,14 @@ export interface CommandContext {
   readonly linkTiming: LinkTiming
   /** Replaces the configured providers. For tests. */
   readonly summarizer?: Summarizer | null
+  /** Replaces the transcriber built from the configuration (null: none). For tests. */
+  readonly transcriber?: Transcriber | null
+  /** How long `msum digest` waits for pending audios and how often it looks while observing a daemon. For tests. */
+  readonly transcriptionTiming?: { readonly waitMs?: number; readonly pollMs?: number }
+  /** Replaces `fetch` for the download of whisper models, so tests never reach the network. */
+  readonly fetch?: typeof fetch
+  /** Replaces the table of pinned whisper models (sizes and checksums). For tests, which cannot produce a 77 MB file. */
+  readonly whisperModels?: readonly WhisperModel[]
   /** Called right after `link`, `unlink`, `retry` or `import` takes the lock of an account. For tests: they widen that window. */
   readonly afterLock?: () => void | Promise<void>
   /** Called after each step of an import (session, database, config, built, renamed). For tests: they interrupt it. */

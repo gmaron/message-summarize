@@ -154,6 +154,8 @@ export interface Catalog {
       notOneOf(option: string, allowed: string): string
       required(option: string): string
       invalidTimezone(option: string): string
+      /** A transcription language that is neither "auto" nor an ISO 639 code (RF-23). */
+      invalidLanguage(option: string): string
       readonly noProvider: string
       promptFile(path: string): string
     }
@@ -205,6 +207,27 @@ export interface Catalog {
       loggedOut(id: string): string
       failed(reason: string): string
       readonly timeout: string
+    }
+    /** `msum whisper models|download` (RF-22): the whisper.cpp models of the installation. */
+    readonly whisper: {
+      readonly modelsHeader: string
+      /** `name` and `size` are already padded to the width of their column. */
+      modelRow(name: string, size: string, installed: boolean): string
+      /** Printed under the list: how to download one, and where from (RNF-01). */
+      modelsHint(dir: string): string
+      downloading(name: string, size: string, from: string): string
+      /** One line of progress, at every tenth of the file. The sizes are already formatted. */
+      progress(percent: number, received: string, total: string): string
+      done(name: string, path: string): string
+      alreadyThere(name: string, path: string): string
+      /** What to do next, after a download: turn it on in the configuration. */
+      enableHint(name: string): string
+      unknownModel(name: string, known: string): string
+      httpError(status: number): string
+      readonly networkError: string
+      readonly sizeError: string
+      readonly checksumError: string
+      writeError(dir: string): string
     }
     readonly unlink: {
       confirm(id: string): string
@@ -317,7 +340,35 @@ export interface Catalog {
         readonly whatsapp: string
         readonly accounts: string
         readonly schedules: string
+        readonly transcription: string
+        readonly whisper: string
+        readonly ffmpeg: string
+        readonly whisperModel: string
+        readonly mediaFiles: string
       }
+      /** The downloaded audios of the account take (nearly) all the space they are allowed (`transcription.maxMediaMb`). */
+      mediaFull(usedMb: number, capMb: number): string
+      readonly mediaFullFix: string
+      /** Transcription is off: audios show as not transcribed, and that is fine (RF-21). */
+      readonly transcriptionOff: string
+      transcriptionOn(language: string): string
+      whisperOk(version: string | null): string
+      whisperMissing(command: string): string
+      readonly whisperFix: string
+      ffmpegOk(version: string | null): string
+      ffmpegMissing(command: string): string
+      readonly ffmpegFix: string
+      readonly modelNone: string
+      readonly modelNoneFix: string
+      modelMissing(path: string): string
+      readonly modelMissingFix: string
+      /** The file is there and its SHA-256 is the pinned one of a known model. */
+      modelVerified(path: string): string
+      /** The file is there but no checksum is pinned for it (a model of your own). */
+      modelUnverified(path: string): string
+      readonly modelUnverifiedFix: string
+      modelBadChecksum(path: string): string
+      readonly modelBadChecksumFix: string
       /** Work directories of imports that died, which hold a copy of a WhatsApp session. */
       staleImport(names: string): string
       readonly staleImportFix: string

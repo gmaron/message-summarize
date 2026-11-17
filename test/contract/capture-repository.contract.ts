@@ -30,13 +30,102 @@ export function describeCaptureRepositoryContract(backend: PersistenceBackend): 
       it('says whether the stored message has a transcript', async () => {
         const f = make()
         const audio = message({ id: 'a', kind: 'audio', text: '[audio]' })
-        expect(await f.repository.insertMessage(audio)).toEqual({ isNew: true, hasTranscript: false })
+        expect(await f.repository.insertMessage(audio)).toEqual({
+          isNew: true,
+          hasTranscript: false,
+          mediaHandled: false,
+        })
         await f.repository.setTranscript('c1', 'a', 'hello')
-        expect(await f.repository.insertMessage(audio)).toEqual({ isNew: false, hasTranscript: true })
+        expect(await f.repository.insertMessage(audio)).toEqual({
+          isNew: false,
+          hasTranscript: true,
+          mediaHandled: false,
+        })
         expect(await f.repository.insertMessage(message({ id: 'b', kind: 'audio', transcript: 't' }))).toEqual({
           isNew: true,
           hasTranscript: true,
+          mediaHandled: false,
         })
+      })
+
+      it('records the file of an audio (RF-15): it is handled, and a replay does not ask for it again', async () => {
+        const f = make()
+        const audio = message({ id: 'a', kind: 'audio', text: '[audio]' })
+        await f.repository.insertMessage(audio)
+        expect(await f.repository.setMedia('c1', 'a', 'file.ogg')).toBe(true)
+        expect((await f.repository.insertMessage(audio)).mediaHandled).toBe(true)
+        expect(await f.repository.setMedia('c1', 'zzz', 'file.ogg')).toBe(false)
+        // Only an audio has a file.
+        await f.repository.insertMessage(message({ id: 't', text: 'hi' }))
+        expect(await f.repository.setMedia('c1', 't', 'file.ogg')).toBe(false)
+      })
+
+      it('queues the download of an audio with its descriptor, once, and it is handled from then on', async () => {
+        const f = make()
+        const descriptor = {
+          directPath: '/v/t62.7117-24/1_2_n.enc?ccb=11-4',
+          mediaKey: new Uint8Array(32).fill(9),
+          mimetype: 'audio/ogg; codecs=opus',
+          fileLength: 321,
+        }
+        const audio = message({ id: 'a', kind: 'audio', text: '[audio]' })
+        await f.repository.insertMessage(audio)
+        expect(await f.repository.queueDownload('c1', 'a', descriptor)).toBe(true)
+        expect(f.rawAudio('c1', 'a')).toMatchObject({ status: 'download_pending', hasDescriptor: true, attempts: 0 })
+        expect((await f.repository.insertMessage(audio)).mediaHandled).toBe(true)
+        // asked again: nothing changes
+        expect(await f.repository.queueDownload('c1', 'a', { ...descriptor, directPath: '/v/other' })).toBe(false)
+        expect((await f.downloads.nextDownload(Date.now()))?.descriptor).toEqual(descriptor)
+      })
+
+      it('does not queue a download for an unknown message, a message that is not an audio, or one that has a transcript', async () => {
+        const f = make()
+        const descriptor = { directPath: '/v/x', mediaKey: new Uint8Array(32), mimetype: 'audio/ogg', fileLength: null }
+        await f.repository.insertMessage(message({ id: 't', text: 'hi' }))
+        await f.repository.insertMessage(message({ id: 'done', kind: 'audio', transcript: 'already' }))
+        expect(await f.repository.queueDownload('c1', 'zzz', descriptor)).toBe(false)
+        expect(await f.repository.queueDownload('c1', 't', descriptor)).toBe(false)
+        expect(await f.repository.queueDownload('c1', 'done', descriptor)).toBe(false)
+        expect(await f.downloads.countDownloads()).toBe(0)
+      })
+
+      it('storing the file or recording a failure clears the descriptor, the decryption key included', async () => {
+        const f = make()
+        const descriptor = {
+          directPath: '/v/x',
+          mediaKey: new Uint8Array(32).fill(5),
+          mimetype: 'audio/ogg',
+          fileLength: 9,
+        }
+        for (const id of ['stored', 'failed']) {
+          await f.repository.insertMessage(message({ id, kind: 'audio', text: '[audio]' }))
+          await f.repository.queueDownload('c1', id, descriptor)
+          expect(f.rawAudio('c1', id)?.hasDescriptor).toBe(true)
+        }
+        await f.repository.setMedia('c1', 'stored', 'f.ogg')
+        await f.repository.setMediaFailure('c1', 'failed', 'invalid-media-path')
+        expect(f.rawAudio('c1', 'stored')).toMatchObject({ status: 'pending', mediaRef: 'f.ogg', hasDescriptor: false })
+        expect(f.rawAudio('c1', 'failed')).toMatchObject({
+          status: 'failed',
+          error: 'invalid-media-path',
+          hasDescriptor: false,
+        })
+      })
+
+      it('records a failed download on the audio, which is then handled too', async () => {
+        const f = make()
+        const audio = message({ id: 'a', kind: 'audio', text: '[audio]' })
+        await f.repository.insertMessage(audio)
+        expect(await f.repository.setMediaFailure('c1', 'a', 'too-large')).toBe(true)
+        expect((await f.repository.insertMessage(audio)).mediaHandled).toBe(true)
+        expect(await f.repository.setMediaFailure('c1', 'zzz', 'timeout')).toBe(false)
+      })
+
+      it('does not record a failure on an audio that has a transcript already', async () => {
+        const f = make()
+        await f.repository.insertMessage(message({ id: 'a', kind: 'audio', transcript: 'done already' }))
+        expect(await f.repository.setMediaFailure('c1', 'a', 'timeout')).toBe(false)
+        expect((await f.source.messagesInWindow('c1', all))[0]?.transcript).toBe('done already')
       })
 
       it('keeps position, fills a missing text and never nulls one', async () => {

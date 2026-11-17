@@ -11,6 +11,9 @@ import {
 /** The `schedule` command with its subcommand. */
 export type ScheduleCommand = Extract<Command, { name: 'schedule' }>
 
+/** The `whisper` command with its subcommand. */
+export type WhisperCommand = Extract<Command, { name: 'whisper' }>
+
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
   out(line: string): void
@@ -30,6 +33,7 @@ export interface CliHandlers {
   import(args: ImportArgs): Promise<number>
   accounts(): Promise<number>
   schedule(command: ScheduleCommand): Promise<number>
+  whisper(command: WhisperCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -89,6 +93,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.accounts()
     case 'schedule':
       return handlers.schedule(command)
+    case 'whisper':
+      return handlers.whisper(command)
   }
 }
 

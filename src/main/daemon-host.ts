@@ -385,9 +385,17 @@ export class DaemonHost {
         env: this.ctx.env,
         clock: this.ctx.clock,
         ...(this.ctx.summarizer === undefined ? {} : { summarizer: this.ctx.summarizer }),
+        ...(this.ctx.transcriber === undefined ? {} : { transcriber: this.ctx.transcriber }),
+        onTranscription: (outcome) =>
+          (outcome === 'transcribed' ? logger.info : logger.warn).call(logger, 'transcription.audio', {
+            reason: outcome,
+          }),
       })
       const connection = await this.ctx.connectionFactory(runtime, {
         onWarning: (code) => logger.warn('adapter.warning', { code }),
+        // Only a fixed word: never the audio, its key or its path.
+        onDownload: (outcome) =>
+          (outcome === 'downloaded' ? logger.info : logger.warn).call(logger, 'media.download', { reason: outcome }),
       })
       const guarded = this.guard(id, connection)
       const daemon = new Daemon({
@@ -439,6 +447,7 @@ export class DaemonHost {
         return connection.status
       },
       selfChat: () => connection.selfChat(),
+      kickDownloads: () => connection.kickDownloads?.(),
       onStatus: (listener) =>
         connection.onStatus((status) => {
           try {

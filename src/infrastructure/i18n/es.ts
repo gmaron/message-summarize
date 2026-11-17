@@ -126,6 +126,9 @@ Comandos:
   status [--account <id>]             Muestra el estado: cuentas, último digest, envíos pendientes y próximos horarios
   doctor [--account <id>]             Revisa que todo esté en orden y explica cómo arreglarlo
   accounts                            Lista las cuentas de esta instalación y su estado
+  whisper models                      Lista los modelos de whisper.cpp (para transcribir audios en tu máquina) con su tamaño
+  whisper download <nombre>           Descarga un modelo al directorio de datos y verifica su SHA-256. Es la única descarga
+                                      que hace el programa, desde huggingface.co, y solo cuando la pedís
   help                                Muestra esta ayuda
 
 Cuentas: link, unlink, daemon y digest trabajan sobre una cuenta, elegida con --account <id> (letras minúsculas,
@@ -160,9 +163,29 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       required: (option) => `Falta la opción "${option}".`,
       invalidTimezone: (option) =>
         `La opción "${option}" no es una zona horaria válida (por ejemplo "America/Argentina/Buenos_Aires").`,
+      invalidLanguage: (option) =>
+        `La opción "${option}" tiene que ser "auto" (detectar el idioma) o un código de idioma como "es" o "en".`,
       noProvider:
         'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli" u "ollama") en la configuración.',
       promptFile: (path) => `No se pudo leer el archivo del prompt (promptFile): ${path}`,
+    },
+    whisper: {
+      modelsHeader: 'Modelos de whisper.cpp (formato ggml). Los más grandes transcriben mejor y más lento:',
+      modelRow: (name, size, installed) => `  ${name}  ${size}  ${installed ? '[descargado]' : ''}`.trimEnd(),
+      modelsHint: (dir) =>
+        `Descargá uno con "msum whisper download <nombre>" (a ${dir}). "base" o "small" es un buen comienzo para notas de voz.`,
+      downloading: (name, size, from) => `Descargando el modelo "${name}" (${size}) desde ${from}`,
+      progress: (percent, received, total) => `  ${percent}%  (${received} de ${total})`,
+      done: (name, path) => `Se descargó el modelo "${name}" y su checksum SHA-256 es correcto: ${path}`,
+      alreadyThere: (name, path) => `El modelo "${name}" ya está y su checksum es correcto: ${path}`,
+      enableHint: (name) =>
+        `Para usarlo, poné "transcription": { "enabled": true, "model": "${name}" } en config.json (mirá el README).`,
+      unknownModel: (name, known) => `"${name}" no es un modelo conocido. Modelos conocidos: ${known}.`,
+      httpError: (status) => `El servidor respondió con un error (HTTP ${status}). No se guardó nada.`,
+      networkError: 'La conexión falló o se cortó. No se guardó nada; probá de nuevo.',
+      sizeError: 'El archivo no tiene el tamaño esperado. No se guardó nada.',
+      checksumError: 'El checksum del archivo descargado no es el esperado. Se descartó el archivo.',
+      writeError: (dir) => `No se pudo escribir el modelo en ${dir}. No se guardó nada.`,
     },
     unexpectedError: (code) => `Algo salió mal (${code}).`,
     cannotCreateDataDir: (path) => `No se pudo crear el directorio de datos: ${path}`,
@@ -405,7 +428,38 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         whatsapp: 'WhatsApp',
         accounts: 'Cuentas',
         schedules: 'Horarios',
+        transcription: 'Transcripción',
+        whisper: 'whisper.cpp',
+        ffmpeg: 'ffmpeg',
+        whisperModel: 'Modelo de whisper',
+        mediaFiles: 'Archivos de audio',
       },
+      mediaFull: (usedMb, capMb) =>
+        `los audios descargados ocupan ${usedMb} MB de los ${capMb} MB permitidos: no se aceptan audios nuevos hasta que se transcriban algunos`,
+      mediaFullFix:
+        'los audios se borran al transcribirse, así que una carpeta llena significa que se acumulan: revisá que whisper, ffmpeg y el modelo funcionen (mirá arriba), o subí "transcription.maxMediaMb".',
+      transcriptionOff: 'desactivada: los audios aparecen como "(audio sin transcribir)" y todo lo demás funciona',
+      transcriptionOn: (language) => `activada (idioma: ${language === 'auto' ? 'detectado en cada audio' : language})`,
+      whisperOk: (version) => (version === null ? 'encontrado' : `encontrado (${version})`),
+      whisperMissing: (command) => `no se pudo ejecutar "${command}"`,
+      whisperFix:
+        'instalá whisper.cpp (trae "whisper-cli") o poné la ruta en "transcription.whisperCommand". Mientras tanto los audios quedan sin transcribir.',
+      ffmpegOk: (version) => (version === null ? 'encontrado' : `encontrado (${version})`),
+      ffmpegMissing: (command) => `no se pudo ejecutar "${command}"`,
+      ffmpegFix:
+        'instalá ffmpeg (convierte los audios) o poné la ruta en "transcription.ffmpegCommand". Mientras tanto los audios quedan sin transcribir.',
+      modelNone: 'no hay modelo elegido',
+      modelNoneFix: 'corré "msum whisper download base" y poné "transcription.model" en "base" en config.json.',
+      modelMissing: (path) => `el archivo no existe: ${path}`,
+      modelMissingFix:
+        'corré "msum whisper download <nombre>" (mirá "msum whisper models") o corregí "transcription.model". Mientras tanto los audios quedan sin transcribir.',
+      modelVerified: (path) => `${path} (checksum correcto)`,
+      modelUnverified: (path) => `${path} (no hay un checksum con qué compararlo)`,
+      modelUnverifiedFix:
+        'no es uno de los modelos conocidos, así que no se pudo verificar: asegurate de que sea el archivo que querés.',
+      modelBadChecksum: (path) =>
+        `${path} no coincide con el checksum de su modelo: el archivo está dañado o lo cambiaron`,
+      modelBadChecksumFix: 'borrá el archivo y descargalo de nuevo con "msum whisper download <nombre>".',
       staleImport: (names) =>
         `quedaron en accounts/ directorios de importaciones que no terminaron: ${names}. Cada uno tiene una copia de una sesión de WhatsApp y de mensajes`,
       staleImportFix:

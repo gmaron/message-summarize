@@ -1,5 +1,8 @@
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
+import { basename } from 'node:path'
 import { type Catalog, getCatalog } from '../../infrastructure/i18n/index.js'
+import { findModelByFile, resolveModelPath, sha256File } from '../../infrastructure/transcription/index.js'
+import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { openInstallation } from '../accounts.js'
@@ -142,6 +145,64 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
                 accountTexts.providerFix(kind),
               )
             } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, provider.ollama.baseUrl))
+          }
+        }
+
+        // Transcription (RF-81, RF-21): off is fine. On, the program, ffmpeg and the model must be there, or audios stay
+        // untranscribed (the product works either way, but the user asked for transcripts).
+        const transcription = loaded.value.transcription
+        if (!transcription.enabled) ok(label(accountTexts.names.transcription), accountTexts.transcriptionOff)
+        else {
+          ok(label(accountTexts.names.transcription), accountTexts.transcriptionOn(transcription.language))
+          // whisper.cpp has no stable `--version`: the program counts as found when it can be started at all, and the
+          // version is shown only when it answered the flag.
+          const whisper = await ctx.probes.commandProbe(transcription.whisperCommand, ['--version'], ctx.env)
+          if (!whisper.started) {
+            fail(
+              label(accountTexts.names.whisper),
+              accountTexts.whisperMissing(transcription.whisperCommand),
+              accountTexts.whisperFix,
+            )
+          } else ok(label(accountTexts.names.whisper), accountTexts.whisperOk(whisper.ok ? whisper.line : null))
+          const ffmpeg = await ctx.probes.commandProbe(transcription.ffmpegCommand, ['-version'], ctx.env)
+          if (!ffmpeg.started) {
+            fail(
+              label(accountTexts.names.ffmpeg),
+              accountTexts.ffmpegMissing(transcription.ffmpegCommand),
+              accountTexts.ffmpegFix,
+            )
+          } else ok(label(accountTexts.names.ffmpeg), accountTexts.ffmpegOk(ffmpeg.ok ? ffmpeg.line : null))
+          const modelName = label(accountTexts.names.whisperModel)
+          if (transcription.model === null) fail(modelName, accountTexts.modelNone, accountTexts.modelNoneFix)
+          else {
+            const path = resolveModelPath(layout.modelsDir, layout.dataDir, transcription.model)
+            if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) {
+              fail(modelName, accountTexts.modelMissing(path), accountTexts.modelMissingFix)
+            } else {
+              const known = findModelByFile(basename(path), ctx.whisperModels)
+              if (known === undefined) {
+                io.out(
+                  accountTexts.warn(modelName, accountTexts.modelUnverified(path), accountTexts.modelUnverifiedFix),
+                )
+              } else if ((await sha256File(path).catch(() => null)) === known.sha256) {
+                ok(modelName, accountTexts.modelVerified(path))
+              } else fail(modelName, accountTexts.modelBadChecksum(path), accountTexts.modelBadChecksumFix)
+            }
+          }
+          // The audios are deleted once transcribed: a folder that is (nearly) full means they pile up. New ones are
+          // refused at the cap, so the user is told before that happens.
+          if (account !== null) {
+            const used = await mediaDirectoryBytes(account.mediaDir)
+            const cap = transcription.maxMediaMb * 1024 * 1024
+            if (used >= cap * 0.9) {
+              io.out(
+                accountTexts.warn(
+                  label(accountTexts.names.mediaFiles),
+                  accountTexts.mediaFull(Math.round(used / 1024 / 1024), transcription.maxMediaMb),
+                  accountTexts.mediaFullFix,
+                ),
+              )
+            }
           }
         }
       }

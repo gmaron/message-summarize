@@ -36,6 +36,26 @@ describe('parseCommandLine', () => {
     expect(parse('link', '--account')).toEqual({ ok: false, error: { kind: 'missingValue', value: '--account' } })
   })
 
+  it('parses whisper: the list of models by default, and download with a model name', () => {
+    expect(parse('whisper')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
+    expect(parse('whisper', 'models')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
+    expect(parse('whisper', 'download', 'base')).toEqual({
+      ok: true,
+      value: { name: 'whisper', action: 'download', model: 'base' },
+    })
+    expect(parse('whisper', 'download')).toEqual({ ok: false, error: { kind: 'missingValue', value: '<name>' } })
+    expect(parse('whisper', 'download', 'base', 'small')).toEqual({
+      ok: false,
+      error: { kind: 'unexpectedArgument', value: 'small' },
+    })
+    expect(parse('whisper', 'models', 'x')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'x' } })
+    expect(parse('whisper', 'remove')).toEqual({ ok: false, error: { kind: 'unknownSubcommand', value: 'remove' } })
+    expect(parse('whisper', 'models', '--account', 'x')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--account' },
+    })
+  })
+
   it('refuses an account id that is not safe as a directory name', () => {
     const bad = ['', 'Work', '-a', 'a b', '../x', 'a/b', 'a.b', '.', '..', 'a'.repeat(33), 'ñandú', 'a\nb']
     for (const id of bad) {
@@ -167,6 +187,7 @@ describe('runCli', () => {
     schedule: handler('schedule'),
     retry: handler('retry'),
     import: handler('import'),
+    whisper: handler('whisper'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {

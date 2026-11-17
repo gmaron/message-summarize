@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import type { CaptureRepository } from '../../src/application/ports/capture-repository.js'
 import type { DigestSource } from '../../src/application/ports/digest-source.js'
 import type { DigestRecord, DigestStore } from '../../src/application/ports/digest-store.js'
+import type { DownloadQueue } from '../../src/application/ports/download-queue.js'
+import type { TranscriptionStore } from '../../src/application/ports/transcription-store.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../src/domain/model.js'
 import {
   type Database,
@@ -12,6 +14,7 @@ import {
   SqliteCaptureWriter,
   SqliteDigestSource,
   SqliteDigestStore,
+  SqliteTranscriptionStore,
 } from '../../src/infrastructure/persistence/sqlite/index.js'
 import { InMemorySource, InMemoryStore } from './application-fakes.js'
 import { InMemoryCaptureRepository } from './capture-fakes.js'
@@ -47,9 +50,27 @@ export interface StoreFixture {
   close(): void
 }
 
+/** What a backend holds about the download and transcription of one audio. */
+export interface RawAudioRow {
+  readonly status: string | null
+  readonly mediaRef: string | null
+  readonly error: string | null
+  /** True when any of the download descriptor (path, key, mimetype, length) is still stored. */
+  readonly hasDescriptor: boolean
+  readonly attempts: number
+}
+
 /** A capture repository and the read port over the same data, with a controllable clock for unread stamps. */
 export interface CaptureFixture {
   readonly repository: CaptureRepository
+  /** The transcription queue over the same data (RF-15). */
+  readonly transcription: TranscriptionStore
+  /** The durable download queue over the same data (RF-15, RNF-08). */
+  readonly downloads: DownloadQueue
+  /** Reads the raw row of an audio: what the database really holds (the descriptor columns, the attempts...). */
+  rawAudio(conversationId: string, messageId: string): RawAudioRow | null
+  /** Damages the stored descriptor of a queued download (no path, no key), as a bug or a bad write could. */
+  corruptDescriptor(conversationId: string, messageId: string): void
   readonly source: DigestSource
   readonly clock: { time: number }
   close(): void
@@ -68,7 +89,30 @@ export const inMemoryBackend: PersistenceBackend = {
   capture() {
     const clock = { time: 1_000 }
     const repository = new InMemoryCaptureRepository(() => clock.time)
-    return { repository, source: repository.source, clock, close() {} }
+    return {
+      repository,
+      transcription: repository,
+      downloads: repository,
+      rawAudio: (conversationId, messageId) => {
+        const media = repository.media.get(JSON.stringify([conversationId, messageId]))
+        if (media === undefined) return null
+        return {
+          status: media.status,
+          mediaRef: media.ref,
+          error: media.error,
+          hasDescriptor: media.descriptor !== null,
+          attempts: media.attempts,
+        }
+      },
+      corruptDescriptor: (conversationId, messageId) => {
+        const key = JSON.stringify([conversationId, messageId])
+        const media = repository.media.get(key)
+        if (media !== undefined) repository.media.set(key, { ...media, descriptor: null })
+      },
+      source: repository.source,
+      clock,
+      close() {},
+    }
   },
   source() {
     const source = new InMemorySource()
@@ -140,7 +184,38 @@ export const sqliteBackend: PersistenceBackend = {
     const db = temp.open()
     const clock = { time: 1_000 }
     const repository = new SqliteCaptureRepository(new SqliteCaptureWriter(db, () => clock.time))
-    return { repository, source: new SqliteDigestSource(db), clock, close: () => temp.dispose() }
+    return {
+      repository,
+      transcription: new SqliteTranscriptionStore(db),
+      downloads: new SqliteTranscriptionStore(db),
+      rawAudio: (conversationId, messageId) => {
+        const row = db
+          .prepare(
+            `SELECT transcribe_status AS status, media_ref AS mediaRef, transcribe_error AS error, dl_attempts AS attempts,
+                    (dl_direct_path IS NOT NULL OR dl_media_key IS NOT NULL OR dl_mimetype IS NOT NULL
+                     OR dl_file_length IS NOT NULL) AS hasDescriptor
+             FROM messages WHERE conversation_id = ? AND id = ?`,
+          )
+          .get(conversationId, messageId) as
+          | {
+              status: string | null
+              mediaRef: string | null
+              error: string | null
+              attempts: number
+              hasDescriptor: number
+            }
+          | undefined
+        return row === undefined ? null : { ...row, hasDescriptor: row.hasDescriptor === 1 }
+      },
+      corruptDescriptor: (conversationId, messageId) => {
+        db.prepare(
+          'UPDATE messages SET dl_direct_path = NULL, dl_media_key = NULL WHERE conversation_id = ? AND id = ?',
+        ).run(conversationId, messageId)
+      },
+      source: new SqliteDigestSource(db),
+      clock,
+      close: () => temp.dispose(),
+    }
   },
   source() {
     const temp = new TempDatabase()

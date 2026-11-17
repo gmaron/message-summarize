@@ -145,6 +145,7 @@ export async function buildImport(options: BuildImportOptions): Promise<ImportRe
     dir: workDir,
     dbFile,
     authDir,
+    mediaDir: join(workDir, 'media'),
     qrFile: join(workDir, 'qr.png'),
     blockedFile: join(workDir, 'blocked.json'),
     configFile: join(workDir, 'config.json'),

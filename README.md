@@ -39,9 +39,60 @@ A running daemon picks the changes up within about five seconds, with no restart
 
 4. **`msum digest --dry-run`** generates a digest now and prints it, without saving or sending anything. Without `--dry-run` the digest is queued and the running daemon delivers it. It does not open a WhatsApp connection (the daemon owns the session). Options: `--hours N`, `--from "YYYY-MM-DD HH:MM"`, `--to "YYYY-MM-DD HH:MM"`.
 
-Other commands: `msum status` (account, last digest, pending deliveries, next runs), `msum doctor` (checks Node, permissions, configuration, provider and link) and `msum unlink`, which **deletes all the data of the account** (its messages, the digest history, pending deliveries and the WhatsApp session; the configuration stays) and asks for confirmation. Afterwards, also remove the device on the phone (WhatsApp, Settings > Linked devices).
+Other commands: `msum status` (account, last digest, pending deliveries, next runs), `msum doctor` (checks Node, permissions, configuration, provider, link and, when it is on, transcription), `msum whisper models|download <name>` (see [Transcribe voice notes](#transcribe-voice-notes-optional)) and `msum unlink`, which **deletes all the data of the account** (its messages, the audios it downloaded, the digest history, pending deliveries and the WhatsApp session; the configuration stays) and asks for confirmation. Afterwards, also remove the device on the phone (WhatsApp, Settings > Linked devices).
 
 Everything stays on your machine, in the data directory (permissions restricted to your user), except what the LLM provider you chose receives. The command-line texts are in Spanish or English (`language` in `config.json`).
+
+## Transcribe voice notes (optional)
+
+Off by default. When it is on, the voice notes and audios that arrive **while the daemon is connected**, and those of the **last 14 days of history** that WhatsApp sends when you link (`historyAudioDays`; older ones stay as `🎤 (audio not transcribed)`), are downloaded from WhatsApp into `accounts/<id>/media/` (directory 0700, files 0600), transcribed **on your machine** with [whisper.cpp](https://github.com/ggml-org/whisper.cpp), and the digest shows the text where it would say `🎤 (audio not transcribed)`. The audio is never sent to any service. **What is kept is the text:** the audio file is deleted as soon as it is transcribed, or has failed for good. `msum unlink` deletes anything left, with the rest of the account.
+
+With transcription off, or with whisper, ffmpeg or the model missing, **everything else works the same** and audios show as `🎤 (audio not transcribed)`; `msum doctor` says what is missing. An audio that cannot be transcribed is recorded as failed and not tried again.
+
+**Limits, because the audio comes from other people:**
+
+- Downloads only come from WhatsApp's own media host, and only for a message that carries a plain WhatsApp media path; anything else the sender writes in the message (an address, a host) is ignored and the audio is recorded as failed (`invalid-media-path`).
+- A file bigger than 25 MB is not downloaded; a download is cut after 60 seconds; and the audios an account keeps on disk may not exceed `maxMediaMb` (500 by default; past it new ones are refused, `media-cap`, and `msum doctor` warns before that).
+- **Nothing is lost to a restart.** The audios to download wait in a queue kept in the account's database (with what it takes to download each one), and the daemon works through it one at a time, oldest first: a first link with hundreds of audios just takes a while, and memory holds one audio at a time. A download cut short by a stop, a restart or a dropped connection stays queued and is resumed. A network failure is tried again on the next sweep (every 30 seconds), up to 5 times, and then the audio is recorded as failed (`download-failed`); media that WhatsApp no longer has (`expired`), a file that is too big or a full folder fail at once. The decryption key of each file lives only in that database while it waits, and is deleted as soon as the file is stored or the download has failed for good; it is never written to the logs.
+- Only the audio formats of WhatsApp (Ogg Opus voice notes, MP3, M4A/MP4, AAC, AMR) are converted. ffmpeg runs with its input format forced, only able to read a file (`-protocol_whitelist file`), reading at most 30 minutes (`-t 1800`) and writing at most about 60 MB (`-fs`).
+
+To turn it on:
+
+1. **Install whisper.cpp**, which provides the `whisper-cli` program (for example `brew install whisper-cpp` on macOS, or build it from source following its README on Linux).
+2. **Install ffmpeg** (`brew install ffmpeg`, `apt install ffmpeg`...): it converts the audio to the format whisper reads.
+3. **Download a model:** `msum whisper models` lists the known ggml models with their sizes, and `msum whisper download base` downloads one into `<data directory>/models/`, showing its progress and verifying a pinned SHA-256 checksum. A file that does not match is discarded and nothing is left behind. `base` and `small` are a good start for voice notes; bigger models are more accurate and slower.
+4. **Turn it on** in `config.json` (or in an account's own file):
+
+   ```json
+   "transcription": { "enabled": true, "model": "base", "language": "auto" }
+   ```
+
+   | Option | Default | Meaning |
+   |---|---|---|
+   | `enabled` | `false` | Turns transcription on. |
+   | `model` | none | A model name in `<data directory>/models/` (`base`, `small.en`...), or the path of a ggml file. |
+   | `language` | `auto` | `auto` detects the language of each audio; or a code such as `es` or `en`. Each account can have its own. |
+   | `whisperCommand` | `whisper-cli` | The whisper.cpp program (a name on the `PATH`, or a path). |
+   | `ffmpegCommand` | `ffmpeg` | The ffmpeg program. |
+   | `timeoutMs` | `300000` | The most one audio may take, ffmpeg included. A program that takes longer is killed. |
+   | `historyAudioDays` | `14` | Audios of the history of the last N days are downloaded and transcribed too. |
+   | `maxMediaMb` | `500` | The most the downloaded audios of an account may take together, in MB. |
+
+**One whisper at a time in the whole program,** however many accounts there are: audios are transcribed in the background, in order, as they arrive. Right before each digest, the audios of its window that are still waiting are transcribed first, and the digest waits for them for at most two minutes: what is not ready goes out as not transcribed and is finished afterwards.
+
+**`msum digest` and the daemon.** While the daemon runs, it owns the transcription: `msum digest` does not run whisper, it only waits (the same two minutes at most) for the daemon to finish the audios of its window. Without a daemon, `msum digest` transcribes by itself. This also holds for `--dry-run`: a transcript is captured data, like a message, not a result of the digest, so a preview may store it, and it still moves no pointer and writes nothing to the history or to the outbox.
+
+The programs run with no shell, in an empty temporary directory, with a minimal environment, and are killed if they exceed the time limit. If the daemon itself is killed with `SIGKILL` nothing can kill them for it (Node cannot ask the system for that), so a running audio finishes by itself; a normal stop (Ctrl+C, `SIGTERM`) kills them.
+
+## What the program connects to
+
+Nothing is sent anywhere except:
+
+- **WhatsApp**, through the connection of your own account (including the download of the audios you receive, when transcription is on).
+- **The LLM provider you chose** (and, with Ollama, the URL you configured).
+- **Hugging Face, only when you run `msum whisper download <name>`:** the model is fetched from the official whisper.cpp repository, `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-<name>.bin`. Hugging Face answers with a redirect to its content network: a request to that URL ends at **`us.aws.cdn.hf.co`** (checked with a `HEAD` request when this was written). The program follows redirects itself, one at a time, and only to `https` addresses on `huggingface.co` or `*.hf.co`; any other host is refused. Nothing is sent but the request for that file, and the **checksum (SHA-256) and size of every model are pinned in the program**: a file that does not match is discarded.
+
+There is no telemetry, and transcription never opens a network connection.
 
 ## Import from the previous tool
 

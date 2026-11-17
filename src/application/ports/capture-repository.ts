@@ -25,11 +25,28 @@ export type EditOutcome = 'applied' | 'inserted' | 'ignored'
  */
 export type UnreadEffect = 'none' | 'increment' | 'markRead'
 
+/**
+ * What it takes to download one audio, as the platform gave it. Minimal: the place of the file and the key to decrypt
+ * it (Baileys' download needs nothing else for an audio; it does not check the hashes). `mediaKey` is the decryption
+ * key of that one file: a secret. It lives only in the account database (0600) while the download is queued, is
+ * cleared when the file is stored or the download failed for good, and is never logged or printed.
+ */
+export interface DownloadDescriptor {
+  /** Already checked: a plain path on the platform's media host (the adapter refuses anything else before queueing). */
+  readonly directPath: string
+  readonly mediaKey: Uint8Array
+  readonly mimetype: string
+  /** Bytes, when the sender's phone says so. */
+  readonly fileLength: number | null
+}
+
 export interface InsertResult {
   /** True when the message was not stored before. */
   readonly isNew: boolean
   /** True when the stored message has a transcript after the insert (RF-15: no need to download its audio again). */
   readonly hasTranscript: boolean
+  /** True when the file of the audio was stored before, or its download failed before: it is not downloaded again. */
+  readonly mediaHandled: boolean
 }
 
 /**
@@ -95,6 +112,25 @@ export interface CaptureRepository {
 
   /** Returns false when the message is unknown. */
   setTranscript(conversationId: string, messageId: string, transcript: string): Promise<boolean>
+
+  /**
+   * RF-15, RNF-08: stores how to download the audio (`descriptor`) and puts it in the DURABLE download queue
+   * (`DownloadQueue`), so a restart loses nothing. Only for an audio with no transcript and nothing asked before; false
+   * otherwise (unknown message, not an audio, already queued or handled).
+   */
+  queueDownload(conversationId: string, messageId: string, descriptor: DownloadDescriptor): Promise<boolean>
+
+  /**
+   * RF-15: the file of an audio was stored. The audio joins the transcription queue, unless it has a transcript
+   * already, and its download descriptor is cleared. Returns false when the message is unknown.
+   */
+  setMedia(conversationId: string, messageId: string, mediaRef: string): Promise<boolean>
+
+  /**
+   * RF-15: the download failed for good (or was never possible: an unsafe path). Recorded on the message, which is not
+   * downloaded again; its download descriptor is cleared. False when unknown.
+   */
+  setMediaFailure(conversationId: string, messageId: string, reason: string): Promise<boolean>
 
   /**
    * Read on another device: marks the incoming messages with these ids as read, and every earlier incoming message of

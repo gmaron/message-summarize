@@ -4,6 +4,7 @@ import type { Message, UnreadState } from '../../domain/model.js'
 import type { Catalog } from '../i18n/index.js'
 import { type ParsedContent, parseContent, parseEdit, parseEditedBody, toNumber, unwrap } from './content.js'
 import { addressOf, isBroadcastJid, isGroupJid, isLid, isNewsletterJid, normalizeJid } from './jid.js'
+import { extensionForMimetype, isSafeDirectPath } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
 import type {
   WaChat,
@@ -20,6 +21,12 @@ import type {
 const STATUS_READ = 4
 const GROUP_LOOKUP_RETRY_MS = 5 * 60_000
 const EDIT_MEMORY = 1_000
+
+/** The decryption key of an audio as bytes: 32 of them (a base64 text is accepted), or null. */
+function mediaKeyOf(key: Uint8Array | string | null | undefined): Uint8Array | null {
+  const bytes = typeof key === 'string' ? Buffer.from(key, 'base64') : key
+  return bytes instanceof Uint8Array && bytes.byteLength === 32 ? new Uint8Array(bytes) : null
+}
 
 export interface TranslatorPorts {
   readonly capture: CaptureMessages
@@ -38,6 +45,13 @@ export interface TranslatorPorts {
    * stored, as the previous tool did. Never throws (or the error is ignored).
    */
   readonly storedConversationName?: (conversationId: string) => Promise<string | null | undefined>
+  /**
+   * RF-15: present when audios are to be downloaded (transcription is on). For an audio the capture asks for, the
+   * translator checks what the sender wrote (the path, the format, the key) and hands the capture the download
+   * DESCRIPTOR, which is stored in the durable download queue; then `kick` wakes the download worker. The translator never
+   * downloads anything itself and holds no audio in memory: the queue is the database.
+   */
+  readonly audio?: { kick(): void }
   /** A failure inside the translation, as a fixed code. It never carries chat content. */
   readonly onWarning?: (code: 'event-failed' | 'item-failed') => void
 }
@@ -321,11 +335,50 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
       })
       return
     }
-    await capture.receiveMessage({
+    const outcome = await capture.receiveMessage({
       ...context,
       message: buildMessage(key.id, located, author, timestamp, parsed),
       origin,
     })
+    // The capture decides which audios are wanted: live ones, and those of the history within the configured days.
+    if (outcome.downloadAudio && ports.audio !== undefined) {
+      await requestDownload(
+        msg,
+        { conversationId: located.chatJid, isGroup: located.isGroup, conversationName },
+        key.id,
+      )
+    }
+  }
+
+  /**
+   * RF-15, RNF-08: checks what the sender wrote in the audio and hands the capture the download descriptor, which is
+   * stored in the durable download queue, then wakes the worker. What can never be downloaded is recorded as failed right
+   * away, with a fixed code, and is not queued: the unsafe path never reaches the queue.
+   */
+  async function requestDownload(
+    msg: WaMessage,
+    where: { conversationId: string; isGroup: boolean; conversationName: string | null },
+    messageId: string,
+  ): Promise<void> {
+    const event = { ...where, messageId }
+    const audio = unwrap(msg.message)?.audioMessage
+    const failed = (reason: string): Promise<void> => capture.mediaFailed({ ...event, reason })
+    if (!isSafeDirectPath(audio?.directPath)) return failed('invalid-media-path')
+    if (extensionForMimetype(audio?.mimetype) === undefined || typeof audio?.mimetype !== 'string') {
+      return failed('unsupported-format')
+    }
+    const mediaKey = mediaKeyOf(audio.mediaKey)
+    if (mediaKey === null) return failed('invalid-media')
+    await capture.queueMedia({
+      ...event,
+      descriptor: {
+        directPath: audio.directPath,
+        mediaKey,
+        mimetype: audio.mimetype,
+        fileLength: toNumber(audio.fileLength),
+      },
+    })
+    ports.audio?.kick()
   }
 
   /** An edit as `messages.update` reports it: the key of the ORIGINAL, and the edited content. */

@@ -11,6 +11,7 @@ import { retryCommand } from './commands/retry.js'
 import { scheduleCommand } from './commands/schedule.js'
 import { statusCommand } from './commands/status.js'
 import { unlinkCommand } from './commands/unlink.js'
+import { whisperCommand } from './commands/whisper.js'
 import { languageHint } from './config.js'
 import type { CommandContext } from './context.js'
 import { errorCode } from './logger.js'
@@ -28,6 +29,7 @@ export function createHandlers(ctx: CommandContext): CliHandlers {
     retry: (args) => retryCommand(ctx, args),
     import: (args) => importCommand(ctx, args),
     schedule: (command) => scheduleCommand(ctx, command),
+    whisper: (command) => whisperCommand(ctx, command),
   }
 }
 

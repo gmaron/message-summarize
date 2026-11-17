@@ -6,6 +6,7 @@ import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from
 import type { Catalog, Language } from '../infrastructure/i18n/index.js'
 import { LANGUAGES } from '../infrastructure/i18n/index.js'
 import { isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
+import { DEFAULT_TRANSCRIPTION_TIMEOUT_MS, LANGUAGE_PATTERN } from '../infrastructure/transcription/index.js'
 
 export const PROVIDERS = ['claude-cli', 'ollama'] as const
 export type ProviderKind = (typeof PROVIDERS)[number]
@@ -33,6 +34,28 @@ export interface ProviderConfig {
   readonly ollama: OllamaConfig
 }
 
+/**
+ * Local transcription of audios (RF-15, RF-20..23). Off by default. Turning it on with the program or the model missing is
+ * not an error: the audios stay untranscribed and `doctor` says what is missing (RF-21).
+ */
+export interface TranscriptionConfig {
+  readonly enabled: boolean
+  /** The whisper.cpp program. */
+  readonly whisperCommand: string
+  /** Converts the audio before whisper reads it. */
+  readonly ffmpegCommand: string
+  /** A path to a ggml model, or the name of one in the models directory of the installation (`base`, `small.en`...). */
+  readonly model: string | null
+  /** `auto` detects the language of each audio; otherwise an ISO 639 code such as `es` (RF-23). */
+  readonly language: string
+  /** Total time for one audio. */
+  readonly timeoutMs: number
+  /** RF-15: audios of the history sync from the last N days are downloaded too (older ones stay untranscribed). */
+  readonly historyAudioDays: number
+  /** The most the downloaded audios of an account may take together, in MB. Past it new downloads are refused. */
+  readonly maxMediaMb: number
+}
+
 /** The validated contents of config.json. A missing option has its default (RF-73). */
 export interface AppConfig {
   readonly language: Language
@@ -46,10 +69,12 @@ export interface AppConfig {
   /** Cron expressions (RF-60). */
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
+  readonly transcription: TranscriptionConfig
 }
 
 export type ConfigIssueCode =
   | SettingsIssueCode
+  | 'invalidLanguage'
   | 'invalidJson'
   | 'unknownOption'
   | 'notOneOf'
@@ -86,6 +111,17 @@ const TOP_LEVEL = new Set([
   'concurrency',
   'schedules',
   'provider',
+  'transcription',
+])
+const TRANSCRIPTION_KEYS = new Set([
+  'enabled',
+  'whisperCommand',
+  'ffmpegCommand',
+  'model',
+  'language',
+  'timeoutMs',
+  'historyAudioDays',
+  'maxMediaMb',
 ])
 const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
@@ -206,6 +242,32 @@ export function parseConfig(
   const ollamaKeepAlive = text(ollamaObj, 'keepAlive', 'provider.ollama.keepAlive')
   const ollamaTimeout = positiveInt(ollamaObj, 'timeoutMs', 'provider.ollama.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
 
+  const transcriptionObj = section(input, 'transcription', 'transcription', TRANSCRIPTION_KEYS)
+  const transcriptionEnabled = ((): boolean | undefined => {
+    const v = transcriptionObj.enabled
+    if (v === undefined) return false
+    if (typeof v !== 'boolean') return add('transcription.enabled', 'notBoolean')
+    return v
+  })()
+  const whisperCommand = text(transcriptionObj, 'whisperCommand', 'transcription.whisperCommand')
+  const ffmpegCommand = text(transcriptionObj, 'ffmpegCommand', 'transcription.ffmpegCommand')
+  const transcriptionModel = text(transcriptionObj, 'model', 'transcription.model')
+  const transcriptionLanguage = ((): string | undefined => {
+    const v = transcriptionObj.language
+    if (v === undefined) return 'auto'
+    if (typeof v !== 'string') return add('transcription.language', 'notString')
+    if (!LANGUAGE_PATTERN.test(v)) return add('transcription.language', 'invalidLanguage')
+    return v
+  })()
+  const transcriptionTimeout = positiveInt(
+    transcriptionObj,
+    'timeoutMs',
+    'transcription.timeoutMs',
+    DEFAULT_TRANSCRIPTION_TIMEOUT_MS,
+  )
+  const historyAudioDays = positiveInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
+  const maxMediaMb = positiveInt(transcriptionObj, 'maxMediaMb', 'transcription.maxMediaMb', 500)
+
   const usesOllama =
     primary === 'ollama' || backup === 'ollama' || (localOnlyPatterns !== undefined && localOnlyPatterns.length > 0)
   if (usesOllama && ollamaModel === null) add('provider.ollama.model', 'required')
@@ -228,7 +290,15 @@ export function parseConfig(
     ollamaModel === undefined ||
     ollamaNumCtx === undefined ||
     ollamaKeepAlive === undefined ||
-    ollamaTimeout === undefined
+    ollamaTimeout === undefined ||
+    transcriptionEnabled === undefined ||
+    whisperCommand === undefined ||
+    ffmpegCommand === undefined ||
+    transcriptionModel === undefined ||
+    transcriptionLanguage === undefined ||
+    transcriptionTimeout === undefined ||
+    historyAudioDays === undefined ||
+    maxMediaMb === undefined
   ) {
     return err(issues)
   }
@@ -251,6 +321,16 @@ export function parseConfig(
         keepAlive: ollamaKeepAlive ?? '1m',
         timeoutMs: ollamaTimeout,
       },
+    },
+    transcription: {
+      enabled: transcriptionEnabled,
+      whisperCommand: whisperCommand ?? 'whisper-cli',
+      ffmpegCommand: ffmpegCommand ?? 'ffmpeg',
+      model: transcriptionModel,
+      language: transcriptionLanguage,
+      timeoutMs: transcriptionTimeout,
+      historyAudioDays,
+      maxMediaMb,
     },
   })
 }
@@ -309,6 +389,11 @@ export function mergeConfigJson(base: Obj, overrides: Obj): Obj {
       if (isObject(baseSection) && isObject(overrideSection)) provider[key] = { ...baseSection, ...overrideSection }
     }
     merged.provider = provider
+  }
+  const baseTranscription = base.transcription
+  const overrideTranscription = overrides.transcription
+  if (isObject(baseTranscription) && isObject(overrideTranscription)) {
+    merged.transcription = { ...baseTranscription, ...overrideTranscription }
   }
   return merged
 }
@@ -403,6 +488,8 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.required(issue.option)
     case 'invalidTimezone':
       return texts.invalidTimezone(issue.option)
+    case 'invalidLanguage':
+      return texts.invalidLanguage(issue.option)
     default:
       return catalog.errors.settings[issue.code](issue.option)
   }
@@ -428,6 +515,9 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
       backup: null,
       claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS },
     },
+    // Local transcription of audios (off). To turn it on: `msum whisper download base`, then set "enabled": true and
+    // "model": "base" (see the README).
+    transcription: { enabled: false, whisperCommand: 'whisper-cli', ffmpegCommand: 'ffmpeg', language: 'auto' },
   }
   return `${JSON.stringify(config, null, 2)}\n`
 }
