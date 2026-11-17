@@ -165,6 +165,7 @@ describe('runCli', () => {
     doctor: handler('doctor'),
     accounts: handler('accounts'),
     schedule: handler('schedule'),
+    retry: handler('retry'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {

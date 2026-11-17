@@ -103,8 +103,11 @@ Comandos:
   init                                Crea el directorio de datos y una configuración inicial (no pisa la que ya existe)
   link [--account <id>]               Vincula una cuenta de WhatsApp escaneando un QR (crea la cuenta si no existe)
   unlink [--yes] [--account <id>]     Desvincula la cuenta y BORRA sus datos: mensajes, resúmenes y sesión
-  daemon [--retry] [--account <id>]   Se conecta y queda corriendo: captura mensajes, genera y envía los digests según los horarios
-                                      (--retry borra el bloqueo de una conexión rechazada o reemplazada)
+  daemon [--retry] [--account <id>]   Corre TODAS las cuentas y queda corriendo: captura mensajes, genera y envía los digests
+                                      según los horarios (--account corre solo esa, para depurar; --retry borra el
+                                      bloqueo de una conexión rechazada o reemplazada)
+  retry [--account <id>]              Borra el bloqueo de una cuenta (conexión rechazada o reemplazada) para que el
+                                      daemon en marcha la tome de nuevo
   digest [--account <id>]             Genera un digest ahora, sin conectarse a WhatsApp (lo envía el daemon)
     --dry-run            Lo muestra y no guarda ni envía nada
     --hours N            Resume las últimas N horas
@@ -194,6 +197,12 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       done: (account) => `Listo: cuenta ${account} vinculada. Siguiente paso: msum daemon`,
       scheduleHint:
         'Esta cuenta todavía no tiene horarios, así que no se generará ningún digest por su cuenta: agregá uno con "msum schedule add --time HH:MM".',
+      activeInDaemon: (id, pid) =>
+        `La cuenta "${id}" la está usando el daemon en marcha (pid ${pid}) y ya está vinculada, así que no se puede vincular de nuevo ahora. Para detener el daemon: Ctrl+C en su terminal, "kill ${pid}", o detené su servicio o contenedor. Después corré este comando otra vez. Las cuentas que el daemon no usa (sin vincular, o bloqueadas) se pueden vincular con el daemon corriendo.`,
+      beingLinked: (id, pid, lockFile) =>
+        `La cuenta "${id}" la está vinculando o desvinculando otro proceso (pid ${pid}). Esperá a que termine. Si estás seguro de que no hay nada corriendo, ese bloqueo quedó viejo: borrá el archivo ${lockFile}.`,
+      needsRetry: (id) =>
+        `La cuenta "${id}" está bloqueada por un motivo que vincular no arregla. Corré "msum retry --account ${id}".`,
       mismatch: (id) =>
         `Esta sesión de WhatsApp es de una cuenta distinta de la que quedó vinculada a "${id}". Corré "msum unlink --account ${id}" y vinculá de nuevo.`,
       loggedOut: (id) =>
@@ -204,27 +213,42 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
     unlink: {
       confirm: (id) =>
         `Esto borra TODOS los datos de la cuenta "${id}": sus mensajes, el historial de resúmenes, los envíos pendientes y la sesión de WhatsApp. Las otras cuentas no se tocan. No se puede deshacer. ¿Seguir? [s/N] `,
+      activeInDaemon: (id, pid) =>
+        `La cuenta "${id}" la está usando el daemon en marcha (pid ${pid}), así que no se puede borrar por debajo. Para detener el daemon: Ctrl+C en su terminal, "kill ${pid}", o detené su servicio o contenedor. Después corré este comando otra vez. Las cuentas que el daemon no usa (sin vincular, o bloqueadas) se pueden desvincular con el daemon corriendo.`,
+      beingLinked: (id, pid, lockFile) =>
+        `La cuenta "${id}" la está vinculando o desvinculando otro proceso (pid ${pid}). Esperá a que termine. Si estás seguro de que no hay nada corriendo, ese bloqueo quedó viejo: borrá el archivo ${lockFile}.`,
       cancelled: 'Cancelado. No se cambió nada (usá --yes para no preguntar).',
       done: (id) =>
         `Cuenta "${id}" desvinculada: se borraron sus mensajes, resúmenes y sesión. Falta un paso en el celular: en WhatsApp, Ajustes > Dispositivos vinculados, quitá este dispositivo.`,
     },
     daemon: {
       running: (dataDir) => `Daemon corriendo (datos en ${dataDir}). Ctrl+C para detenerlo.`,
-      notLinked: 'No hay una cuenta vinculada: primero corré "msum link".',
-      noSchedules:
-        'Todavía no hay horarios: el daemon solo captura mensajes y envía lo pendiente. Agregá uno con "msum schedule add --time HH:MM"; un horario agregado después se toma sin reiniciar el daemon.',
+      notLinked: (id) =>
+        `La cuenta "${id}" no está vinculada, así que el daemon la deja inactiva (no abre ninguna conexión). Corré "msum link --account ${id}"; el daemon la toma cuando termina la vinculación.`,
+      noSchedules: (id) =>
+        `La cuenta "${id}" todavía no tiene horarios: el daemon solo captura sus mensajes y envía lo pendiente. Agregá uno con "msum schedule add --time HH:MM --account ${id}"; un horario agregado después se toma sin reiniciar el daemon.`,
+      noAccounts:
+        'Todavía no hay cuentas. El daemon sigue corriendo y toma una cuenta cuando se vincula ("msum link --account <id>").',
       stopped: 'Daemon detenido.',
       blocked: (reason) => `El daemon quedó en pausa, sin conectarse ni generar digests: ${reason}`,
+    },
+    retry: {
+      notBlocked: (id) => `La cuenta "${id}" no está bloqueada: no hay nada que reintentar.`,
+      beingLinked: (id, pid, lockFile) =>
+        `La cuenta "${id}" la está vinculando o desvinculando otro proceso (pid ${pid}). Esperá a que termine. Si estás seguro de que no hay nada corriendo, ese bloqueo quedó viejo: borrá el archivo ${lockFile}.`,
+      needsRelink: (id) =>
+        `La cuenta "${id}" no se arregla reintentando: su sesión no sirve. Corré "msum unlink --account ${id}" y después "msum link --account ${id}".`,
+      done: (id) =>
+        `Se borró el bloqueo de la cuenta "${id}". Un daemon en marcha la toma en pocos segundos; si no hay uno, iniciá "msum daemon".`,
     },
     blockedReasons: {
       loggedOut: (id) =>
         `WhatsApp cerró la sesión desde el celular. Corré "msum unlink --account ${id}" y después "msum link --account ${id}".`,
       forbidden: (id) =>
-        `WhatsApp rechazó la conexión (403). No insistas: esperá y, cuando quieras reintentar, corré "msum daemon --retry --account ${id}".`,
+        `WhatsApp rechazó la conexión (403). No insistas: esperá y, cuando quieras reintentar, corré "msum retry --account ${id}".`,
       replaced: (id) =>
-        `Otra sesión con las mismas credenciales tomó el control (440). Cerrá la otra y corré "msum daemon --retry --account ${id}".`,
-      socketFailed: (id) =>
-        `No se pudo abrir la conexión. Revisá los logs y corré "msum daemon --retry --account ${id}".`,
+        `Otra sesión con las mismas credenciales tomó el control (440). Cerrá la otra y corré "msum retry --account ${id}".`,
+      socketFailed: (id) => `No se pudo abrir la conexión. Revisá los logs y corré "msum retry --account ${id}".`,
       notLinked: (id) => `No hay una cuenta vinculada. Corré "msum link --account ${id}".`,
       mismatch: (id) =>
         `La sesión es de otra cuenta distinta de la vinculada a esta instalación. Corré "msum unlink --account ${id}" y después "msum link --account ${id}".`,
@@ -261,6 +285,15 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
     status: {
       dataDir: (path) => `${'Datos:'.padEnd(LABEL)}${path}`,
       account: (id, masked) => `${'Cuenta:'.padEnd(LABEL)}${id} (${masked ?? 'sin vincular'})`,
+      connection: (state, since) => `${'Conexión:'.padEnd(LABEL)}${state} (desde ${since})`,
+      stateName: (state) =>
+        ({
+          connecting: 'conectando',
+          connected: 'conectada',
+          reconnecting: 'reconectando',
+          blocked: 'bloqueada',
+          idle: 'inactiva (sin vincular, o vinculándose)',
+        })[state],
       configBroken: (id) => `${'Cuenta:'.padEnd(LABEL)}${id} (configuración inválida)`,
       noAccounts: `${'Cuenta:'.padEnd(LABEL)}ninguna todavía (corré "msum link")`,
       lastDigest: (when) => `${'Último digest:'.padEnd(LABEL)}${when ?? 'todavía ninguno'}`,

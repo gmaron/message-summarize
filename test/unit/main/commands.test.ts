@@ -381,13 +381,26 @@ describe('msum unlink', () => {
     expect(existsSync(h.account.dir)).toBe(false)
   })
 
-  it('refuses while a daemon is running', async () => {
+  it('refuses for an account the running daemon is using (linked, not blocked)', async () => {
     const h = await makeHarness()
     await linked(h)
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     await acquireDaemonLock(h.layout.lockFile, process.pid)
     expect(await run(h, 'unlink', '--yes')).toBe(1)
-    expect(h.err.join('\n')).toContain(`A daemon is running (pid ${process.pid})`)
+    expect(h.err.join('\n')).toContain(`being used by the running daemon (pid ${process.pid})`)
+    expect(h.err.join('\n')).toContain(`kill ${process.pid}`)
     expect(await stateOf(h)).toMatchObject({ account: ME })
+  })
+
+  it('works while a daemon runs for an account it leaves idle (not linked, or blocked)', async () => {
+    const h = await makeHarness({ accounts: ['idle', 'blocked'] })
+    await acquireDaemonLock(h.layout.lockFile, process.pid)
+    await writeBlocked(h.accountOf('blocked').blockedFile, 'forbidden', NOW)
+    writeFileSync(join(h.accountOf('blocked').authDir, 'creds.json'), REGISTERED)
+    expect(await run(h, 'unlink', '--account', 'idle', '--yes')).toBe(0)
+    expect(await run(h, 'unlink', '--account', 'blocked', '--yes')).toBe(0)
+    expect(existsSync(h.accountOf('idle').dir)).toBe(false)
+    expect(existsSync(h.accountOf('blocked').dir)).toBe(false)
   })
 })
 
@@ -509,18 +522,32 @@ describe('msum link', () => {
     expect(h.connection.calls).toContain('clearSession')
   })
 
-  it('clears the marker of a daemon that was waiting for a link, but not one that needs --retry', async () => {
+  it('a successful link clears whatever the account was blocked for: it is freshly linked', async () => {
     const h = await makeHarness()
     await writeBlocked(h.account.blockedFile, 'notLinked', NOW)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     expect(await run(h, 'link')).toBe(0)
     expect(existsSync(h.account.blockedFile)).toBe(false)
 
+    // also a block that only retrying fixes, on an account that had no session to begin with
     const forbidden = await makeHarness()
     await writeBlocked(forbidden.account.blockedFile, 'forbidden', NOW)
     forbidden.connection.onStart = () => forbidden.connection.emit({ state: 'connected' })
     expect(await run(forbidden, 'link')).toBe(0)
-    expect(existsSync(forbidden.account.blockedFile)).toBe(true)
+    expect(existsSync(forbidden.account.blockedFile)).toBe(false)
+  })
+
+  it('refuses to link a linked account that is blocked for a reason only retrying fixes', async () => {
+    const h = await makeHarness()
+    const runtime = h.runtime()
+    runtime.identity.bind(ME)
+    runtime.close()
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
+    await writeBlocked(h.account.blockedFile, 'forbidden', NOW)
+    expect(await run(h, 'link')).toBe(1)
+    expect(h.err.join('\n')).toContain('msum retry --account default')
+    expect(existsSync(h.account.blockedFile)).toBe(true)
+    expect(h.connection.calls).toEqual([])
   })
 
   it('deletes a stale qr.png when it starts', async () => {
@@ -563,10 +590,16 @@ describe('msum link', () => {
     expect(existsSync(slow.account.qrFile)).toBe(false)
   })
 
-  it('refuses while a daemon is running', async () => {
+  it('refuses an account the running daemon is using (linked, not blocked), and connects to nothing', async () => {
     const h = await makeHarness()
+    const runtime = h.runtime()
+    runtime.identity.bind(ME)
+    runtime.close()
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     await acquireDaemonLock(h.layout.lockFile, process.pid)
     expect(await run(h, 'link')).toBe(1)
+    expect(h.err.join('\n')).toContain(`being used by the running daemon (pid ${process.pid})`)
+    expect(h.err.join('\n')).toContain('Ctrl+C')
     expect(h.connection.calls).toEqual([])
   })
 })
@@ -592,12 +625,16 @@ describe('msum daemon', () => {
     expect(h.logs.map((l) => JSON.parse(l).event)).toContain('daemon.started')
   })
 
-  it('with no account linked it stays idle (marker "notLinked") instead of exiting into a restart loop', async () => {
+  it('with no account linked it stays idle (no connection opened) instead of exiting into a restart loop', async () => {
     const h = await makeHarness()
     const finished = run(h, 'daemon')
-    await waitFor(() => expect(h.err.join('\n')).toContain('No account is linked. Run "msum link --account default"'))
-    expect(JSON.parse(readFileSync(h.account.blockedFile, 'utf8')).reason).toBe('notLinked')
+    await waitFor(() => expect(h.err.join('\n')).toContain('"default" is not linked'))
+    expect(h.err.join('\n')).toContain('msum link --account default')
+    // nothing is opened for it, and no marker is written: linking is all it needs
     expect(h.connection.calls).toEqual([])
+    expect(existsSync(h.account.blockedFile)).toBe(false)
+    await until(() => existsSync(h.account.stateFile), 'the state file')
+    await waitFor(() => expect(JSON.parse(readFileSync(h.account.stateFile, 'utf8')).state).toBe('idle'))
     h.shutdown()
     expect(await finished).toBe(0)
     expect(existsSync(h.layout.lockFile)).toBe(false)
@@ -743,7 +780,7 @@ describe('msum status', () => {
     await writeBlocked(h.account.blockedFile, 'forbidden', NOW)
     await run(h, 'status')
     expect(h.out.join('\n')).toMatch(
-      /^Blocked: +WhatsApp refused the connection \(403\)\..*msum daemon --retry.* \(17 Nov 2026/m,
+      /^Blocked: +WhatsApp refused the connection \(403\)\..*msum retry --account default.* \(17 Nov 2026/m,
     )
     const es = await makeHarness({ config: { language: 'es', timezone: BA } })
     await writeBlocked(es.account.blockedFile, 'mismatch', NOW)

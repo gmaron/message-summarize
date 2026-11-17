@@ -31,6 +31,10 @@ export interface AccountLayout {
   readonly blockedFile: string
   /** Optional overrides of the installation config.json. */
   readonly configFile: string
+  /** Held by a running `msum link` of this account (pid and heartbeat, like the daemon lock): the daemon leaves the account alone meanwhile. */
+  readonly linkLockFile: string
+  /** What the daemon last said about the connection of this account (see `unit-state.ts`). */
+  readonly stateFile: string
 }
 
 export const DIR_MODE = 0o700
@@ -86,6 +90,8 @@ export function accountLayoutOf(layout: DataLayout, id: string): AccountLayout {
     qrFile: join(dir, 'qr.png'),
     blockedFile: join(dir, 'blocked.json'),
     configFile: join(dir, 'config.json'),
+    linkLockFile: join(dir, 'link.lock'),
+    stateFile: join(dir, 'state.json'),
   }
 }
 

@@ -28,6 +28,7 @@ export type Command =
   | ({ readonly name: 'digest' } & DigestArgs)
   | ({ readonly name: 'status' } & AccountArg)
   | ({ readonly name: 'doctor' } & AccountArg)
+  | ({ readonly name: 'retry' } & AccountArg)
   | { readonly name: 'accounts' }
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
@@ -52,7 +53,18 @@ export type ArgError =
   | { readonly kind: 'invalidTime'; readonly value: string }
   | { readonly kind: 'invalidDays'; readonly value: string }
 
-const COMMANDS = ['init', 'link', 'unlink', 'daemon', 'digest', 'status', 'doctor', 'accounts', 'schedule'] as const
+const COMMANDS = [
+  'init',
+  'link',
+  'unlink',
+  'daemon',
+  'digest',
+  'status',
+  'doctor',
+  'accounts',
+  'schedule',
+  'retry',
+] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
   link: ['account'],
@@ -61,6 +73,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   digest: ['dry-run', 'from', 'to', 'hours', 'account'],
   status: ['account'],
   doctor: ['account'],
+  retry: ['account'],
   schedule: ['account', 'time', 'days'],
 }
 
@@ -154,6 +167,7 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     case 'link':
     case 'status':
     case 'doctor':
+    case 'retry':
       return ok({ name: command, account })
     default:
       return ok({ name: command as 'init' | 'accounts' })

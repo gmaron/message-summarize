@@ -102,8 +102,11 @@ Commands:
   init                                Creates the data directory and an initial configuration (never overwrites an existing one)
   link [--account <id>]               Links a WhatsApp account by scanning a QR code (creates the account if it does not exist)
   unlink [--yes] [--account <id>]     Unlinks the account and DELETES its data: messages, digests and session
-  daemon [--retry] [--account <id>]   Connects and keeps running: captures messages, generates and sends digests on schedule
-                                      (--retry clears the block left by a refused or replaced connection)
+  daemon [--retry] [--account <id>]   Runs EVERY account and keeps running: captures messages, generates and sends digests
+                                      on schedule (--account runs just that one, for debugging; --retry clears the
+                                      block left by a refused or replaced connection)
+  retry [--account <id>]              Clears the block of an account (refused or replaced connection) so the running
+                                      daemon picks it up again
   digest [--account <id>]             Generates a digest now, without connecting to WhatsApp (the daemon sends it)
     --dry-run            Shows it and saves or sends nothing
     --hours N            Summarizes the last N hours
@@ -193,6 +196,12 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       done: (account) => `Done: account ${account} linked. Next step: msum daemon`,
       scheduleHint:
         'This account has no schedules yet, so no digest will run on its own: add one with "msum schedule add --time HH:MM".',
+      activeInDaemon: (id, pid) =>
+        `The account "${id}" is being used by the running daemon (pid ${pid}) and is already linked, so it cannot be linked again now. To stop the daemon: press Ctrl+C in its terminal, run "kill ${pid}", or stop its service or container. Then run this command again. Accounts the daemon is not using (not linked, or blocked) can be linked while it runs.`,
+      beingLinked: (id, pid, lockFile) =>
+        `The account "${id}" is being linked or unlinked by another process (pid ${pid}). Wait for it to finish. If you are sure nothing is running, that lock is stale: delete the file ${lockFile}.`,
+      needsRetry: (id) =>
+        `The account "${id}" is blocked for a reason that linking does not fix. Run "msum retry --account ${id}".`,
       mismatch: (id) =>
         `This WhatsApp session belongs to a different account than the one "${id}" was linked with. Run "msum unlink --account ${id}" and link again.`,
       loggedOut: (id) =>
@@ -203,27 +212,42 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
     unlink: {
       confirm: (id) =>
         `This deletes ALL the data of the account "${id}": its messages, the digest history, the pending deliveries and the WhatsApp session. Other accounts are not touched. It cannot be undone. Continue? [y/N] `,
+      activeInDaemon: (id, pid) =>
+        `The account "${id}" is being used by the running daemon (pid ${pid}), so it cannot be deleted under it. To stop the daemon: press Ctrl+C in its terminal, run "kill ${pid}", or stop its service or container. Then run this command again. Accounts the daemon is not using (not linked, or blocked) can be unlinked while it runs.`,
+      beingLinked: (id, pid, lockFile) =>
+        `The account "${id}" is being linked or unlinked by another process (pid ${pid}). Wait for it to finish. If you are sure nothing is running, that lock is stale: delete the file ${lockFile}.`,
       cancelled: 'Cancelled. Nothing was changed (use --yes to skip the question).',
       done: (id) =>
         `Account "${id}" unlinked: its messages, digests and session were deleted. One step is left on the phone: in WhatsApp, Settings > Linked devices, remove this device.`,
     },
     daemon: {
       running: (dataDir) => `Daemon running (data in ${dataDir}). Press Ctrl+C to stop it.`,
-      notLinked: 'No account is linked: run "msum link" first.',
-      noSchedules:
-        'There are no schedules yet: the daemon only captures messages and sends what is pending. Add one with "msum schedule add --time HH:MM"; a schedule added later is picked up without restarting the daemon.',
+      notLinked: (id) =>
+        `The account "${id}" is not linked, so the daemon leaves it idle (no connection is opened). Run "msum link --account ${id}"; the daemon picks it up when the link finishes.`,
+      noSchedules: (id) =>
+        `The account "${id}" has no schedules yet: the daemon only captures its messages and sends what is pending. Add one with "msum schedule add --time HH:MM --account ${id}"; a schedule added later is picked up without restarting the daemon.`,
+      noAccounts:
+        'There are no accounts yet. The daemon keeps running and picks up an account when it is linked ("msum link --account <id>").',
       stopped: 'Daemon stopped.',
       blocked: (reason) => `The daemon is paused, not connecting and not generating digests: ${reason}`,
+    },
+    retry: {
+      notBlocked: (id) => `The account "${id}" is not blocked: there is nothing to retry.`,
+      beingLinked: (id, pid, lockFile) =>
+        `The account "${id}" is being linked or unlinked by another process (pid ${pid}). Wait for it to finish. If you are sure nothing is running, that lock is stale: delete the file ${lockFile}.`,
+      needsRelink: (id) =>
+        `The account "${id}" cannot be fixed by retrying: its session is no good. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
+      done: (id) =>
+        `The block of the account "${id}" was cleared. A running daemon picks it up within seconds; otherwise start it with "msum daemon".`,
     },
     blockedReasons: {
       loggedOut: (id) =>
         `WhatsApp closed the session from the phone. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
       forbidden: (id) =>
-        `WhatsApp refused the connection (403). Do not insist: wait, and when you want to retry run "msum daemon --retry --account ${id}".`,
+        `WhatsApp refused the connection (403). Do not insist: wait, and when you want to retry run "msum retry --account ${id}".`,
       replaced: (id) =>
-        `Another session with the same credentials took over (440). Close the other one and run "msum daemon --retry --account ${id}".`,
-      socketFailed: (id) =>
-        `The connection could not be opened. Check the logs and run "msum daemon --retry --account ${id}".`,
+        `Another session with the same credentials took over (440). Close the other one and run "msum retry --account ${id}".`,
+      socketFailed: (id) => `The connection could not be opened. Check the logs and run "msum retry --account ${id}".`,
       notLinked: (id) => `No account is linked. Run "msum link --account ${id}".`,
       mismatch: (id) =>
         `The session belongs to a different account than the one this installation was linked with. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
@@ -260,6 +284,15 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
     status: {
       dataDir: (path) => `${'Data:'.padEnd(LABEL)}${path}`,
       account: (id, masked) => `${'Account:'.padEnd(LABEL)}${id} (${masked ?? 'not linked'})`,
+      connection: (state, since) => `${'Connection:'.padEnd(LABEL)}${state} (since ${since})`,
+      stateName: (state) =>
+        ({
+          connecting: 'connecting',
+          connected: 'connected',
+          reconnecting: 'reconnecting',
+          blocked: 'blocked',
+          idle: 'idle (not linked, or being linked)',
+        })[state],
       configBroken: (id) => `${'Account:'.padEnd(LABEL)}${id} (invalid configuration)`,
       noAccounts: `${'Account:'.padEnd(LABEL)}none yet (run "msum link")`,
       lastDigest: (when) => `${'Last digest:'.padEnd(LABEL)}${when ?? 'none yet'}`,

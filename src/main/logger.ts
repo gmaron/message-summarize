@@ -27,6 +27,8 @@ const FIELDS = [
   'pointer',
   'nextRun',
   'pid',
+  // The id of an account of the installation (a short name the user chose, validated: it is not a secret).
+  'account',
 ] as const
 
 export type LogField = (typeof FIELDS)[number]
@@ -60,6 +62,18 @@ export function createLogger(out: LogSink, err: LogSink, now: () => number = Dat
     info: (event, fields) => emit('info', event, fields),
     warn: (event, fields) => emit('warn', event, fields),
     error: (event, fields) => emit('error', event, fields),
+  }
+}
+
+/**
+ * A logger whose lines all carry `fields` (the account of a unit of the daemon). The fields of a call win over them,
+ * and the allowlist of the underlying logger still applies.
+ */
+export function scopedLogger(logger: Logger, fields: LogFields): Logger {
+  return {
+    info: (event, more) => logger.info(event, { ...fields, ...more }),
+    warn: (event, more) => logger.warn(event, { ...fields, ...more }),
+    error: (event, more) => logger.error(event, { ...fields, ...more }),
   }
 }
 

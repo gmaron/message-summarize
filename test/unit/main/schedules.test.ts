@@ -435,7 +435,7 @@ describe('Daemon: schedules applied without a restart (RF-61)', () => {
 
   it('a schedule added while it runs fires, and one removed stops firing, with no restart', async () => {
     const { harness } = await start()
-    expect(named(harness, 'daemon.started')[0]).toMatchObject({ count: 0 })
+    expect(named(harness, 'account.started')[0]).toMatchObject({ count: 0 })
     // 07:00 in Buenos Aires is 10:00Z; it is 09:00Z now
     expect(await run(harness, 'schedule', 'add', '--time', '07:00')).toBe(0)
     await vi.advanceTimersByTimeAsync(31_000)

@@ -152,6 +152,12 @@ export interface Catalog {
       done(account: string): string
       /** Printed after a successful link when the account has no schedule yet. */
       readonly scheduleHint: string
+      /** The running daemon is using this account (linked, not blocked): stop it before linking again. */
+      activeInDaemon(id: string, pid: number): string
+      /** Another `link` or `unlink` holds this account; `lockFile` is the file to delete if that process is gone. */
+      beingLinked(id: string, pid: number, lockFile: string): string
+      /** A blocked state that `msum retry` fixes and linking does not. */
+      needsRetry(id: string): string
       mismatch(id: string): string
       loggedOut(id: string): string
       failed(reason: string): string
@@ -159,13 +165,18 @@ export interface Catalog {
     }
     readonly unlink: {
       confirm(id: string): string
+      activeInDaemon(id: string, pid: number): string
+      beingLinked(id: string, pid: number, lockFile: string): string
       readonly cancelled: string
       done(id: string): string
     }
     readonly daemon: {
       running(dataDir: string): string
-      readonly notLinked: string
-      readonly noSchedules: string
+      /** An account the daemon leaves idle because nothing is linked to it. */
+      notLinked(id: string): string
+      noSchedules(id: string): string
+      /** The daemon runs but the installation has no account yet. */
+      readonly noAccounts: string
       readonly stopped: string
       /** The daemon is idle because the account is blocked: `reason` is already translated. */
       blocked(reason: string): string
@@ -179,6 +190,15 @@ export interface Catalog {
       readonly concurrentRun: string
       /** What to tell the user about each window error, naming the flags of the CLI. */
       readonly flagHint: Readonly<Record<WindowError, string>>
+    }
+    /** `msum retry`. */
+    readonly retry: {
+      notBlocked(id: string): string
+      beingLinked(id: string, pid: number, lockFile: string): string
+      /** The block can only be fixed by linking again. */
+      needsRelink(id: string): string
+      /** `reason` is already translated. */
+      done(id: string): string
     }
     /** `msum schedule` (RF-60..62). */
     readonly schedule: {
@@ -197,6 +217,9 @@ export interface Catalog {
     readonly status: {
       dataDir(path: string): string
       account(id: string, masked: string | null): string
+      /** What the running daemon says about the connection: `state` is already translated. */
+      connection(state: string, since: string): string
+      stateName(state: 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle'): string
       /** The block of an account whose configuration is invalid; the problems follow. */
       configBroken(id: string): string
       readonly noAccounts: string

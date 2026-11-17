@@ -329,7 +329,7 @@ describe('Daemon: schedules (RF-60, RF-62)', () => {
     expect(named(harness, 'schedule.fired')).toHaveLength(0)
     expect(harness.connection.sent).toEqual([])
     expect(harness.connection.calls).toContain('stop')
-    expect(named(harness, 'daemon.stopped')).toHaveLength(1)
+    expect(named(harness, 'account.stopped')).toHaveLength(1)
   })
 })
 
@@ -539,7 +539,7 @@ describe('Daemon: terminal states of the connection (idle, never a reconnect loo
     await vi.advanceTimersByTimeAsync(3 * 60 * 60_000)
     expect(s.harness.connection.calls).toEqual([])
     expect(named(s.harness, 'schedule.fired')).toHaveLength(0)
-    expect(named(s.harness, 'daemon.started')).toHaveLength(0)
+    expect(named(s.harness, 'account.started')).toHaveLength(0)
     await daemon.stop()
     expect(await daemon.finished).toBe(0)
     // and the marker is still there for the next restart
@@ -569,11 +569,11 @@ describe('Daemon: stopping', () => {
     await settle()
     const stopped = daemon.stop()
     await vi.advanceTimersByTimeAsync(6_000)
-    expect(named(harness, 'daemon.stopped')).toHaveLength(0)
+    expect(named(harness, 'account.stopped')).toHaveLength(0)
     // the whole shutdown is cut at 7 s, inside Docker's 10 s stop timeout
     await vi.advanceTimersByTimeAsync(1_500)
     await stopped
-    expect(named(harness, 'daemon.stopped')).toHaveLength(1)
+    expect(named(harness, 'account.stopped')).toHaveLength(1)
   })
 
   it('on stop, a connection that never stops does not hold the shutdown past the grace period', async () => {

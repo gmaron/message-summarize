@@ -19,6 +19,7 @@ export interface CliHandlers {
   digest(args: DigestArgs): Promise<number>
   status(args: AccountArg): Promise<number>
   doctor(args: AccountArg): Promise<number>
+  retry(args: AccountArg): Promise<number>
   accounts(): Promise<number>
   schedule(command: ScheduleCommand): Promise<number>
 }
@@ -70,6 +71,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.status({ account: command.account })
     case 'doctor':
       return handlers.doctor({ account: command.account })
+    case 'retry':
+      return handlers.retry({ account: command.account })
     case 'accounts':
       return handlers.accounts()
     case 'schedule':

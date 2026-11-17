@@ -4,11 +4,12 @@ import { reconcileAccount } from '../../infrastructure/whatsapp/account-binding.
 import type { WhatsAppStatus } from '../../infrastructure/whatsapp/connection.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
-import { installationCatalog, isPrepared, prepareAccount } from '../account-command.js'
+import { isPrepared, prepareAccount } from '../account-command.js'
 import { readAccountState } from '../account-state.js'
+import { daemonUsing } from '../account-use.js'
 import { clearBlocked, FIXED_BY_LINKING, readBlocked } from '../blocked.js'
 import { type CommandContext, hasSession, maskAccount, withRuntime } from '../context.js'
-import { runningDaemonPid } from '../daemon-lock.js'
+import { acquireLinkLock, LINK_HEARTBEAT_MS } from '../link-lock.js'
 import { qrForTerminal, writeQrPng } from '../qr.js'
 import { createRuntime } from '../runtime.js'
 
@@ -84,25 +85,54 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  */
 export async function linkCommand(ctx: CommandContext, args: AccountArg): Promise<number> {
   const { io, logger } = ctx
-  // Before anything is created: a running daemon owns the session and the files.
-  const daemonPid = await runningDaemonPid(ctx.layout.lockFile)
-  if (daemonPid !== null) {
-    io.err((await installationCatalog(ctx)).cli.daemonRunning(daemonPid))
-    return EXIT_FAILURE
-  }
   const prepared = await prepareAccount(ctx, args.account, 'link')
   if (!isPrepared(prepared)) return prepared.exit
   const { config, catalog, account, installation } = prepared
   const texts = catalog.cli
   let code = EXIT_FAILURE
+
+  // An account the running daemon is using (linked, not blocked) owns its session: refused at once, before anything is
+  // taken. The same check is made again under the lock, which is the one that counts.
+  const using = await daemonUsing(ctx.layout, account)
+  if (using !== null) {
+    installation.close()
+    io.err(texts.link.activeInDaemon(account.id, using))
+    return EXIT_FAILURE
+  }
+
+  // The lock of the account comes first: while it is held the daemon does not START the account (a unit that runs is
+  // never touched by a lock), so it cannot open a socket with credentials this command is still writing.
+  const lock = await acquireLinkLock(account)
+  if (!lock.ok) {
+    installation.close()
+    io.err(texts.link.beingLinked(account.id, lock.pid, account.linkLockFile))
+    return EXIT_FAILURE
+  }
+  const heartbeat = setInterval(() => void lock.heartbeat(), LINK_HEARTBEAT_MS)
+  heartbeat.unref()
   try {
+    await ctx.afterLock?.()
+    // The authoritative check: once the lock is held nothing can change between it and the work.
+    const daemonPid = await daemonUsing(ctx.layout, account)
+    if (daemonPid !== null) {
+      io.err(texts.link.activeInDaemon(account.id, daemonPid))
+      return EXIT_FAILURE
+    }
+    const marker = await readBlocked(account.blockedFile)
+    // Blocked for a reason that retrying fixes: linking again is not the answer.
+    if (marker !== null && !FIXED_BY_LINKING.includes(marker.reason) && (await hasSession(account))) {
+      io.err(texts.link.needsRetry(account.id))
+      return EXIT_FAILURE
+    }
+    // Blocked for a reason that linking fixes: the session is no good, and linking replaces it.
+    const relinking = marker !== null && FIXED_BY_LINKING.includes(marker.reason)
     await rm(account.qrFile, { force: true })
 
     code = await withRuntime(
       () => createRuntime({ layout: account, config, env: ctx.env, clock: ctx.clock, summarizer: null }),
       async (runtime) => {
         const bound = runtime.identity.get()
-        if (bound !== null && (await hasSession(account))) {
+        if (!relinking && bound !== null && (await hasSession(account))) {
           // Idempotent for scripts: a notice and success, and the session is not touched.
           io.out(texts.link.alreadyLinked(account.id, maskAccount(bound)))
           return EXIT_OK
@@ -113,6 +143,7 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           capture: counted.capture,
           onWarning: (code) => logger.warn('adapter.warning', { code }),
         })
+        if (relinking) await connection.clearSession()
 
         const timing = ctx.linkTiming
         let qrShown = false
@@ -191,9 +222,9 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           }
           await connection.stop()
           if (interrupted) return EXIT_INTERRUPTED
-          // Linking fixes what a daemon was blocked for, except a refused or replaced connection (`daemon --retry`).
-          const marker = await readBlocked(account.blockedFile)
-          if (marker !== null && FIXED_BY_LINKING.includes(marker.reason)) await clearBlocked(account.blockedFile)
+          // The account is freshly linked: whatever it was blocked for before (a dead session, or a connection that was
+          // refused or replaced) no longer applies, and the daemon, which waits for this lock, starts it.
+          await clearBlocked(account.blockedFile)
           io.out(texts.link.done(maskAccount(runtime.identity.get() ?? '')))
           if (installation.schedules.list(account.id).length === 0) io.out(texts.link.scheduleHint)
           return EXIT_OK
@@ -217,5 +248,8 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
       }
     }
     installation.close()
+    clearInterval(heartbeat)
+    // Last: only now may the daemon take the account (the block was cleared on success, or the account is gone).
+    await lock.release()
   }
 }

@@ -1,5 +1,6 @@
 import { lstatSync } from 'node:fs'
 import { readdir, rename, rm } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import type { Clock } from '../application/ports/clock.js'
 import { DEFAULT_ACCOUNT_ID, isValidAccountId } from '../domain/account-id.js'
 import {
@@ -34,6 +35,9 @@ export interface ReconcileReport {
   readonly legacyConflict: boolean
 }
 
+/** The steps of `deleteAccount`, named by what has just been done. */
+export type DeleteStep = 'session' | 'contents' | 'marker' | 'directory'
+
 /** The accounts of an installation, opened for a command. Close it when done. */
 export interface Installation {
   readonly layout: DataLayout
@@ -45,8 +49,12 @@ export interface Installation {
   accounts(): AccountRecord[]
   /** Creates the directories and the row of an account. The directory goes first: a crash leaves it to reconcile. */
   createAccount(id: string): Promise<AccountLayout>
-  /** Deletes the directory of an account (everything it owns) and then its row, and nothing else. */
-  deleteAccount(id: string): Promise<void>
+  /**
+   * Deletes everything an account owns, in an order that is safe to interrupt at any point (the session first, the block
+   * marker after the rest, then the directory, then the row), and nothing else. `afterStep` is called after each step;
+   * tests throw from it to simulate an interruption.
+   */
+  deleteAccount(id: string, afterStep?: (step: DeleteStep) => void | Promise<void>): Promise<void>
   close(): void
 }
 
@@ -157,11 +165,29 @@ export async function openInstallation(options: OpenInstallationOptions): Promis
         registry.register(id)
         return account
       },
-      deleteAccount: async (id) => {
+      deleteAccount: async (id, afterStep) => {
         const account = accountLayoutOf(layout, id)
         // Never report an account deleted while its data lives elsewhere behind a link.
         if ((await unsafeAccountPath(account)) !== null) throw new NotARealDirectoryError(account.dir)
+        // The order is what makes an interruption safe at every point: the session goes FIRST, then the rest, then the
+        // block marker, then the lock and the directory, then the row. At any moment either the account has no session
+        // (nothing to connect with) or it still has its block marker (nothing may connect). The link lock stays until
+        // the end, so the daemon, which writes nothing into a locked account, sees it while the account is emptied.
+        const step = async (done: DeleteStep): Promise<void> => {
+          await afterStep?.(done)
+        }
+        await rm(account.authDir, { recursive: true, force: true })
+        await step('session')
+        const keep = new Set([basename(account.blockedFile), basename(account.linkLockFile)])
+        const entries = await readdir(account.dir).catch(() => [] as string[])
+        for (const name of entries) {
+          if (!keep.has(name)) await rm(join(account.dir, name), { recursive: true, force: true })
+        }
+        await step('contents')
+        await rm(account.blockedFile, { force: true })
+        await step('marker')
         await rm(account.dir, { recursive: true, force: true })
+        await step('directory')
         registry.remove(id)
       },
       close: () => db.close(),

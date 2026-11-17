@@ -103,9 +103,9 @@ describe('choosing the account', () => {
     expect(h.summarizer.requests.length).toBe(1)
   })
 
-  it('asks for --account, listing the ids, when there are several (digest, unlink, daemon, link)', async () => {
+  it('asks for --account, listing the ids, when there are several (digest, unlink, link)', async () => {
     const h = await makeHarness({ config: CONFIG, accounts: ['alpha', 'beta'] })
-    for (const command of [['digest'], ['unlink', '--yes'], ['daemon'], ['link']]) {
+    for (const command of [['digest'], ['unlink', '--yes'], ['link']]) {
       h.err.length = 0
       expect(await run(h, ...command), command.join(' ')).toBe(2)
       expect(text(h.err)).toContain('--account <id>')
@@ -286,12 +286,20 @@ describe('msum link --account', () => {
     expect(existsSync(h.accountOf('alpha').dir)).toBe(true)
   })
 
-  it('refuses while a daemon runs, before creating anything', async () => {
+  it('works while a daemon runs, for an account the daemon is not using, and frees its lock', async () => {
     const h = await makeHarness({ config: CONFIG, accounts: ['alpha'] })
+    link(h, 'alpha', ME)
     await acquireDaemonLock(h.layout.lockFile, process.ppid)
-    expect(await run(h, 'link', '--account', 'work')).toBe(1)
-    expect(text(h.err)).toContain(`A daemon is running (pid ${process.ppid})`)
-    expect(existsSync(h.accountOf('work').dir)).toBe(false)
+    h.connection.user = { id: OTHER }
+    h.connection.onStart = () => {
+      // while linking, the account is locked against the daemon
+      expect(existsSync(h.accountOf('work').linkLockFile)).toBe(true)
+      writeFileSync(join(h.accountOf('work').authDir, 'creds.json'), session(OTHER))
+      h.connection.emit({ state: 'connected' })
+    }
+    expect(await run(h, 'link', '--account', 'work')).toBe(0)
+    expect(existsSync(h.accountOf('work').linkLockFile)).toBe(false)
+    expect(existsSync(h.accountOf('alpha').dir)).toBe(true)
   })
 })
 
@@ -528,22 +536,16 @@ describe('msum daemon with accounts', () => {
     expect(h.connection.calls).toContain('start')
   })
 
-  it('an account that is not linked idles with its own blocked marker; the other account is not touched', async () => {
+  it('--account runs only that account: an account that is not linked idles, with no connection and no marker', async () => {
     const h = await makeHarness({ config: CONFIG, accounts: ['alpha', 'beta'] })
     link(h, 'alpha', ME)
     const finished = run(h, 'daemon', '--account', 'beta')
-    await waitFor(() => expect(text(h.err)).toContain('No account is linked'))
-    expect(JSON.parse(readFileSync(h.accountOf('beta').blockedFile, 'utf8')).reason).toBe('notLinked')
+    await waitFor(() => expect(text(h.err)).toContain('"beta" is not linked'))
+    expect(h.connection.calls).toEqual([])
+    expect(existsSync(h.accountOf('beta').blockedFile)).toBe(false)
     expect(existsSync(h.accountOf('alpha').blockedFile)).toBe(false)
     h.shutdown()
     expect(await finished).toBe(0)
-  })
-
-  it('refuses without --account when there are several, naming the flag, and holds no lock', async () => {
-    const h = await makeHarness({ config: CONFIG, accounts: ['alpha', 'beta'] })
-    expect(await run(h, 'daemon')).toBe(2)
-    expect(text(h.err)).toContain('--account <id>')
-    expect(existsSync(h.layout.lockFile)).toBe(false)
   })
 
   it('migrates the old layout under its own lock and runs it as "default"', async () => {

@@ -70,6 +70,8 @@ describe('layoutOf', () => {
       qrFile: '/d/accounts/work/qr.png',
       blockedFile: '/d/accounts/work/blocked.json',
       configFile: '/d/accounts/work/config.json',
+      linkLockFile: '/d/accounts/work/link.lock',
+      stateFile: '/d/accounts/work/state.json',
     })
   })
 

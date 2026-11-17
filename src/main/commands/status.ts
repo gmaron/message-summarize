@@ -14,6 +14,7 @@ import { accountLayoutOf } from '../paths.js'
 import { createRuntime } from '../runtime.js'
 import { describeDays } from '../schedule-format.js'
 import { importConfigSchedules } from '../schedules.js'
+import { readUnitState } from '../unit-state.js'
 
 /**
  * `msum status`: where the data is, whether a daemon runs and, for each account (or the one of `--account`): its id and
@@ -89,11 +90,19 @@ export async function statusCommand(ctx: CommandContext, args: AccountArg): Prom
         }
       }
 
+      const daemonPid = await runningDaemonPid(layout.lockFile)
       if (index === 0) {
         lines.push(texts.dataDir(layout.dataDir))
-        lines.push(texts.daemon(await runningDaemonPid(layout.lockFile)))
+        lines.push(texts.daemon(daemonPid))
       } else lines.push('')
       lines.push(texts.account(id, masked))
+      // What the daemon says about this account (RF-04): only believed while the daemon is alive.
+      const reported = daemonPid === null ? null : await readUnitState(account.stateFile)
+      if (reported !== null) {
+        lines.push(
+          texts.connection(texts.stateName(reported.state), formatInstant(reported.since, catalog, config.timezone)),
+        )
+      }
       lines.push(texts.lastDigest(pointer === null ? null : formatInstant(pointer, catalog, config.timezone)))
       lines.push(texts.pending(pending))
       const blocked = await readBlocked(account.blockedFile)

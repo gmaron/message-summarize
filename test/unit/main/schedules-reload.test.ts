@@ -211,7 +211,7 @@ describe('upgrading app.db from schema version 1', () => {
     await waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
     const started = h.logs
       .map((l) => JSON.parse(l) as { event: string; count?: number })
-      .find((e) => e.event === 'daemon.started')
+      .find((e) => e.event === 'account.started')
     expect(started?.count).toBe(1)
     h.shutdown()
     expect(await finished).toBe(0)

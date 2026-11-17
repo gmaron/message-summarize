@@ -56,12 +56,18 @@ export interface CommandContext {
   readonly linkTiming: LinkTiming
   /** Replaces the configured providers. For tests. */
   readonly summarizer?: Summarizer | null
+  /** Called right after `link`, `unlink` or `retry` takes the lock of an account. For tests: they widen that window. */
+  readonly afterLock?: () => void | Promise<void>
   readonly daemonTiming?: {
     readonly heartbeatMs?: number
     readonly sweepMs?: number
     readonly missedRunDelayMs?: number
     readonly shutdownGraceMs?: number
     readonly scheduleReloadMs?: number
+    readonly unitBackoffMs?: number
+    readonly unitBackoffMaxMs?: number
+    readonly unitStableMs?: number
+    readonly unitMaxFailures?: number
   }
 }
 

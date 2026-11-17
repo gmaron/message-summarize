@@ -7,6 +7,7 @@ import { type BlockedReason, readBlocked, writeBlocked } from './blocked.js'
 import { errorCode, type Logger } from './logger.js'
 import { runDigest } from './run-digest.js'
 import type { Runtime } from './runtime.js'
+import type { UnitState } from './unit-state.js'
 
 /** What the daemon needs of the WhatsApp connection (the adapter's `WhatsAppConnection` satisfies it). */
 export interface DaemonConnection extends SelfChatSource {
@@ -36,8 +37,16 @@ export interface DaemonOptions {
   readonly scheduleSource?: () => readonly string[]
   /** How often the schedules are read again. Default 5 s. */
   readonly scheduleReloadMs?: number
+  /** Called whenever the connection state of the account changes (RF-04): `connecting`, `connected`, `reconnecting`, `blocked`. */
+  readonly onState?: (state: UnitState) => void
   /** Called once when the daemon goes idle because the account cannot be used (for a message to the user). */
   readonly onBlocked?: (reason: BlockedReason) => void
+  /**
+   * Whether the daemon writes `blocked.json` itself when it blocks (the default). The host of several accounts passes
+   * false: it owns the order, which is to release the socket and the database first and write the marker after, so
+   * that a marker on disk always means the account has nothing open in the process.
+   */
+  readonly writesMarker?: boolean
 }
 
 export type DigestTrigger = 'schedule' | 'missed'
@@ -95,6 +104,8 @@ export class Daemon {
   private readonly missedRunDelayMs: number
   private readonly shutdownGraceMs: number
   private readonly onBlocked: (reason: BlockedReason) => void
+  private readonly onState: (state: UnitState) => void
+  private state: UnitState | null = null
   private readonly scheduleSource: (() => readonly string[]) | null
   private readonly scheduleReloadMs: number
   private reloadTimer: ReturnType<typeof setInterval> | null = null
@@ -103,6 +114,7 @@ export class Daemon {
   private unverified = true
   private blockedReason: BlockedReason | null = null
   private blockPromise: Promise<void> = Promise.resolve()
+  private readonly writesMarker: boolean
   private connectedAt: number | null = null
   /** A scheduled tick that could not run when it fired. */
   private deferred = false
@@ -126,6 +138,8 @@ export class Daemon {
     this.missedRunDelayMs = options.missedRunDelayMs ?? DEFAULT_MISSED_RUN_DELAY_MS
     this.shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS
     this.onBlocked = options.onBlocked ?? (() => {})
+    this.writesMarker = options.writesMarker ?? true
+    this.onState = options.onState ?? (() => {})
     this.scheduleSource = options.scheduleSource ?? null
     this.scheduleReloadMs = options.scheduleReloadMs ?? DEFAULT_SCHEDULE_RELOAD_MS
     this.deliverPending = new DeliverPending(
@@ -137,6 +151,17 @@ export class Daemon {
       schedules: options.scheduleSource === undefined ? options.runtime.config.schedules : options.scheduleSource(),
       onTick: (schedule) => this.onTick(schedule),
     })
+  }
+
+  /** Tells the owner of the daemon when the state changes, once per change. */
+  private setState(state: UnitState): void {
+    if (this.state === state) return
+    this.state = state
+    try {
+      this.onState(state)
+    } catch (error) {
+      this.logger.error('state.reportFailed', { code: errorCode(error) })
+    }
   }
 
   /** Why the daemon is idle, or null when it is working. */
@@ -155,9 +180,11 @@ export class Daemon {
       // Restarted while blocked: say why, once, and do nothing else.
       this.blockedReason = marker.reason
       this.logger.error('daemon.blocked', { reason: marker.reason })
+      this.setState('blocked')
       this.onBlocked(marker.reason)
       return
     }
+    this.setState('connecting')
     this.unsubscribe = this.connection.onStatus((status) => this.onStatus(status))
     this.scheduler.start()
     if (this.scheduleSource !== null) {
@@ -167,7 +194,7 @@ export class Daemon {
     const next = this.scheduler
       .nextRuns(new Date(this.runtime.clock.now()))
       .flatMap(({ next }) => (next === null ? [] : [next.getTime()]))
-    this.logger.info('daemon.started', {
+    this.logger.info('account.started', {
       count: this.scheduler.count,
       nextRun: next.length === 0 ? null : new Date(Math.min(...next)).toISOString(),
     })
@@ -275,6 +302,8 @@ export class Daemon {
       fields.reason = status.reason
     }
     // A QR is never logged: it is a pairing credential, and the status line has no field for it.
+    if (status.state === 'connecting') this.setState('connecting')
+    else if (status.state === 'reconnecting') this.setState('reconnecting')
     const failing = status.state === 'error' || status.state === 'loggedOut'
     ;(failing ? this.logger.error : this.logger.info).call(this.logger, 'connection.status', fields)
 
@@ -285,19 +314,28 @@ export class Daemon {
     this.unverified = true
     this.connectedAt = null
     this.clearCatchUp()
-    if (status.state === 'loggedOut') this.blockPromise = this.block('loggedOut')
-    else if (status.state === 'error') this.blockPromise = this.block(ERROR_REASONS[status.reason] ?? 'socketFailed')
-    else if (status.state === 'qr') this.blockPromise = this.block('notLinked')
+    if (status.state === 'loggedOut') this.blockPromise = this.startBlock('loggedOut')
+    else if (status.state === 'error')
+      this.blockPromise = this.startBlock(ERROR_REASONS[status.reason] ?? 'socketFailed')
+    else if (status.state === 'qr') this.blockPromise = this.startBlock('notLinked')
+  }
+
+  /** `block`, with its failure caught: nobody awaits it where it starts, and a rejection nobody handles ends the process. */
+  private startBlock(reason: BlockedReason): Promise<void> {
+    return this.block(reason).catch((error: unknown) => {
+      this.logger.error('daemon.blockFailed', { code: errorCode(error) })
+    })
   }
 
   private handleConnected(): void {
     const check = reconcileAccount(this.runtime.identity, this.connection.selfChat()?.user)
     if (check === 'mismatch' || check === 'noAccount') {
       // RF-51: another phone was linked, or the socket has no phone-number account.
-      this.blockPromise = this.block(check)
+      this.blockPromise = this.startBlock(check)
       return
     }
     this.unverified = false
+    this.setState('connected')
     this.connectedAt = this.runtime.clock.now()
     this.logger.info('account.checked', { state: check })
     void this.deliver()
@@ -312,12 +350,15 @@ export class Daemon {
     if (this.blockedReason !== null) return
     this.blockedReason = reason
     this.logger.error('daemon.blocked', { reason })
+    this.setState('blocked')
     this.onBlocked(reason)
     this.stopTimers()
     await Promise.all([
-      writeBlocked(this.runtime.layout.blockedFile, reason, this.runtime.clock.now()).catch((error: unknown) =>
-        this.logger.error('daemon.markerFailed', { code: errorCode(error) }),
-      ),
+      this.writesMarker
+        ? writeBlocked(this.runtime.layout.blockedFile, reason, this.runtime.clock.now()).catch((error: unknown) =>
+            this.logger.error('daemon.markerFailed', { code: errorCode(error) }),
+          )
+        : undefined,
       this.within(this.stopConnection()),
     ])
   }
@@ -398,7 +439,7 @@ export class Daemon {
         running === null ? undefined : running.catch(() => undefined),
       ]),
     )
-    this.logger.info('daemon.stopped', { code: 0 })
+    this.logger.info('account.stopped', { code: 0 })
     this.finish(0)
   }
 }
