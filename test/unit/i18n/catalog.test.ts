@@ -1,0 +1,120 @@
+import { describe, expect, it } from 'vitest'
+import { getCatalog, LANGUAGES } from '../../../src/infrastructure/i18n/index.js'
+
+const es = getCatalog('es')
+const en = getCatalog('en')
+
+type Tree = { readonly [key: string]: unknown }
+
+/** Paths of every leaf (string or function) with its type. */
+function leaves(root: object, prefix = ''): [string, 'string' | 'function'][] {
+  return Object.entries(root as Tree).flatMap(([key, value]): [string, 'string' | 'function'][] => {
+    const path = prefix === '' ? key : `${prefix}.${key}`
+    if (typeof value === 'string') return [[path, 'string']]
+    if (typeof value === 'function') return [[path, 'function']]
+    return leaves(value as Tree, path)
+  })
+}
+
+const get = (root: object, path: string): unknown => path.split('.').reduce<unknown>((n, key) => (n as Tree)[key], root)
+
+/** Arguments to call each function of the catalog with. A new function without an entry fails the test below. */
+const SAMPLES: Record<string, unknown[][]> = {
+  'transcript.header': [
+    [true, 'N'],
+    [false, 'N'],
+  ],
+  'transcript.ownerLabel': [['N']],
+  'transcript.massMessage': [['E']],
+  'transcript.audio': [['T']],
+  'transcript.copies': [[1], [2]],
+  'digest.title': [['P', 'D']],
+  'digest.headline': [
+    [{ total: 1, unreadOnly: false, since: 'D', needsReply: 1, unsaved: 0 }],
+    [{ total: 2, unreadOnly: true, since: 'D', needsReply: 2, unsaved: 3 }],
+  ],
+  'digest.unsavedTitle': [[1], [2]],
+  'digest.hiddenRest': [[1], [2]],
+  'digest.failedChats': [[1], [2]],
+  'errors.settings.notString': [['opt']],
+  'errors.settings.emptyString': [['opt']],
+  'errors.settings.notArray': [['opt']],
+  'errors.settings.notStringList': [['opt']],
+  'errors.settings.emptyPattern': [['opt']],
+  'errors.settings.notNumber': [['opt']],
+  'errors.settings.notPositive': [['opt']],
+  'errors.settings.notInteger': [['opt']],
+  'errors.settings.notBoolean': [['opt']],
+  'errors.settings.notObject': [['opt']],
+}
+
+describe('catalogs', () => {
+  it('exist for every language', () => {
+    expect(LANGUAGES).toEqual(['es', 'en'])
+  })
+
+  it('have the same keys, with the same kind of value, in Spanish and English', () => {
+    expect(leaves(en)).toEqual(leaves(es))
+  })
+
+  it('have no empty text', () => {
+    for (const [path, kind] of leaves(es)) {
+      if (kind === 'string') {
+        for (const catalog of [es, en]) expect((get(catalog, path) as string).trim(), path).not.toBe('')
+      }
+    }
+  })
+
+  it('give every function a sample call, and the samples match real functions', () => {
+    const functions = leaves(es)
+      .filter(([, kind]) => kind === 'function')
+      .map(([path]) => path)
+    expect(Object.keys(SAMPLES).sort()).toEqual(functions.sort())
+  })
+
+  it('have functions that return non-empty text, in both languages', () => {
+    for (const [path, calls] of Object.entries(SAMPLES)) {
+      for (const catalog of [es, en]) {
+        for (const args of calls) {
+          const text = (get(catalog, path) as (...a: unknown[]) => string)(...args)
+          expect(typeof text, path).toBe('string')
+          expect(text.trim(), path).not.toBe('')
+        }
+      }
+    }
+  })
+
+  it('have a label for every kind of message', () => {
+    const kinds = ['text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'poll', 'event']
+    for (const catalog of [es, en]) {
+      expect(Object.keys(catalog.transcript.kinds).sort()).toEqual([...kinds].sort())
+      for (const label of Object.values(catalog.transcript.kinds)) expect(label).toMatch(/^\[.+\]$/)
+    }
+  })
+
+  it('differ between languages where the text is language-specific', () => {
+    expect(en.defaultSystemPrompt).not.toBe(es.defaultSystemPrompt)
+    expect(en.unnamedGroup).not.toBe(es.unnamedGroup)
+    expect(en.defaultOwnerName).not.toBe(es.defaultOwnerName)
+    expect(en.transcript.audioUntranscribed).not.toBe(es.transcript.audioUntranscribed)
+  })
+
+  it('write the owner tag of each language', () => {
+    expect(es.transcript.ownerLabel('Sofía')).toBe('Sofía [VOS]')
+    expect(en.transcript.ownerLabel('Sam')).toBe('Sam [YOU]')
+  })
+
+  it('use valid BCP 47 date locales', () => {
+    expect(es.dateLocale).toBe('es-AR')
+    expect(en.dateLocale).toBe('en-GB')
+    for (const catalog of [es, en]) expect(() => new Intl.DateTimeFormat(catalog.dateLocale)).not.toThrow()
+  })
+
+  it('have the Spanish texts the golden files depend on', () => {
+    expect(es.transcript.header(true, 'G')).toBe('Grupo: G')
+    expect(es.transcript.header(false, 'G')).toBe('Chat con: G')
+    expect(es.digest.title('WhatsApp', 'D')).toBe('Resumen WhatsApp — D')
+    expect(es.digest.hiddenRest(2)).toBe('*⚪ El resto:* 2 chats sin nada para vos')
+    expect(es.digest.hiddenRest(1)).toBe('*⚪ El resto:* 1 chat sin nada para vos')
+  })
+})
