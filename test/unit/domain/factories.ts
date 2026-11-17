@@ -25,6 +25,7 @@ export const participant = (overrides: Partial<Participant> = {}): Participant =
 export const conversation = (overrides: Partial<Conversation> = {}): Conversation => ({
   id: 'c1',
   isGroup: false,
+  participantId: 'p1',
   name: null,
   address: '+5491100000001',
   ...overrides,

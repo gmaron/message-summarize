@@ -12,7 +12,6 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**'],
       reporter: ['text'],
-      // src/ has no code yet, so the report is empty and the thresholds pass trivially
       reportOnFailure: true, // still print the report when a test fails
       thresholds: {
         'src/domain/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
