@@ -10,13 +10,17 @@ import type { SummaryWindow } from '../../domain/window.js'
 export interface DigestSource {
   /**
    * Conversations that have at least one message inside the window, ordered by the timestamp of their first message
-   * in the window, oldest first. The order matters: a repeated notice is kept in the first group (RF-34).
+   * in the window, oldest first; conversations whose first message has the same timestamp go by id, ascending, so
+   * the order is deterministic. The order matters: a repeated notice is kept in the first group (RF-34).
    * There is one Conversation for every such chat, even when the source has no metadata for it (a group with no
    * name comes with `name` null). Names arrive already cleaned: masked ones are null (`unmaskedName`).
    */
   conversationsWithMessages(window: SummaryWindow): Promise<readonly Conversation[]>
 
-  /** Messages of one conversation inside the window, oldest first. */
+  /**
+   * Messages of one conversation inside the window, oldest first. Messages with the same timestamp keep the order
+   * in which the source stored them. The same rule applies to `lastIncoming` (reversed) and `messagesBefore`.
+   */
   messagesInWindow(conversationId: string, window: SummaryWindow): Promise<readonly Message[]>
 
   /**

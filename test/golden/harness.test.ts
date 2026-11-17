@@ -1,11 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { createGenerateDigest } from '../../src/application/generate-digest.js'
 import type { SummarizeRequest } from '../../src/application/ports/summarizer.js'
 import { parseDigestSettings } from '../../src/domain/settings.js'
 import { createRenderers } from '../../src/infrastructure/rendering/index.js'
-import { FakeSummarizer, FixedClock, InMemoryStore } from '../support/application-fakes.js'
+import { FakeSummarizer, FixedClock } from '../support/application-fakes.js'
 import {
-  buildSource,
   frozenSlugs,
   initialPointer,
   llmResult,
@@ -15,8 +14,10 @@ import {
   readFrozen,
   runCount,
   scenarioSlugs,
+  seedSource,
   settingsInput,
 } from '../support/golden-legacy.js'
+import { backends, type PersistenceBackend } from '../support/persistence-backends.js'
 
 /**
  * Golden harness (phase 1): runs GenerateDigest on every scenario of test/golden/ and compares, per run, byte for
@@ -45,16 +46,25 @@ interface RunOutput {
   digest: string | null
   /** The digest kept in the history by this run: null when nothing was saved. */
   saved: string | null
-  commitsAdded: number
+  changed: boolean
   preview: boolean
   pointer: number | null
   outbox: { id: number; text: string; sent_at: null }[]
 }
 
-async function runScenario(slug: string): Promise<RunOutput[]> {
+async function runScenario(
+  slug: string,
+  backend: PersistenceBackend,
+  fixtures: { close(): void }[],
+): Promise<RunOutput[]> {
   const scenario = await loadScenario(slug)
-  const source = buildSource(scenario)
-  const store = new InMemoryStore(initialPointer(scenario))
+  const sourceFixture = backend.source()
+  fixtures.push(sourceFixture)
+  seedSource(scenario, sourceFixture.seed)
+  const source = sourceFixture.source
+  const storeFixture = await backend.store(initialPointer(scenario))
+  fixtures.push(storeFixture)
+  const store = storeFixture.store
   const parsed = parseDigestSettings(settingsInput(scenario.config))
   if (!parsed.ok) throw new Error(`Invalid settings in ${slug}: ${JSON.stringify(parsed.error)}`)
   const settings = parsed.value
@@ -73,8 +83,9 @@ async function runScenario(slug: string): Promise<RunOutput[]> {
       clock: new FixedClock(0), // every run has --hasta, so the clock is never read
       renderers,
     })
-    const outboxBefore = store.outbox.length
-    const commitsBefore = store.commits.length
+    const outboxBefore = storeFixture.outbox().length
+    const historyBefore = storeFixture.history().length
+    const pointerBefore = await storeFixture.pointer()
     const result = await generate({
       ...parseRunArgs(run.args),
       settings,
@@ -83,6 +94,9 @@ async function runScenario(slug: string): Promise<RunOutput[]> {
     })
     if (!result.ok) throw new Error(`${slug}: the run failed with ${JSON.stringify(result.error)}`)
     const report = result.value
+    const outboxNow = storeFixture.outbox()
+    const historyNow = storeFixture.history()
+    const pointerNow = await storeFixture.pointer()
     outputs.push({
       // The legacy fake LLM wrote the system prompt when it was loaded, even in a run with no chats to summarize.
       systems:
@@ -95,74 +109,83 @@ async function runScenario(slug: string): Promise<RunOutput[]> {
         isGroup: c.conversation.isGroup,
         userMessage: c.transcript,
       })),
-      parts: store.outbox.slice(outboxBefore),
+      parts: outboxNow.slice(outboxBefore),
       digest: report.digest === null ? null : report.digest.fullLines.join('\n'),
-      saved: store.commits.slice(commitsBefore).at(-1)?.digest?.text ?? null,
-      commitsAdded: store.commits.length - commitsBefore,
+      saved: historyNow.slice(historyBefore).at(-1)?.text ?? null,
+      // A preview saves nothing: no digest, no parts and the pointer where it was.
+      changed: historyNow.length !== historyBefore || outboxNow.length !== outboxBefore || pointerNow !== pointerBefore,
       preview: report.preview,
-      pointer: store.pointer,
-      outbox: store.outbox.map((text, i) => ({ id: i + 1, text, sent_at: null })),
+      pointer: pointerNow,
+      outbox: outboxNow.map((text, i) => ({ id: i + 1, text, sent_at: null })),
     })
   }
   return outputs
 }
 
-describe('golden files', () => {
-  it('has one frozen directory per scenario', () => {
-    expect(frozenSlugs()).toEqual(scenarioSlugs())
-  })
-
-  for (const slug of scenarioSlugs()) {
-    describe(slug, () => {
-      // One execution per scenario: its runs share the store and the pointer, in order.
-      const outputs = runScenario(slug)
-      outputs.catch(() => {}) // the tests below rethrow it; this only avoids an unhandled rejection
-
-      it('has a frozen directory for every run', async () => {
-        expect(runCount(slug)).toBe((await outputs).length)
-      })
-
-      const runs = runCount(slug)
-      for (let k = 1; k <= runs; k++) {
-        describe(`run-${k}`, () => {
-          it('llm-input.json', async () => {
-            const out = (await outputs)[k - 1]
-            const frozen = frozenJson(slug, k, 'llm-input.json') as { system: string; calls: unknown[] }
-            // Every call must carry the frozen system prompt, not only the first.
-            expect(out?.systems.map((system) => ({ system }))).toEqual(
-              out?.systems.map(() => ({ system: frozen.system })),
-            )
-            expect(out?.calls).toEqual(frozen.calls)
-          })
-
-          it('whatsapp-parts.json', async () => {
-            expect((await outputs)[k - 1]?.parts).toEqual(frozenJson(slug, k, 'whatsapp-parts.json'))
-          })
-
-          it('digest.md', async () => {
-            const out = (await outputs)[k - 1]
-            const frozen = readFrozen(slug, k, 'digest.md')
-            // The digest the use case returns is always the frozen one.
-            expect(out?.digest).toBe(frozen)
-            if (out?.preview) {
-              // Approved change: the legacy tool wrote the file in a preview, the new code saves nothing.
-              expect(out.commitsAdded).toBe(0)
-            } else {
-              // A normal run keeps the same text in the history.
-              expect(out?.saved).toBe(frozen)
-            }
-          })
-
-          it('state.json', async () => {
-            const out = (await outputs)[k - 1]
-            const frozen = frozenJson(slug, k, 'state.json') as { last_summary_ts: string | null; outbox: unknown[] }
-            expect({
-              last_summary_ts: out?.pointer == null ? null : String(out.pointer),
-              outbox: out?.outbox,
-            }).toEqual({ last_summary_ts: frozen.last_summary_ts, outbox: frozen.outbox })
-          })
-        })
-      }
-    })
-  }
+it('has one frozen directory per scenario', () => {
+  expect(frozenSlugs()).toEqual(scenarioSlugs())
 })
+
+// The same 14 scenarios through every persistence backend: the real adapter must reproduce the legacy output.
+for (const backend of backends) {
+  describe(`golden files (${backend.name})`, () => {
+    const fixtures: { close(): void }[] = []
+    afterAll(() => {
+      for (const fixture of fixtures) fixture.close()
+    })
+
+    for (const slug of scenarioSlugs()) {
+      describe(slug, () => {
+        // One execution per scenario: its runs share the store and the pointer, in order.
+        const outputs = runScenario(slug, backend, fixtures)
+        outputs.catch(() => {}) // the tests below rethrow it; this only avoids an unhandled rejection
+
+        it('has a frozen directory for every run', async () => {
+          expect(runCount(slug)).toBe((await outputs).length)
+        })
+
+        const runs = runCount(slug)
+        for (let k = 1; k <= runs; k++) {
+          describe(`run-${k}`, () => {
+            it('llm-input.json', async () => {
+              const out = (await outputs)[k - 1]
+              const frozen = frozenJson(slug, k, 'llm-input.json') as { system: string; calls: unknown[] }
+              // Every call must carry the frozen system prompt, not only the first.
+              expect(out?.systems.map((system) => ({ system }))).toEqual(
+                out?.systems.map(() => ({ system: frozen.system })),
+              )
+              expect(out?.calls).toEqual(frozen.calls)
+            })
+
+            it('whatsapp-parts.json', async () => {
+              expect((await outputs)[k - 1]?.parts).toEqual(frozenJson(slug, k, 'whatsapp-parts.json'))
+            })
+
+            it('digest.md', async () => {
+              const out = (await outputs)[k - 1]
+              const frozen = readFrozen(slug, k, 'digest.md')
+              // The digest the use case returns is always the frozen one.
+              expect(out?.digest).toBe(frozen)
+              if (out?.preview) {
+                // Approved change: the legacy tool wrote the file in a preview, the new code saves nothing.
+                expect(out.changed).toBe(false)
+              } else {
+                // A normal run keeps the same text in the history.
+                expect(out?.saved).toBe(frozen)
+              }
+            })
+
+            it('state.json', async () => {
+              const out = (await outputs)[k - 1]
+              const frozen = frozenJson(slug, k, 'state.json') as { last_summary_ts: string | null; outbox: unknown[] }
+              expect({
+                last_summary_ts: out?.pointer == null ? null : String(out.pointer),
+                outbox: out?.outbox,
+              }).toEqual({ last_summary_ts: frozen.last_summary_ts, outbox: frozen.outbox })
+            })
+          })
+        }
+      })
+    }
+  })
+}

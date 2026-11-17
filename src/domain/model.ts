@@ -22,17 +22,20 @@ export interface Participant {
   readonly publicName: string | null
 }
 
-export type MessageKind =
-  | 'text'
-  | 'image'
-  | 'video'
-  | 'audio'
-  | 'document'
-  | 'sticker'
-  | 'location'
-  | 'contact'
-  | 'poll'
-  | 'event'
+export const MESSAGE_KINDS = [
+  'text',
+  'image',
+  'video',
+  'audio',
+  'document',
+  'sticker',
+  'location',
+  'contact',
+  'poll',
+  'event',
+] as const
+
+export type MessageKind = (typeof MESSAGE_KINDS)[number]
 
 export interface Message {
   readonly id: string

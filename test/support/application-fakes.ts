@@ -74,7 +74,11 @@ export class InMemorySource implements DigestSource {
       .map((id) => this.conversations.get(id) ?? unknownConversation(id, this.groupIds.has(id)))
       .map((conversation) => ({ conversation, first: firstInWindow(conversation.id) }))
       .filter((x): x is { conversation: Conversation; first: number } => x.first !== undefined)
-      .sort((a, b) => a.first - b.first)
+      .sort(
+        (a, b) =>
+          a.first - b.first ||
+          (a.conversation.id < b.conversation.id ? -1 : a.conversation.id > b.conversation.id ? 1 : 0),
+      )
       .map((x) => x.conversation)
   }
 
@@ -104,6 +108,7 @@ export class InMemorySource implements DigestSource {
   }
 
   async messagesBefore(conversationId: string, timestamp: number, limit: number): Promise<readonly Message[]> {
+    if (limit <= 0) return [] // slice(-0) would return everything
     return this.of(conversationId)
       .filter((m) => m.timestamp < timestamp)
       .slice(-limit)

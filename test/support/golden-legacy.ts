@@ -5,7 +5,7 @@ import type { GenerateDigestRequest } from '../../src/application/generate-diges
 import type { Conversation, MessageKind, UnreadState } from '../../src/domain/model.js'
 import { unmaskedName } from '../../src/domain/names.js'
 import { err, ok, type Result } from '../../src/domain/result.js'
-import { InMemorySource } from './application-fakes.js'
+import type { SourceSeed } from './persistence-backends.js'
 
 /**
  * Stand-in for the future WhatsApp adapter, for the golden harness. It reads the scenarios of the legacy tool
@@ -95,9 +95,8 @@ const unreadStateOf = (count: number | null | undefined): UnreadState =>
       ? { kind: 'markedUnread' }
       : { kind: 'count', count }
 
-/** Fills an InMemorySource the way the legacy database was seeded (see test/golden/generate.mjs, `normalize`). */
-export function buildSource(scenario: LegacyScenario): InMemorySource {
-  const source = new InMemorySource()
+/** Fills a source (any backend) the way the legacy database was seeded (see test/golden/generate.mjs, `normalize`). */
+export function seedSource(scenario: LegacyScenario, source: SourceSeed): void {
   // A chat that has messages but no row in `chats` still exists, with no name and no unread counter.
   const known = new Set(scenario.chats.map((c) => c.jid))
   const rows: LegacyChat[] = [...scenario.chats]
@@ -116,7 +115,8 @@ export function buildSource(scenario: LegacyScenario): InMemorySource {
       participantId: isGroup ? null : chat.jid,
       address: phone(chat.jid),
     }
-    source.addConversation(conversation).setUnread(chat.jid, unreadStateOf(chat.unread_count))
+    source.addConversation(conversation)
+    source.setUnread(chat.jid, unreadStateOf(chat.unread_count))
   }
   for (const contact of scenario.contacts ?? []) {
     source.addParticipant({
@@ -154,7 +154,6 @@ export function buildSource(scenario: LegacyScenario): InMemorySource {
       read: (m.read ?? 0) !== 0,
     })
   }
-  return source
 }
 
 const MAPPED_CONFIG_KEYS = [
