@@ -51,6 +51,17 @@ export class InMemorySource implements DigestSource {
     return this
   }
 
+  /** Every message, in the order the source stored them. */
+  allMessages(): readonly Message[] {
+    return this.messages
+  }
+
+  /** For the capture fake: replaces the stored messages (it keeps the order it is given). */
+  replaceMessages(messages: Message[]): this {
+    this.messages = messages
+    return this
+  }
+
   addParticipant(participant: Participant): this {
     this.people.set(participant.id, participant)
     return this

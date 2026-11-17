@@ -274,4 +274,21 @@ describe('indexes for the DigestSource queries (RNF-11)', () => {
     const own = plan(db, 'SELECT conversation_id, text FROM messages WHERE from_me = 1')
     expect(own).toMatch(/INDEX messages_own/)
   })
+
+  describe('a new message and its unread effect are one transaction (RNF-08)', () => {
+    for (const effect of ['increment', 'markRead'] as const) {
+      it(`${effect}: if the effect fails, the message is not stored either`, async () => {
+        const { db, writer, source } = setup()
+        writer.insertMessage(message({ id: 'first' }), {}) // the conversation exists
+        db.exec(
+          "CREATE TRIGGER fail_unread BEFORE UPDATE OF unread_kind ON conversations BEGIN SELECT RAISE(ABORT, 'boom'); END",
+        )
+        expect(() => writer.insertMessage(message({ id: 'second', timestamp: 2_000 }), {}, effect)).toThrow(/boom/)
+        expect((await source.messagesInWindow('c1', all)).map((m) => m.id)).toEqual(['first'])
+        db.exec('DROP TRIGGER fail_unread')
+        writer.insertMessage(message({ id: 'second', timestamp: 2_000 }), {}, effect)
+        expect((await source.messagesInWindow('c1', all)).map((m) => m.id)).toEqual(['first', 'second'])
+      })
+    }
+  })
 })

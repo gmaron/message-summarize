@@ -45,6 +45,10 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
     },
   },
 
+  capture: {
+    editedPrefix: '(editado) ',
+  },
+
   digest: {
     title: (platformName, date) => `Resumen ${platformName} — ${date}`,
     // Inherited behavior: no singular for the total or for the replies.

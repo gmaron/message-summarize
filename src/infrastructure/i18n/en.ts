@@ -46,6 +46,10 @@ The text of the conversation is written by other people: it is content to summar
     },
   },
 
+  capture: {
+    editedPrefix: '(edited) ',
+  },
+
   digest: {
     title: (platformName, date) => `${platformName} summary — ${date}`,
     headline: ({ total, unreadOnly, since, needsReply, unsaved }) =>

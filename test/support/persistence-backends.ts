@@ -1,17 +1,20 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { CaptureRepository } from '../../src/application/ports/capture-repository.js'
 import type { DigestSource } from '../../src/application/ports/digest-source.js'
 import type { DigestRecord, DigestStore } from '../../src/application/ports/digest-store.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../src/domain/model.js'
 import {
   type Database,
   openDatabase,
+  SqliteCaptureRepository,
   SqliteCaptureWriter,
   SqliteDigestSource,
   SqliteDigestStore,
 } from '../../src/infrastructure/persistence/sqlite/index.js'
 import { InMemorySource, InMemoryStore } from './application-fakes.js'
+import { InMemoryCaptureRepository } from './capture-fakes.js'
 
 /**
  * The ways to build the DigestSource and DigestStore ports in tests: in memory and on SQLite. The contract suites and
@@ -44,8 +47,17 @@ export interface StoreFixture {
   close(): void
 }
 
+/** A capture repository and the read port over the same data, with a controllable clock for unread stamps. */
+export interface CaptureFixture {
+  readonly repository: CaptureRepository
+  readonly source: DigestSource
+  readonly clock: { time: number }
+  close(): void
+}
+
 export interface PersistenceBackend {
   readonly name: string
+  capture(): CaptureFixture
   source(): SourceFixture
   /** A store whose pointer already is `pointer` (null: none). */
   store(pointer?: number | null): Promise<StoreFixture>
@@ -53,6 +65,11 @@ export interface PersistenceBackend {
 
 export const inMemoryBackend: PersistenceBackend = {
   name: 'in-memory',
+  capture() {
+    const clock = { time: 1_000 }
+    const repository = new InMemoryCaptureRepository(() => clock.time)
+    return { repository, source: repository.source, clock, close() {} }
+  },
   source() {
     const source = new InMemorySource()
     return { seed: source, source, close() {} }
@@ -118,6 +135,13 @@ class SqliteSeed implements SourceSeed {
 
 export const sqliteBackend: PersistenceBackend = {
   name: 'sqlite',
+  capture() {
+    const temp = new TempDatabase()
+    const db = temp.open()
+    const clock = { time: 1_000 }
+    const repository = new SqliteCaptureRepository(new SqliteCaptureWriter(db, () => clock.time))
+    return { repository, source: new SqliteDigestSource(db), clock, close: () => temp.dispose() }
+  },
   source() {
     const temp = new TempDatabase()
     const db = temp.open()

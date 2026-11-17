@@ -1,18 +1,18 @@
+import type {
+  ConversationHint,
+  EditOutcome,
+  InsertResult,
+  UnreadEffect,
+} from '../../../application/ports/capture-repository.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../../domain/model.js'
 import { MESSAGE_KINDS } from '../../../domain/model.js'
 import { unmaskedName } from '../../../domain/names.js'
 import type { Database } from './database.js'
 import { inTransaction } from './transaction.js'
 
-/** What the caller knows about a chat the database has no row for yet (only the adapter knows its id format). */
-export interface ConversationHint {
-  readonly isGroup?: boolean
-}
-
 /**
- * CAPTURE-SIDE WRITER. Not a port: the application layer does not know it. The digest only reads (DigestSource) and
- * moves its pointer (DigestStore). This class is what the capture code (commit 8) and the tests use to put data in.
- * When capture gets its own port in `application/`, this becomes its adapter.
+ * CAPTURE-SIDE WRITER over SQLite, synchronous (node:sqlite is). `SqliteCaptureRepository` wraps it as the async
+ * CaptureRepository port that the capture use cases use; the tests also use it directly to seed data.
  *
  * Semantics chosen for capture. All writes are idempotent, because the platform replays history and events:
  * - Names are cleaned here with `unmaskedName`, and a null name never erases a known one: a masked name ("+54∙∙15")
@@ -64,39 +64,70 @@ export class SqliteCaptureWriter {
       .run(participant.id, unmaskedName(participant.savedName), unmaskedName(participant.publicName))
   }
 
-  /** Inserts a message, or updates the existing one with the same (conversation, id). */
-  insertMessage(message: Message, hint: ConversationHint = {}): void {
+  /**
+   * Inserts a message, or updates the existing one with the same (conversation, id). When the message is new, the
+   * unread effect is applied in the same transaction, so a crash cannot leave a counted message uncounted or the
+   * reverse (RNF-08). A replay never has an effect.
+   *
+   * A message stored by `recordEdit` (its original never arrived, or arrives later) keeps the edited text and takes
+   * the earliest of the two timestamps: the original is older than its edit.
+   */
+  insertMessage(message: Message, hint: ConversationHint = {}, effectIfNew: UnreadEffect = 'none'): InsertResult {
+    return inTransaction(this.db, () => {
+      const isNew = this.upsertMessageRow(message, hint, null)
+      if (isNew) {
+        if (effectIfNew === 'increment') this.incrementUnread(message.conversationId, hint)
+        else if (effectIfNew === 'markRead') {
+          this.markAllIncomingRead(message.conversationId)
+          this.setUnread(message.conversationId, { kind: 'count', count: 0 }, hint)
+        }
+      }
+      const row = this.db
+        .prepare('SELECT transcript IS NOT NULL AS has FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(message.conversationId, message.id) as { has: number }
+      return { isNew, hasTranscript: row.has === 1 }
+    })
+  }
+
+  /** Writes the row and returns true when it is new. `editedAt` is set for a message that is stored by an edit. */
+  private upsertMessageRow(message: Message, hint: ConversationHint, editedAt: number | null): boolean {
     if (!(MESSAGE_KINDS as readonly string[]).includes(message.kind)) {
       throw new Error(`Unknown message kind: ${String(message.kind)}`)
     }
-    inTransaction(this.db, () => {
-      this.ensureConversation(message.conversationId, hint)
+    this.ensureConversation(message.conversationId, hint)
+    const isNew =
       this.db
-        .prepare(
-          `INSERT INTO messages
-             (conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (conversation_id, id) DO UPDATE SET
-             sender_name = COALESCE(excluded.sender_name, messages.sender_name),
-             text = CASE WHEN messages.edited_at IS NOT NULL THEN messages.text
-                         ELSE COALESCE(excluded.text, messages.text) END,
-             transcript = COALESCE(excluded.transcript, messages.transcript),
-             read = MAX(messages.read, excluded.read)`,
-        )
-        .run(
-          message.conversationId,
-          message.id,
-          message.senderId,
-          unmaskedName(message.senderName),
-          message.senderAddress,
-          message.fromMe ? 1 : 0,
-          message.timestamp,
-          message.kind,
-          message.text,
-          message.transcript,
-          message.read ? 1 : 0,
-        )
-    })
+        .prepare('SELECT 1 FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(message.conversationId, message.id) === undefined
+    this.db
+      .prepare(
+        `INSERT INTO messages
+           (conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read, edited_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (conversation_id, id) DO UPDATE SET
+           sender_name = COALESCE(excluded.sender_name, messages.sender_name),
+           timestamp = CASE WHEN messages.edited_at IS NOT NULL THEN MIN(messages.timestamp, excluded.timestamp)
+                            ELSE messages.timestamp END,
+           text = CASE WHEN messages.edited_at IS NOT NULL THEN messages.text
+                       ELSE COALESCE(excluded.text, messages.text) END,
+           transcript = COALESCE(excluded.transcript, messages.transcript),
+           read = MAX(messages.read, excluded.read)`,
+      )
+      .run(
+        message.conversationId,
+        message.id,
+        message.senderId,
+        unmaskedName(message.senderName),
+        message.senderAddress,
+        message.fromMe ? 1 : 0,
+        message.timestamp,
+        message.kind,
+        message.text,
+        message.transcript,
+        message.read ? 1 : 0,
+        editedAt,
+      )
+    return isNew
   }
 
   /**
@@ -113,6 +144,24 @@ export class SqliteCaptureWriter {
     return Number(result.changes) === 1
   }
 
+  /**
+   * RF-11 for a platform that may deliver an edit before its original (or never): `message` is the edited message
+   * under the id of the original. If the original is stored the edit replaces its text (when newer than the edit
+   * already applied); otherwise the edited message is stored as the message itself, marked as edited.
+   */
+  recordEdit(message: Message, editedAt: number, hint: ConversationHint = {}): EditOutcome {
+    return inTransaction(this.db, () => {
+      const exists = this.db
+        .prepare('SELECT 1 FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(message.conversationId, message.id)
+      if (exists === undefined) {
+        this.upsertMessageRow(message, hint, editedAt)
+        return 'inserted'
+      }
+      return this.editMessage(message.conversationId, message.id, message.text, editedAt) ? 'applied' : 'ignored'
+    })
+  }
+
   setTranscript(conversationId: string, id: string, transcript: string): boolean {
     const result = this.db
       .prepare('UPDATE messages SET transcript = ? WHERE conversation_id = ? AND id = ?')
@@ -126,6 +175,73 @@ export class SqliteCaptureWriter {
     inTransaction(this.db, () => {
       for (const id of ids) statement.run(conversationId, id)
     })
+  }
+
+  /**
+   * Read on another device: the incoming messages with these ids and every earlier incoming message of the same
+   * conversation. Own messages and unknown ids are not touched.
+   */
+  markReadThrough(conversationId: string, ids: readonly string[]): void {
+    const statement = this.db.prepare(
+      `UPDATE messages SET read = 1
+       WHERE conversation_id = ? AND from_me = 0 AND timestamp <=
+         (SELECT timestamp FROM messages WHERE conversation_id = ? AND id = ? AND from_me = 0)`,
+    )
+    inTransaction(this.db, () => {
+      for (const id of ids) statement.run(conversationId, conversationId, id)
+    })
+  }
+
+  markAllIncomingRead(conversationId: string): void {
+    this.db.prepare('UPDATE messages SET read = 1 WHERE conversation_id = ? AND from_me = 0').run(conversationId)
+  }
+
+  /** One more unread incoming message: from unknown or markedUnread the count becomes 1. Stamped with now. */
+  incrementUnread(conversationId: string, hint: ConversationHint = {}): void {
+    inTransaction(this.db, () => {
+      this.ensureConversation(conversationId, hint)
+      this.db
+        .prepare(
+          `UPDATE conversations SET
+             unread_count = CASE WHEN unread_kind = 'count' THEN unread_count ELSE 0 END + 1,
+             unread_kind = 'count',
+             unread_updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(this.now(), conversationId)
+    })
+  }
+
+  findConversation(id: string): Conversation | null {
+    const row = this.db
+      .prepare('SELECT id, is_group, name, participant_id, address FROM conversations WHERE id = ?')
+      .get(id) as
+      | { id: string; is_group: number; name: string | null; participant_id: string | null; address: string }
+      | undefined
+    if (row === undefined) return null
+    return {
+      id: row.id,
+      isGroup: row.is_group !== 0,
+      name: row.name,
+      participantId: row.participant_id,
+      address: row.address,
+    }
+  }
+
+  findParticipant(id: string): Participant | null {
+    const row = this.db.prepare('SELECT id, saved_name, public_name FROM participants WHERE id = ?').get(id) as
+      | { id: string; saved_name: string | null; public_name: string | null }
+      | undefined
+    return row === undefined ? null : { id: row.id, savedName: row.saved_name, publicName: row.public_name }
+  }
+
+  countOtherConversationsWithOwnText(conversationId: string, text: string): number {
+    const row = this.db
+      .prepare(
+        'SELECT COUNT(DISTINCT conversation_id) AS n FROM messages WHERE from_me = 1 AND text = ? AND conversation_id != ?',
+      )
+      .get(text, conversationId) as { n: number }
+    return row.n
   }
 
   /** A live update (RF-12): sets the unread state and stamps it with the current time. */

@@ -43,6 +43,12 @@ export interface Catalog {
     readonly kinds: Readonly<Record<MessageKind, string>>
   }
 
+  /** Texts the capture adapters put into stored messages (RF-10, RF-11). */
+  readonly capture: {
+    /** Goes before the text of an edited message, so the digest shows that it was edited (legacy "(editado) "). */
+    readonly editedPrefix: string
+  }
+
   readonly digest: {
     title(platformName: string, date: string): string
     headline(parts: HeadlineParts): string
