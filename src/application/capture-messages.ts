@@ -19,6 +19,8 @@ import type { Clock } from './ports/clock.js'
 
 const DAY_MS = 86_400_000
 export const DEFAULT_AUDIO_HISTORY_DAYS = 14
+/** How far ahead of our own clock an edit time may be and still be believed (phone clocks drift). */
+export const EDIT_CLOCK_SKEW_MS = 5 * 60_000
 
 export interface CaptureMessagesDeps {
   readonly repository: CaptureRepository
@@ -129,7 +131,15 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       if (await dropped(message.conversationId, isGroup, conversationName)) return null
       // An edit never touches the unread counters, even when it is the first sight of the message (as the previous
       // tool did): it is stored, but only a message that arrives as a message counts.
-      return repository.recordEdit(message, editedAt, { isGroup })
+      // The edit time is the sender's claim: clamped to now plus a small skew so a forged future time cannot lock out
+      // later legitimate edits (the repository ignores edits that are not newer). The timestamp of a message stored
+      // by the edit is clamped too, so it cannot sit in the future.
+      const limit = clock.now() + EDIT_CLOCK_SKEW_MS
+      return repository.recordEdit(
+        message.timestamp > limit ? { ...message, timestamp: limit } : message,
+        Math.min(editedAt, limit),
+        { isGroup },
+      )
     },
 
     async messagesRead({ conversationId, isGroup, conversationName, messageIds }) {

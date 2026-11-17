@@ -93,6 +93,12 @@ export class InMemoryCaptureRepository implements CaptureRepository {
     const old = this.messages[index]
     if (old !== undefined) {
       const edited = this.editedAt.has(key)
+      // A provisional message stored by an edit loses entirely to an original from a different author.
+      if (edited && (old.senderId !== clean.senderId || old.fromMe !== clean.fromMe)) {
+        this.setAt(index, { ...clean, transcript: clean.transcript ?? old.transcript, read: old.read || clean.read })
+        this.editedAt.delete(key)
+        return false
+      }
       this.setAt(index, {
         ...old,
         senderName: clean.senderName ?? old.senderName,
@@ -137,6 +143,8 @@ export class InMemoryCaptureRepository implements CaptureRepository {
       this.upsertRow(message, hint, editedAt)
       return 'inserted'
     }
+    // Only the author edits a message.
+    if (old.senderId !== message.senderId || old.fromMe !== message.fromMe) return 'ignored'
     const key = this.key(message.conversationId, message.id)
     const applied = this.editedAt.get(key)
     if (applied !== undefined && applied >= editedAt) return 'ignored'

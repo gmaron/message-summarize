@@ -11,6 +11,14 @@ import type { Database } from './database.js'
 import { inTransaction } from './transaction.js'
 
 /**
+ * SQL condition inside the upsert of a message: the stored row is a provisional message created by an edit
+ * (edited_at set) and the incoming message has a different author. The real original wins entirely over it.
+ * `IS NOT` compares NULL senders (own messages) correctly.
+ */
+const FORGED =
+  '(messages.edited_at IS NOT NULL AND (messages.sender_id IS NOT excluded.sender_id OR messages.from_me != excluded.from_me))'
+
+/**
  * CAPTURE-SIDE WRITER over SQLite, synchronous (node:sqlite is). `SqliteCaptureRepository` wraps it as the async
  * CaptureRepository port that the capture use cases use; the tests also use it directly to seed data.
  *
@@ -20,7 +28,9 @@ import { inTransaction } from './transaction.js'
  * - A message that already exists is updated in place and keeps its `seq` (its place among equal timestamps).
  *   `text` and `transcript` only change when the new value is not null, and a replay never undoes an edit (RF-11).
  *   `read` only goes from unread to read. A message never moves to another conversation.
- * - An edit applies only when it is newer than the stored one, so out-of-order edits cannot go back.
+ * - An edit applies only when it is newer than the stored one, so out-of-order edits cannot go back, and only when
+ *   its editor is the author of the original (same sender_id and from_me). A message stored by an edit is provisional:
+ *   an original from a different author replaces it entirely.
  * - Any write that needs a conversation creates a stub row when there is none (no name, address = id), because a
  *   message cannot exist without its conversation (foreign key). The caller says through `hint` whether it is a
  *   group: a stub group has no participant, a stub individual chat has itself as participant.
@@ -107,11 +117,19 @@ export class SqliteCaptureWriter {
            (conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read, edited_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (conversation_id, id) DO UPDATE SET
-           sender_name = COALESCE(excluded.sender_name, messages.sender_name),
-           timestamp = CASE WHEN messages.edited_at IS NOT NULL THEN MIN(messages.timestamp, excluded.timestamp)
+           sender_id = CASE WHEN ${FORGED} THEN excluded.sender_id ELSE messages.sender_id END,
+           sender_address = CASE WHEN ${FORGED} THEN excluded.sender_address ELSE messages.sender_address END,
+           from_me = CASE WHEN ${FORGED} THEN excluded.from_me ELSE messages.from_me END,
+           kind = CASE WHEN ${FORGED} THEN excluded.kind ELSE messages.kind END,
+           sender_name = CASE WHEN ${FORGED} THEN excluded.sender_name
+                              ELSE COALESCE(excluded.sender_name, messages.sender_name) END,
+           timestamp = CASE WHEN ${FORGED} THEN excluded.timestamp
+                            WHEN messages.edited_at IS NOT NULL THEN MIN(messages.timestamp, excluded.timestamp)
                             ELSE messages.timestamp END,
-           text = CASE WHEN messages.edited_at IS NOT NULL THEN messages.text
+           text = CASE WHEN ${FORGED} THEN excluded.text
+                       WHEN messages.edited_at IS NOT NULL THEN messages.text
                        ELSE COALESCE(excluded.text, messages.text) END,
+           edited_at = CASE WHEN ${FORGED} THEN NULL ELSE messages.edited_at END,
            transcript = COALESCE(excluded.transcript, messages.transcript),
            read = MAX(messages.read, excluded.read)`,
       )
@@ -154,13 +172,15 @@ export class SqliteCaptureWriter {
    */
   recordEdit(message: Message, editedAt: number, hint: ConversationHint = {}): EditOutcome {
     return inTransaction(this.db, () => {
-      const exists = this.db
-        .prepare('SELECT 1 FROM messages WHERE conversation_id = ? AND id = ?')
-        .get(message.conversationId, message.id)
-      if (exists === undefined) {
+      const stored = this.db
+        .prepare('SELECT sender_id, from_me FROM messages WHERE conversation_id = ? AND id = ?')
+        .get(message.conversationId, message.id) as { sender_id: string | null; from_me: number } | undefined
+      if (stored === undefined) {
         this.upsertMessageRow(message, hint, editedAt)
         return 'inserted'
       }
+      // Only the author edits a message: same sender and same side (own messages: from_me on both, no sender).
+      if (stored.sender_id !== message.senderId || (stored.from_me === 1) !== message.fromMe) return 'ignored'
       return this.editMessage(message.conversationId, message.id, message.text, editedAt) ? 'applied' : 'ignored'
     })
   }

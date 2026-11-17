@@ -174,6 +174,110 @@ export function describeCaptureRepositoryContract(backend: PersistenceBackend): 
         await f.repository.recordEdit(message({ id: 'a', text: 'x' }), 5_000)
         expect(await f.source.unreadState('c1')).toEqual({ kind: 'unknown' })
       })
+
+      describe('only the author edits a message', () => {
+        const ownMessage = (overrides: Parameters<typeof message>[0] = {}) =>
+          message({ fromMe: true, senderId: null, senderAddress: null, ...overrides })
+
+        it('a group member cannot edit the message of another member: ignored, nothing changes', async () => {
+          const f = make()
+          await f.repository.insertMessage(message({ id: 'a', senderId: 'p1', text: 'original' }), { isGroup: true })
+          const forged = message({ id: 'a', senderId: 'p2', text: '(edited) forged' })
+          expect(await f.repository.recordEdit(forged, 5_000, { isGroup: true })).toBe('ignored')
+          expect(await f.source.messagesInWindow('c1', all)).toEqual([
+            message({ id: 'a', senderId: 'p1', text: 'original' }),
+          ])
+          // the forged edit did not take the edit slot: the author's own, older edit still applies
+          expect(
+            await f.repository.recordEdit(message({ id: 'a', senderId: 'p1', text: '(edited) real' }), 4_000),
+          ).toBe('applied')
+          expect(await texts(f)).toEqual(['(edited) real'])
+        })
+
+        it('someone else cannot edit an own message, and the owner cannot edit another one', async () => {
+          const f = make()
+          await f.repository.insertMessage(ownMessage({ id: 'mine', text: 'my words' }), { isGroup: true })
+          await f.repository.insertMessage(message({ id: 'theirs', senderId: 'p1', text: 'their words' }), {
+            isGroup: true,
+          })
+          const byOther = message({ id: 'mine', senderId: 'p2', text: '(edited) forged' })
+          const byOwnerOfTheirs = ownMessage({ id: 'theirs', text: '(edited) forged' })
+          expect(await f.repository.recordEdit(byOther, 5_000, { isGroup: true })).toBe('ignored')
+          expect(await f.repository.recordEdit(byOwnerOfTheirs, 5_000, { isGroup: true })).toBe('ignored')
+          expect(await texts(f)).toEqual(['my words', 'their words'])
+        })
+
+        it('the side counts even when neither message has a sender id', async () => {
+          const f = make()
+          // an incoming group message whose participant was unknown has no sender id, like an own message
+          await f.repository.insertMessage(message({ id: 'a', senderId: null, text: 'anonymous' }), { isGroup: true })
+          await f.repository.insertMessage(ownMessage({ id: 'b', text: 'mine', timestamp: 2_000 }), { isGroup: true })
+          expect(await f.repository.recordEdit(ownMessage({ id: 'a', text: '(edited) x' }), 5_000)).toBe('ignored')
+          expect(await f.repository.recordEdit(message({ id: 'b', senderId: null, text: '(edited) y' }), 5_000)).toBe(
+            'ignored',
+          )
+          expect(await texts(f)).toEqual(['anonymous', 'mine'])
+        })
+
+        it('the side counts for a provisional message too, even without sender ids', async () => {
+          const f = make()
+          await f.repository.recordEdit(message({ id: 'a', senderId: null, text: '(edited) anonymous' }), 5_000)
+          await f.repository.insertMessage(ownMessage({ id: 'a', text: 'really mine' }))
+          expect((await f.source.messagesInWindow('c1', all)).map((m) => [m.text, m.fromMe])).toEqual([
+            ['really mine', true],
+          ])
+        })
+
+        it('the same author still edits, an own message included', async () => {
+          const f = make()
+          await f.repository.insertMessage(message({ id: 'a', senderId: 'p1', text: 'original' }))
+          await f.repository.insertMessage(ownMessage({ id: 'mine', text: 'my words', timestamp: 2_000 }))
+          expect(await f.repository.recordEdit(message({ id: 'a', senderId: 'p1', text: '(edited) x' }), 5_000)).toBe(
+            'applied',
+          )
+          expect(await f.repository.recordEdit(ownMessage({ id: 'mine', text: '(edited) y' }), 5_000)).toBe('applied')
+          expect(await texts(f)).toEqual(['(edited) x', '(edited) y'])
+        })
+
+        it('a provisional message stored by an edit loses to an original from a different author', async () => {
+          const f = make()
+          const forged = message({ id: 'a', senderId: 'p2', text: '(edited) forged', timestamp: 5_000 })
+          expect(await f.repository.recordEdit(forged, 5_000, { isGroup: true })).toBe('inserted')
+          const original = message({ id: 'a', senderId: 'p1', text: 'real words', timestamp: 4_000, senderName: 'Ana' })
+          expect((await f.repository.insertMessage(original, { isGroup: true })).isNew).toBe(false)
+          expect(await f.source.messagesInWindow('c1', all)).toEqual([original])
+          // the mark is cleared: the real author edits normally, even with an edit time older than the forged one
+          expect(
+            await f.repository.recordEdit(message({ id: 'a', senderId: 'p1', text: '(edited) real' }), 3_000),
+          ).toBe('applied')
+          expect(await texts(f)).toEqual(['(edited) real'])
+        })
+
+        it('a provisional message from an own edit loses to an original from someone else, and the reverse', async () => {
+          const f = make()
+          await f.repository.recordEdit(ownMessage({ id: 'a', text: '(edited) mine?' }), 5_000)
+          await f.repository.insertMessage(message({ id: 'a', senderId: 'p1', text: 'theirs' }))
+          await f.repository.recordEdit(message({ id: 'b', senderId: 'p1', text: '(edited) theirs?' }), 5_000)
+          await f.repository.insertMessage(ownMessage({ id: 'b', text: 'mine' }))
+          expect((await f.source.messagesInWindow('c1', all)).map((m) => [m.id, m.text, m.fromMe, m.senderId])).toEqual(
+            [
+              ['a', 'theirs', false, 'p1'],
+              ['b', 'mine', true, null],
+            ],
+          )
+        })
+
+        it('a provisional message from the same author keeps the edited text when the original arrives', async () => {
+          const f = make()
+          await f.repository.recordEdit(
+            message({ id: 'a', senderId: 'p1', text: '(edited) new', timestamp: 5_000 }),
+            5_000,
+          )
+          await f.repository.insertMessage(message({ id: 'a', senderId: 'p1', text: 'original', timestamp: 1_000 }))
+          const [stored] = await f.source.messagesInWindow('c1', all)
+          expect([stored?.text, stored?.timestamp]).toEqual(['(edited) new', 1_000])
+        })
+      })
     })
 
     describe('read marks', () => {

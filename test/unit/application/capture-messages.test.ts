@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { MessageReceived } from '../../../src/application/capture-events.js'
-import { type CaptureMessagesDeps, createCaptureMessages } from '../../../src/application/capture-messages.js'
+import {
+  type CaptureMessagesDeps,
+  createCaptureMessages,
+  EDIT_CLOCK_SKEW_MS,
+} from '../../../src/application/capture-messages.js'
 import { createGenerateDigest } from '../../../src/application/generate-digest.js'
 import type { CaptureRepository } from '../../../src/application/ports/capture-repository.js'
 import type { DigestSource } from '../../../src/application/ports/digest-source.js'
@@ -495,6 +499,51 @@ describe('CaptureMessages: edits (RF-11)', () => {
     expect((await source.messagesInWindow('c1', all))[0]?.text).toBe('(edited) new')
   })
 
+  describe('the edit time is clamped to the receive time', () => {
+    it('a future editedAt cannot lock out a later legitimate edit', async () => {
+      const { capture, source, clock } = setup()
+      await capture.receiveMessage(received({ id: 'a', text: 'original' }))
+      const forgedFuture = NOW + 10 * 365 * DAY
+      expect(await capture.editMessage({ ...edited({ text: '(edited) v1' }), editedAt: forgedFuture })).toBe('applied')
+      // the lock lasts at most the skew: once the clock passes it, the real edit is newer again
+      clock.time = NOW + 2 * EDIT_CLOCK_SKEW_MS
+      const later = clock.time
+      expect(await capture.editMessage({ ...edited({ text: '(edited) v2' }), editedAt: later })).toBe('applied')
+      expect((await source.messagesInWindow('c1', all))[0]?.text).toBe('(edited) v2')
+    })
+
+    it('allows a small skew and no more', async () => {
+      const { capture, source } = setup()
+      await capture.receiveMessage(received({ id: 'a', text: 'original' }))
+      // inside the skew: kept as is, so an edit stamped just before it is stale
+      await capture.editMessage({ ...edited({ text: '(edited) v1' }), editedAt: NOW + EDIT_CLOCK_SKEW_MS })
+      expect(
+        await capture.editMessage({ ...edited({ text: '(edited) v2' }), editedAt: NOW + EDIT_CLOCK_SKEW_MS - 1 }),
+      ).toBe('ignored')
+      // beyond it: clamped to the limit, which equals the previous one, so it is not newer
+      expect(
+        await capture.editMessage({ ...edited({ text: '(edited) v3' }), editedAt: NOW + EDIT_CLOCK_SKEW_MS + 1 }),
+      ).toBe('ignored')
+      expect((await source.messagesInWindow('c1', all))[0]?.text).toBe('(edited) v1')
+    })
+
+    it('the timestamp of a message stored by the edit is clamped too', async () => {
+      const { capture, source } = setup()
+      const future = NOW + 10 * DAY
+      await capture.editMessage({ ...edited({ timestamp: future }), editedAt: future })
+      expect((await source.messagesInWindow('c1', { since: 0, until: future }))[0]?.timestamp).toBe(
+        NOW + EDIT_CLOCK_SKEW_MS,
+      )
+    })
+  })
+
+  it('an edit from someone who is not the author of the original is ignored', async () => {
+    const { capture, source } = setup()
+    await capture.receiveMessage(received({ id: 'a', senderId: 'p1', text: 'original' }, { isGroup: true }))
+    expect(await capture.editMessage({ ...edited({ senderId: 'p2' }), isGroup: true })).toBe('ignored')
+    expect((await source.messagesInWindow('c1', all))[0]?.text).toBe('original')
+  })
+
   it('stores the sender of the edit event', async () => {
     const { capture, repository } = setup()
     await capture.editMessage({ ...edited(), sender: participant({ publicName: 'Anita' }) })
@@ -725,6 +774,61 @@ describe('capture to digest, on SQLite', () => {
       })
       await digest()
       expect(summarizer.calls[0]?.transcript).toContain('lunch at one')
+    } finally {
+      temp.dispose()
+    }
+  })
+
+  it('a spoofed edit by another group member never reaches the summarizer, a real one does', async () => {
+    const { temp, capture, summarizer, digest } = sqliteSetup()
+    try {
+      await capture.conversationMetadata({
+        conversation: conversation({ id: 'g-vecinos', isGroup: true, name: 'Vecinos', participantId: null }),
+      })
+      const inGroup = (id: string, senderId: string | null, text: string, hour: number, fromMe = false) =>
+        message({ id, conversationId: 'g-vecinos', senderId, fromMe, text, timestamp: hourAt(hour) })
+      await capture.receiveMessage({
+        message: inGroup('m1', '5491100000001', 'meeting at noon', 9),
+        isGroup: true,
+        origin: 'live',
+      })
+      await capture.receiveMessage({
+        message: inGroup('m2', null, 'my own note', 9, true),
+        isGroup: true,
+        origin: 'live',
+      })
+      // a member rewrites both the other member's message and the owner's; the original of m3 never arrived
+      for (const id of ['m1', 'm2']) {
+        const outcome = await capture.editMessage({
+          message: inGroup(id, '5491100000077', `(edited) FORGED ${id}`, 10),
+          editedAt: hourAt(10),
+          isGroup: true,
+        })
+        expect(outcome).toBe('ignored')
+      }
+      // the real author edits m1
+      await capture.editMessage({
+        message: inGroup('m1', '5491100000001', '(edited) meeting at one', 10),
+        editedAt: hourAt(10),
+        isGroup: true,
+      })
+      // a forged edit of a message that arrives later is replaced by the original
+      await capture.editMessage({
+        message: inGroup('m3', '5491100000077', '(edited) FORGED m3', 10),
+        editedAt: hourAt(10),
+        isGroup: true,
+      })
+      await capture.receiveMessage({
+        message: inGroup('m3', '5491100000002', 'bring chairs', 11),
+        isGroup: true,
+        origin: 'live',
+      })
+      await digest()
+      const transcript = summarizer.calls[0]?.transcript ?? ''
+      expect(transcript).toContain('meeting at one')
+      expect(transcript).toContain('my own note')
+      expect(transcript).toContain('bring chairs')
+      expect(JSON.stringify(summarizer.calls)).not.toContain('FORGED')
     } finally {
       temp.dispose()
     }

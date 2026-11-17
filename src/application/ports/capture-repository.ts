@@ -7,10 +7,12 @@ export interface ConversationHint {
 
 /**
  * What happened to an edit (RF-11).
- * - applied: the original was stored and the edit is newer than the one already applied.
+ * - applied: the original was stored, the editor is its author and the edit is newer than the one already applied.
  * - inserted: the original is not stored (it has not arrived, or never will). The edited message is stored as the
- *   message itself, marked as edited. If the original arrives later, the edited text stays.
- * - ignored: the original is stored and the edit is not newer than the one already applied.
+ *   message itself, marked as edited, with its author. If the original arrives later from the SAME author, the
+ *   edited text stays; from a different author the original wins entirely (see `recordEdit`).
+ * - ignored: the original is stored and either the editor is not its author (nothing changes) or the edit is not
+ *   newer than the one already applied.
  */
 export type EditOutcome = 'applied' | 'inserted' | 'ignored'
 
@@ -80,6 +82,14 @@ export interface CaptureRepository {
    * of the original, or is stored as the message when the original is missing. See `EditOutcome`. A null text never
    * erases the text already stored.
    * An edit never touches the unread state, even when it is stored as the message ('inserted').
+   *
+   * Authorship: only the author of a message can edit it. An edit is applied only when `message.senderId` and
+   * `message.fromMe` equal those of the stored original (the adapter normalizes ids before, so they compare as
+   * stored; an own message has fromMe true and a null senderId on both sides). Otherwise it is 'ignored' and nothing
+   * changes: in a group any member could otherwise rewrite another member's message, or the owner's, as the digest
+   * sees it. A message stored by an edit ('inserted') is provisional: if the original later arrives with a different
+   * author, the original replaces it entirely (author, timestamp, kind, text; the edit mark is cleared).
+   * `editedAt` is a claim of the sender: the use case clamps it to the receive time before calling.
    */
   recordEdit(message: Message, editedAt: number, hint?: ConversationHint): Promise<EditOutcome>
 

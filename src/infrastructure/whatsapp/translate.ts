@@ -274,8 +274,9 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
    * messages.upsert and the update in messages.update). The two carry slightly different timestamps, so the key is
    * the content: the chat, the original id and the edited text. Repeating the same text would change nothing anyway.
    */
-  function firstSightOfEdit(chatJid: string, originalId: string, editedText: string): boolean {
-    const key = `${chatJid}\n${originalId}\n${editedText}`
+  function firstSightOfEdit(chatJid: string, originalId: string, editor: Author, editedText: string): boolean {
+    // The editor is part of the key: a forged edit with the same text must not hide the real author's edit.
+    const key = `${chatJid}\n${originalId}\n${editor.fromMe ? 'me' : (editor.senderId ?? '')}\n${editedText}`
     if (seenEdits.has(key)) return false
     seenEdits.add(key)
     if (seenEdits.size > EDIT_MEMORY) {
@@ -309,7 +310,10 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     }
 
     if (edit !== null) {
-      if (!firstSightOfEdit(located.chatJid, edit.originalId, parsed.text)) return
+      // `author` here is the EDITOR (the key of the protocol message), not the author of the original. The edit
+      // carries it as the message's sender so the repository can apply the edit only when it matches the original's
+      // author (RF-11): a group member cannot rewrite another member's message by referencing its id.
+      if (!firstSightOfEdit(located.chatJid, edit.originalId, author, parsed.text)) return
       await capture.editMessage({
         ...context,
         message: buildMessage(edit.originalId, located, author, timestamp, parsed),
@@ -333,8 +337,8 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     const edit = parseEditedBody(key.id, edited, catalog)
     if (edit === null) return true
     const editedAt = timestampMs(update?.messageTimestamp) ?? clock.now()
-    if (!firstSightOfEdit(located.chatJid, edit.originalId, edit.parsed.text)) return true
     const author = await authorOf(key, located, null)
+    if (!firstSightOfEdit(located.chatJid, edit.originalId, author, edit.parsed.text)) return true
     const conversationName = await conversationNameOf(located, true)
     await announce(located, conversationName)
     await capture.editMessage({

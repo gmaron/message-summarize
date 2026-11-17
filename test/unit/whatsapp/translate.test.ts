@@ -292,6 +292,43 @@ describe('edits (RF-11)', () => {
     expect(Object.keys(edited).sort()).toEqual(['conversationName', 'editedAt', 'isGroup', 'message', 'sender'])
   })
 
+  it('a spoofed group edit carries the EDITOR as sender, not the author of the original', async () => {
+    const { translator, calls } = setup()
+    const spoof: WaMessage = {
+      key: { remoteJid: GROUP, id: 'E1', fromMe: false, participant: BETO },
+      pushName: 'Beto',
+      messageTimestamp: 1_700_000_100,
+      message: { protocolMessage: { type: 14, key: { id: 'ANAS-MSG' }, editedMessage: { conversation: 'forged' } } },
+    }
+    await translator.messagesUpsert({ type: 'notify', messages: [spoof] })
+    expect(eventAt<{ message: object }>(calls, 'editMessage').message).toMatchObject({
+      id: 'ANAS-MSG',
+      senderId: BETO,
+      fromMe: false,
+    })
+    // the owner's edit has no sender, so it can never match a message from someone else
+    const own: WaMessage = { ...spoof, key: { remoteJid: GROUP, id: 'E2', fromMe: true }, pushName: undefined }
+    await translator.messagesUpsert({ type: 'notify', messages: [own] })
+    expect(eventAt<{ message: object }>(calls, 'editMessage', 1).message).toMatchObject({
+      id: 'ANAS-MSG',
+      senderId: null,
+      fromMe: true,
+    })
+  })
+
+  it('a forged edit with the same text does not hide the real author edit', async () => {
+    const { translator, calls } = setup()
+    const edit = (id: string, participant: string): WaMessage => ({
+      key: { remoteJid: GROUP, id, fromMe: false, participant },
+      messageTimestamp: 1_700_000_100,
+      message: { protocolMessage: { type: 14, key: { id: 'M1' }, editedMessage: { conversation: 'same text' } } },
+    })
+    await translator.messagesUpsert({ type: 'notify', messages: [edit('E1', BETO), edit('E2', ANA)] })
+    expect(
+      only(calls, 'editMessage').map((c) => (c.event as { message: { senderId: string } }).message.senderId),
+    ).toEqual([BETO, ANA])
+  })
+
   it('uses the English prefix in an English account', async () => {
     const { translator, calls } = setup({}, 'en')
     await translator.messagesUpsert({ type: 'notify', messages: [editOf('E1', ANA, 'M1', 'new text')] })
