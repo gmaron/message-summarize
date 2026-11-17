@@ -12,4 +12,8 @@ export class SqliteOutboxRepository implements OutboxRepository {
   async markSent(id: number): Promise<boolean> {
     return this.store.markOutboxSent(id)
   }
+
+  async discardPending(): Promise<number> {
+    return this.store.discardPendingOutbox()
+  }
 }

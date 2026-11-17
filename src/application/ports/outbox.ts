@@ -10,4 +10,9 @@ export interface OutboxRepository {
   pending(): Promise<readonly OutboxItem[]>
   /** Marks a part delivered. False when the id does not exist or was marked already. */
   markSent(id: number): Promise<boolean>
+  /**
+   * Throws away every part not delivered yet (unlinking the account: the parts hold private conversations of the old
+   * account and must never go to another one). Returns how many were discarded. Delivered parts are kept.
+   */
+  discardPending(): Promise<number>
 }

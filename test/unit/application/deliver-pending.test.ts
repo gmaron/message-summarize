@@ -103,6 +103,7 @@ describe('DeliverPending', () => {
         throw new Error('disk')
       },
       markSent: async () => true,
+      discardPending: async () => 0,
     }
     const channel = new FakeChannel()
     expect(await new DeliverPending(broken, channel).run()).toEqual({ delivered: 0, failure: 'storage' })
@@ -116,6 +117,7 @@ describe('DeliverPending', () => {
       markSent: async () => {
         throw new Error('disk')
       },
+      discardPending: async () => 0,
     }
     const channel = new FakeChannel()
     expect(await new DeliverPending(broken, channel).run()).toEqual({ delivered: 0, failure: 'storage' })
@@ -182,6 +184,7 @@ describe('DeliverPending', () => {
           })
           return marked
         },
+        discardPending: () => inner.discardPending(),
       }
       const channel = new FakeChannel()
       deliver = new DeliverPending(outbox, channel)

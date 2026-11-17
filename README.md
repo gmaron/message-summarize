@@ -8,7 +8,28 @@ The first supported platform is **WhatsApp**. The core does not depend on it, so
 
 ## Status
 
-**In design. It cannot be used yet.** There is no installable version. This repository holds the approved requirements ([docs/requirements.md](docs/requirements.md), in Spanish) and the project skeleton. The code will be written in the phases listed in the [roadmap](#roadmap).
+**Early development.** There is no installer and no web interface yet. A command-line version can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
+
+## Try it (early version)
+
+**Read the [warning](#important-warning) first: this uses an unofficial WhatsApp client and your number can be banned.** The program is read-only: it never marks you as online, never replies and never sends anything except the digest, which goes to your own chat ("Message yourself").
+
+Requirements: Node 22.16 or later, and one LLM provider: [Claude Code](https://claude.com/claude-code) signed in on this machine (`claude`), or a local [Ollama](https://ollama.com) server with a model already pulled. There is no default provider: you choose one in the configuration.
+
+```sh
+npm install
+npm run build
+node dist/main/cli.js init      # or `msum init` after `npm link`; creates the data directory and config.json
+```
+
+1. **Edit `config.json`** (in the data directory that `init` prints; set `MSUM_DATA_DIR` to put it elsewhere). There is no default provider: `init` writes `"primary": null`, and **you must set `provider.primary` explicitly** (`"claude-cli"` or `"ollama"`; with Ollama also set `provider.ollama.model`) before `digest` or the schedules work. Also check your `timezone` (`init` prints the one it wrote, the system's; **in Docker, set `TZ` or `timezone` in the config**), your `schedules` (cron expressions, for example `["0 7 * * *", "0 19 * * *"]`) and your `ownerName`. A relative `promptFile` is read from the data directory. Invalid values are rejected with a message that names the option.
+2. **`msum link`** shows a QR code in the terminal (also saved as `qr.png` while it is valid). Scan it from WhatsApp, Settings > Linked devices. It waits for the initial history and stops.
+3. **`msum daemon`** connects, captures messages, runs the schedules and delivers each digest to your own chat. Leave it running (Ctrl+C stops it cleanly). Only one daemon runs per installation. If WhatsApp logs the session out, refuses (403) or replaces the connection, or the session belongs to another account, the daemon stops connecting, writes `account/blocked.json` and stays idle (so a service manager that restarts it does not reconnect in a loop, which could get the number banned). `msum status` shows why; fix it with `msum link` or `msum unlink`, or run `msum daemon --retry` for a refused or replaced connection.
+4. **`msum digest --dry-run`** generates a digest now and prints it, without saving or sending anything. Without `--dry-run` the digest is queued and the running daemon delivers it. It does not open a WhatsApp connection (the daemon owns the session). Options: `--hours N`, `--from "YYYY-MM-DD HH:MM"`, `--to "YYYY-MM-DD HH:MM"`.
+
+Other commands: `msum status` (account, last digest, pending deliveries, next runs), `msum doctor` (checks Node, permissions, configuration, provider and link) and `msum unlink`, which **deletes all the data of the account** (its messages, the digest history, pending deliveries and the WhatsApp session; the configuration stays) and asks for confirmation. Afterwards, also remove the device on the phone (WhatsApp, Settings > Linked devices).
+
+Everything stays on your machine, in the data directory (permissions restricted to your user), except what the LLM provider you chose receives. The command-line texts are in Spanish or English (`language` in `config.json`).
 
 ## What it will do
 

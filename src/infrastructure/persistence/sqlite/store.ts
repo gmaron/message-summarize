@@ -114,6 +114,11 @@ export class SqliteDigestStore implements DigestStore {
     return Number(result.changes) === 1
   }
 
+  /** Deletes every part not delivered yet (unlinking). Returns how many. Delivered parts stay. */
+  discardPendingOutbox(): number {
+    return Number(this.db.prepare('DELETE FROM outbox WHERE sent_at IS NULL').run().changes)
+  }
+
   private outboxRows(where: string): OutboxEntry[] {
     const rows = this.db
       .prepare(`SELECT id, digest_id, text, created_at, sent_at FROM outbox ${where} ORDER BY id`)

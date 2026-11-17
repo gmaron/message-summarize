@@ -104,6 +104,18 @@ export function describeOutboxContract(backend: OutboxBackend): void {
       expect(await outbox.markSent(987_654)).toBe(false)
     })
 
+    it('discards every pending part and says how many, keeping the order of what is queued afterwards', async () => {
+      const { outbox, enqueue } = await make()
+      await enqueue('one', 'two', 'three')
+      const [first] = await outbox.pending()
+      await outbox.markSent(first?.id as number)
+      expect(await outbox.discardPending()).toBe(2)
+      expect(await outbox.pending()).toEqual([])
+      expect(await outbox.discardPending()).toBe(0)
+      await enqueue('later')
+      expect(await texts(outbox)).toEqual(['later'])
+    })
+
     it('keeps the text exactly, including formatting and non-ASCII', async () => {
       const { outbox, enqueue } = await make()
       const text = '*Resumen*\n_ñandú_ \u{1f600} ```code```'

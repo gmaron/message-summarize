@@ -211,6 +211,7 @@ describe('reconcileAccount', () => {
     const racing = {
       get: () => null,
       bind: () => false,
+      reset: () => {},
     }
     expect(reconcileAccount(racing, { id: ME })).toBe('mismatch')
   })

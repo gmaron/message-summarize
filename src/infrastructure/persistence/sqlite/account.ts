@@ -21,4 +21,8 @@ export class SqliteAccountIdentity implements AccountIdentity {
       .run(id, this.now())
     return this.get() === id
   }
+
+  reset(): void {
+    this.db.prepare('DELETE FROM account WHERE id = 1').run()
+  }
 }

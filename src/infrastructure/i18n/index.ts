@@ -2,7 +2,7 @@ import type { Catalog, Language } from './catalog.js'
 import { en } from './en.js'
 import { es } from './es.js'
 
-export type { Catalog, HeadlineParts, Language } from './catalog.js'
+export type { BlockedReason, Catalog, HeadlineParts, Language } from './catalog.js'
 
 export const LANGUAGES: readonly Language[] = ['es', 'en']
 

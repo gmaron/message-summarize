@@ -1,0 +1,347 @@
+import { readFile } from 'node:fs/promises'
+import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
+import { err, ok, type Result } from '../domain/result.js'
+import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
+import type { Catalog, Language } from '../infrastructure/i18n/index.js'
+import { LANGUAGES } from '../infrastructure/i18n/index.js'
+import { isValidCron, isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
+
+export const PROVIDERS = ['claude-cli', 'ollama'] as const
+export type ProviderKind = (typeof PROVIDERS)[number]
+
+export interface ClaudeCliConfig {
+  readonly command: string
+  readonly model: string
+  readonly timeoutMs: number
+}
+
+export interface OllamaConfig {
+  readonly baseUrl: string
+  /** There is no sensible default model: required when Ollama is used (as the provider or for local-only chats). */
+  readonly model: string | null
+  readonly numCtx: number
+  readonly keepAlive: string
+  readonly timeoutMs: number
+}
+
+export interface ProviderConfig {
+  /** Null until the user chooses one (RF-41: there is no default provider). */
+  readonly primary: ProviderKind | null
+  readonly backup: ProviderKind | null
+  readonly claudeCli: ClaudeCliConfig
+  readonly ollama: OllamaConfig
+}
+
+/** The validated contents of config.json. A missing option has its default (RF-73). */
+export interface AppConfig {
+  readonly language: Language
+  /** IANA name. Dates in the digest and the schedules use it. */
+  readonly timezone: string
+  readonly digest: DigestSettings
+  readonly localOnlyPatterns: readonly string[]
+  /** Path of a custom prompt template, read on every digest (RF-38). */
+  readonly promptFile: string | null
+  readonly concurrency: number
+  /** Cron expressions (RF-60). */
+  readonly schedules: readonly string[]
+  readonly provider: ProviderConfig
+}
+
+export type ConfigIssueCode =
+  | SettingsIssueCode
+  | 'invalidJson'
+  | 'unknownOption'
+  | 'notOneOf'
+  | 'required'
+  | 'invalidTimezone'
+  | 'invalidCron'
+
+/** A problem of config.json: which option and why. Codes, not text: `describeConfigIssue` translates them. */
+export interface ConfigIssue {
+  readonly option: string
+  readonly code: ConfigIssueCode
+  /** For notOneOf: the accepted values. */
+  readonly allowed?: readonly string[]
+}
+
+export const DEFAULT_LANGUAGE: Language = 'es'
+const DEFAULT_PROVIDER_TIMEOUT_MS = 3 * 60_000
+
+export const systemTimezone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone
+
+const TOP_LEVEL = new Set([
+  'language',
+  'timezone',
+  'ownerName',
+  'excludePatterns',
+  'defaultWindowHours',
+  'maxCharsPerConversation',
+  'unreadOnly',
+  'flagUnsaved',
+  'hideRest',
+  'localOnlyPatterns',
+  'promptFile',
+  'concurrency',
+  'schedules',
+  'provider',
+])
+const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama'])
+const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
+const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
+
+type Obj = Record<string, unknown>
+const isObject = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * Validates config.json (RF-73). A missing option takes its default; an option that is present and invalid, or one
+ * that does not exist (a typo), is reported with its name and a code, never replaced silently. `fallbackTimezone` is
+ * the default of `timezone` (the system's).
+ */
+export function parseConfig(
+  input: unknown,
+  fallbackTimezone: string = systemTimezone(),
+): Result<AppConfig, ConfigIssue[]> {
+  if (!isObject(input)) return err([{ option: '(config)', code: 'notObject' }])
+  const issues: ConfigIssue[] = []
+  const add = (option: string, code: ConfigIssueCode, allowed?: readonly string[]): undefined => {
+    issues.push(allowed === undefined ? { option, code } : { option, code, allowed })
+    return undefined
+  }
+  const unknownKeys = (obj: Obj, known: Set<string>, prefix: string): void => {
+    for (const key of Object.keys(obj)) if (!known.has(key)) add(`${prefix}${key}`, 'unknownOption')
+  }
+
+  const text = (obj: Obj, key: string, path: string): string | null | undefined => {
+    const v = obj[key]
+    if (v === undefined) return null
+    if (typeof v !== 'string') return add(path, 'notString')
+    if (v.trim() === '') return add(path, 'emptyString')
+    return v
+  }
+  const positiveInt = (obj: Obj, key: string, path: string, fallback: number): number | undefined => {
+    const v = obj[key]
+    if (v === undefined) return fallback
+    if (typeof v !== 'number') return add(path, 'notNumber')
+    if (!Number.isInteger(v)) return add(path, 'notInteger')
+    if (v <= 0) return add(path, 'notPositive')
+    return v
+  }
+  const patterns = (key: string): readonly string[] | undefined => {
+    const v = input[key]
+    if (v === undefined) return []
+    if (!Array.isArray(v)) return add(key, 'notArray')
+    if (!v.every((p) => typeof p === 'string')) return add(key, 'notStringList')
+    if (v.some((p: string) => p.trim() === '')) return add(key, 'emptyPattern')
+    return [...(v as string[])]
+  }
+  const choice = (obj: Obj, key: string, path: string, allowed: readonly string[]): string | null | undefined => {
+    const v = obj[key]
+    // Absent or null: not chosen (`msum init` writes null for the provider, which has no default).
+    if (v === undefined || v === null) return null
+    if (typeof v !== 'string' || !allowed.includes(v)) return add(path, 'notOneOf', allowed)
+    return v
+  }
+  const section = (parent: Obj, key: string, path: string, known: Set<string>): Obj => {
+    const v = parent[key]
+    if (v === undefined) return {}
+    if (!isObject(v)) {
+      add(path, 'notObject')
+      return {}
+    }
+    unknownKeys(v, known, `${path}.`)
+    return v
+  }
+
+  unknownKeys(input, TOP_LEVEL, '')
+
+  const settings = parseDigestSettings(input)
+  if (!settings.ok) for (const issue of settings.error) add(issue.option, issue.code)
+
+  const language = ((): Language | undefined => {
+    const v = choice(input, 'language', 'language', LANGUAGES)
+    return v === null ? DEFAULT_LANGUAGE : (v as Language | undefined)
+  })()
+
+  const timezone = ((): string | undefined => {
+    const v = input.timezone
+    if (v === undefined) return fallbackTimezone
+    if (typeof v !== 'string') return add('timezone', 'notString')
+    if (!isValidTimezone(v)) return add('timezone', 'invalidTimezone')
+    return v
+  })()
+
+  const localOnlyPatterns = patterns('localOnlyPatterns')
+  const promptFile = text(input, 'promptFile', 'promptFile')
+  const concurrency = positiveInt(input, 'concurrency', 'concurrency', DEFAULT_CONCURRENCY)
+
+  const schedules = ((): readonly string[] | undefined => {
+    const v = input.schedules
+    if (v === undefined) return []
+    if (!Array.isArray(v)) return add('schedules', 'notArray')
+    if (!v.every((s) => typeof s === 'string')) return add('schedules', 'notStringList')
+    const found: string[] = []
+    let valid = true
+    v.forEach((expression: string, index) => {
+      // Without a valid time zone there is nothing to check the expression against.
+      if (timezone !== undefined && !isValidCron(expression, timezone)) {
+        add(`schedules[${index}]`, 'invalidCron')
+        valid = false
+      }
+      found.push(expression)
+    })
+    return valid ? found : undefined
+  })()
+
+  const providerObj = section(input, 'provider', 'provider', PROVIDER_KEYS)
+  const primary = choice(providerObj, 'primary', 'provider.primary', PROVIDERS) as ProviderKind | null | undefined
+  const backup = choice(providerObj, 'backup', 'provider.backup', PROVIDERS) as ProviderKind | null | undefined
+  if (backup !== null && backup !== undefined && primary === null) add('provider.primary', 'required')
+
+  const cliObj = section(providerObj, 'claudeCli', 'provider.claudeCli', CLAUDE_CLI_KEYS)
+  const claudeCommand = text(cliObj, 'command', 'provider.claudeCli.command')
+  const claudeModel = text(cliObj, 'model', 'provider.claudeCli.model')
+  const claudeTimeout = positiveInt(cliObj, 'timeoutMs', 'provider.claudeCli.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
+
+  const ollamaObj = section(providerObj, 'ollama', 'provider.ollama', OLLAMA_KEYS)
+  const ollamaBaseUrl = text(ollamaObj, 'baseUrl', 'provider.ollama.baseUrl')
+  const ollamaModel = text(ollamaObj, 'model', 'provider.ollama.model')
+  const ollamaNumCtx = positiveInt(ollamaObj, 'numCtx', 'provider.ollama.numCtx', 16384)
+  const ollamaKeepAlive = text(ollamaObj, 'keepAlive', 'provider.ollama.keepAlive')
+  const ollamaTimeout = positiveInt(ollamaObj, 'timeoutMs', 'provider.ollama.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
+
+  const usesOllama =
+    primary === 'ollama' || backup === 'ollama' || (localOnlyPatterns !== undefined && localOnlyPatterns.length > 0)
+  if (usesOllama && ollamaModel === null) add('provider.ollama.model', 'required')
+
+  if (
+    issues.length > 0 ||
+    !settings.ok ||
+    language === undefined ||
+    timezone === undefined ||
+    localOnlyPatterns === undefined ||
+    promptFile === undefined ||
+    concurrency === undefined ||
+    schedules === undefined ||
+    primary === undefined ||
+    backup === undefined ||
+    claudeCommand === undefined ||
+    claudeModel === undefined ||
+    claudeTimeout === undefined ||
+    ollamaBaseUrl === undefined ||
+    ollamaModel === undefined ||
+    ollamaNumCtx === undefined ||
+    ollamaKeepAlive === undefined ||
+    ollamaTimeout === undefined
+  ) {
+    return err(issues)
+  }
+  return ok({
+    language,
+    timezone,
+    digest: settings.value,
+    localOnlyPatterns,
+    promptFile,
+    concurrency,
+    schedules,
+    provider: {
+      primary,
+      backup,
+      claudeCli: { command: claudeCommand ?? 'claude', model: claudeModel ?? 'sonnet', timeoutMs: claudeTimeout },
+      ollama: {
+        baseUrl: ollamaBaseUrl ?? 'http://127.0.0.1:11434',
+        model: ollamaModel,
+        numCtx: ollamaNumCtx,
+        keepAlive: ollamaKeepAlive ?? '1m',
+        timeoutMs: ollamaTimeout,
+      },
+    },
+  })
+}
+
+async function readJson(file: string): Promise<Result<unknown, 'missing' | 'invalid'>> {
+  let raw: string
+  try {
+    raw = await readFile(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return err('missing')
+    throw error
+  }
+  try {
+    return ok(JSON.parse(raw))
+  } catch {
+    return err('invalid')
+  }
+}
+
+/** Reads and validates config.json. A file that does not exist gives the defaults (RF-73). */
+export async function loadConfig(file: string, fallbackTimezone?: string): Promise<Result<AppConfig, ConfigIssue[]>> {
+  const json = await readJson(file)
+  if (!json.ok) {
+    return json.error === 'missing'
+      ? parseConfig({}, fallbackTimezone)
+      : err([{ option: '(config)', code: 'invalidJson' }])
+  }
+  return parseConfig(json.value, fallbackTimezone)
+}
+
+/**
+ * The language to talk to the user in when the configuration may be broken: the one in the file when it is valid,
+ * else the default. Never throws.
+ */
+export async function languageHint(file: string): Promise<Language> {
+  try {
+    const json = await readJson(file)
+    if (json.ok && isObject(json.value)) {
+      const v = json.value.language
+      if (typeof v === 'string' && (LANGUAGES as readonly string[]).includes(v)) return v as Language
+    }
+  } catch {
+    // unreadable: the default
+  }
+  return DEFAULT_LANGUAGE
+}
+
+/** One line for the user: the option and the reason, in their language (RF-73). */
+export function describeConfigIssue(catalog: Catalog, issue: ConfigIssue): string {
+  const texts = catalog.cli.config
+  switch (issue.code) {
+    case 'invalidJson':
+      return texts.invalidJson
+    case 'unknownOption':
+      return texts.unknownOption(issue.option)
+    case 'notOneOf':
+      return texts.notOneOf(issue.option, (issue.allowed ?? []).join(', '))
+    case 'required':
+      return texts.required(issue.option)
+    case 'invalidTimezone':
+      return texts.invalidTimezone(issue.option)
+    case 'invalidCron':
+      return texts.invalidCron(issue.option)
+    default:
+      return catalog.errors.settings[issue.code](issue.option)
+  }
+}
+
+/** The config.json that `msum init` writes: every option with its default, plus an example schedule and provider. */
+export function defaultConfigJson(timezone: string = systemTimezone()): string {
+  const config = {
+    language: DEFAULT_LANGUAGE,
+    timezone,
+    excludePatterns: [],
+    localOnlyPatterns: [],
+    defaultWindowHours: 24,
+    maxCharsPerConversation: 24000,
+    unreadOnly: false,
+    flagUnsaved: false,
+    hideRest: false,
+    concurrency: DEFAULT_CONCURRENCY,
+    schedules: ['0 7 * * *', '0 19 * * *'],
+    provider: {
+      // RF-41: there is no default provider. Set "claude-cli" or "ollama" here.
+      primary: null,
+      backup: null,
+      claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS },
+    },
+  }
+  return `${JSON.stringify(config, null, 2)}\n`
+}

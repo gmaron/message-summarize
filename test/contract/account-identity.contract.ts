@@ -60,6 +60,21 @@ export function describeAccountIdentityContract(backend: AccountBackend): void {
       expect(identity.get()).toBe(A)
     })
 
+    it('forgets the account on reset, so a different one can be bound', () => {
+      const identity = make()
+      identity.bind(A)
+      identity.reset()
+      expect(identity.get()).toBeNull()
+      expect(identity.bind(B)).toBe(true)
+      expect(identity.get()).toBe(B)
+    })
+
+    it('reset with no account bound does nothing', () => {
+      const identity = make()
+      expect(() => identity.reset()).not.toThrow()
+      expect(identity.get()).toBeNull()
+    })
+
     it('refuses an empty id', () => {
       const identity = make()
       expect(() => identity.bind('')).toThrow(RangeError)

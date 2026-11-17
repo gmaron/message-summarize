@@ -184,6 +184,13 @@ export class InMemoryOutbox implements OutboxRepository {
     row.sent = true
     return true
   }
+
+  async discardPending(): Promise<number> {
+    const kept = this.rows.filter((r) => r.sent)
+    const discarded = this.rows.length - kept.length
+    this.rows.splice(0, this.rows.length, ...kept)
+    return discarded
+  }
 }
 
 /** In-memory AccountIdentity, following the contract of the port. */
@@ -202,6 +209,10 @@ export class InMemoryAccountIdentity implements AccountIdentity {
     if (id === '') throw new RangeError('the account id is empty')
     this.jid ??= id
     return this.jid === id
+  }
+
+  reset(): void {
+    this.jid = null
   }
 }
 

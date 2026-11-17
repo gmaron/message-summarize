@@ -8,7 +8,28 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella, 
 
 ## Estado
 
-**En diseño. Todavía no se puede usar.** No hay ninguna versión instalable. Este repositorio tiene los requerimientos aprobados ([docs/requirements.md](docs/requirements.md)) y el esqueleto del proyecto. El código se va a escribir en las fases de la [hoja de ruta](#hoja-de-ruta).
+**Desarrollo temprano.** Todavía no hay instalador ni interfaz web. Se puede probar una versión de línea de comandos desde el código fuente (ver [Probarlo](#probarlo-versión-temprana)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
+
+## Probarlo (versión temprana)
+
+**Leé primero el [aviso importante](#aviso-importante): esto usa un cliente no oficial de WhatsApp y tu número puede ser bloqueado.** El programa es de solo lectura: nunca te marca "en línea", nunca responde y nunca manda nada salvo el resumen, que va a tu propio chat ("Mensaje a mí mismo").
+
+Requisitos: Node 22.16 o posterior, y un proveedor de LLM: [Claude Code](https://claude.com/claude-code) con la sesión iniciada en esta máquina (`claude`), o un servidor local de [Ollama](https://ollama.com) con un modelo ya descargado. No hay proveedor por defecto: lo elegís en la configuración.
+
+```sh
+npm install
+npm run build
+node dist/main/cli.js init      # o `msum init` después de `npm link`; crea el directorio de datos y config.json
+```
+
+1. **Editá `config.json`** (en el directorio de datos que muestra `init`; con `MSUM_DATA_DIR` lo ponés en otro lado). No hay proveedor por defecto: `init` escribe `"primary": null` y **tenés que definir `provider.primary` explícitamente** (`"claude-cli"` u `"ollama"`; con Ollama configurá también `provider.ollama.model`) antes de que funcionen `digest` o los horarios. Revisá también tu `timezone` (`init` imprime la que escribió, la del sistema; **en Docker, definí `TZ` o `timezone` en la configuración**), tus `schedules` (expresiones cron, por ejemplo `["0 7 * * *", "0 19 * * *"]`) y tu `ownerName`. Un `promptFile` relativo se lee desde el directorio de datos. Los valores inválidos se rechazan con un mensaje que nombra la opción.
+2. **`msum link`** muestra un código QR en la terminal (también queda como `qr.png` mientras es válido). Escaneálo desde WhatsApp, Ajustes > Dispositivos vinculados. Espera el historial inicial y termina.
+3. **`msum daemon`** se conecta, captura los mensajes, ejecuta los horarios y entrega cada resumen a tu propio chat. Dejalo corriendo (Ctrl+C lo detiene de forma ordenada). Corre un solo daemon por instalación. Si WhatsApp cierra la sesión, rechaza la conexión (403) o la reemplaza, o la sesión es de otra cuenta, el daemon deja de conectarse, escribe `account/blocked.json` y queda inactivo (así un gestor de servicios que lo reinicia no reconecta en bucle, algo que podría hacer bloquear el número). `msum status` muestra el motivo; se resuelve con `msum link` o `msum unlink`, o con `msum daemon --retry` si la conexión fue rechazada o reemplazada.
+4. **`msum digest --dry-run`** genera un resumen ahora y lo muestra, sin guardar ni enviar nada. Sin `--dry-run` el resumen queda en cola y lo entrega el daemon que esté corriendo. No abre una conexión a WhatsApp (la sesión es del daemon). Opciones: `--hours N`, `--from "AAAA-MM-DD HH:MM"`, `--to "AAAA-MM-DD HH:MM"`.
+
+Otros comandos: `msum status` (cuenta, último resumen, envíos pendientes, próximas ejecuciones), `msum doctor` (revisa Node, permisos, configuración, proveedor y vinculación) y `msum unlink`, que **borra todos los datos de la cuenta** (sus mensajes, el historial de resúmenes, los envíos pendientes y la sesión de WhatsApp; la configuración queda) y pide confirmación. Después, quitá también el dispositivo en el celular (WhatsApp, Ajustes > Dispositivos vinculados).
+
+Todo queda en tu máquina, en el directorio de datos (con permisos solo para tu usuario), salvo lo que recibe el proveedor de LLM que elegiste. Los textos de la línea de comandos están en español o inglés (`language` en `config.json`).
 
 ## Qué va a hacer
 

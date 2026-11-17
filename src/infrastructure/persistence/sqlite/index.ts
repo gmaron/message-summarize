@@ -1,3 +1,4 @@
+export { SqliteAccountIdentity } from './account.js'
 export { SqliteCaptureRepository } from './capture-repository.js'
 export { SqliteCaptureWriter } from './capture-writer.js'
 export { type Database, type OpenDatabaseOptions, openDatabase } from './database.js'

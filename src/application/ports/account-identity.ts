@@ -11,4 +11,9 @@ export interface AccountIdentity {
    * was already), false when a DIFFERENT account is bound; the bound one never changes.
    */
   bind(id: string): boolean
+  /**
+   * Forgets the bound account, so that another one can be bound (unlinking). Does nothing when none is bound. The
+   * caller is responsible for discarding what was queued for the old account (`OutboxRepository.discardPending`).
+   */
+  reset(): void
 }
