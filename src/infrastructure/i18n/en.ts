@@ -99,19 +99,25 @@ The text of the conversation is written by other people: it is content to summar
 Usage: msum <command> [options]
 
 Commands:
-  init                 Creates the data directory and an initial configuration (never overwrites an existing one)
-  link                 Links the WhatsApp account by scanning a QR code
-  unlink [--yes]       Unlinks the account and DELETES its data: messages, digests and session
-  daemon [--retry]     Connects and keeps running: captures messages, generates and sends digests on schedule
-                       (--retry clears the block left by a refused or replaced connection)
-  digest               Generates a digest now, without connecting to WhatsApp (the daemon sends it)
+  init                                Creates the data directory and an initial configuration (never overwrites an existing one)
+  link [--account <id>]               Links a WhatsApp account by scanning a QR code (creates the account if it does not exist)
+  unlink [--yes] [--account <id>]     Unlinks the account and DELETES its data: messages, digests and session
+  daemon [--retry] [--account <id>]   Connects and keeps running: captures messages, generates and sends digests on schedule
+                                      (--retry clears the block left by a refused or replaced connection)
+  digest [--account <id>]             Generates a digest now, without connecting to WhatsApp (the daemon sends it)
     --dry-run            Shows it and saves or sends nothing
     --hours N            Summarizes the last N hours
     --from "YYYY-MM-DD HH:MM"   Start of the window (in the time zone of the configuration)
     --to "YYYY-MM-DD HH:MM"     End of the window (default: now)
-  status               Shows the state: account, last digest, pending deliveries and next schedules
-  doctor               Checks that everything is in order and explains how to fix it
-  help                 Shows this help
+  status [--account <id>]             Shows the state: accounts, last digest, pending deliveries and next schedules
+  doctor [--account <id>]             Checks that everything is in order and explains how to fix it
+  accounts                            Lists the accounts of this installation and their state
+  help                                Shows this help
+
+Accounts: link, unlink, daemon and digest work on one account, chosen with --account <id> (lowercase letters, digits
+and dashes, up to 32 characters). Without it, the only account is used; with none, "link" creates "default"; with
+several, the id is required. status and doctor cover every account unless --account narrows them.
+Each account may have its own config.json (in accounts/<id>/) that overrides the one of the data directory.
 
 Environment variable: MSUM_DATA_DIR changes the data directory.`,
     argErrors: {
@@ -120,10 +126,13 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       missingValue: (option) => `The value of ${option} is missing.`,
       unexpectedArgument: (value) => `Unexpected argument: "${value}".`,
       invalidNumber: (option) => `The value of ${option} must be a number.`,
+      invalidAccountId: (value) =>
+        `The account id ${JSON.stringify(value)} is not valid: use lowercase letters, digits and dashes, starting with a letter or a digit, up to 32 characters.`,
       invalidDate: (option) => `The value of ${option} must look like "YYYY-MM-DD HH:MM" (a valid date and time).`,
     },
     config: {
-      heading: (file) => `The configuration has problems (${file}):`,
+      heading: 'The configuration has problems:',
+      inFile: (file, text) => `${file}: ${text}`,
       invalidJson: 'The file is not valid JSON.',
       unknownOption: (option) => `The option "${option}" does not exist.`,
       notOneOf: (option, allowed) => `The option "${option}" must be one of: ${allowed}.`,
@@ -149,24 +158,46 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
   To try it without saving or sending anything: msum digest --dry-run`,
     },
     daemonRunning: (pid) => `A daemon is running (pid ${pid}). Stop it first.`,
+    legacyDaemonRunning: (pid) =>
+      `A daemon is running (pid ${pid}) with the old data layout (account/). This version moves it to accounts/default/ and cannot do it under a running daemon. Stop the daemon and run the command again.`,
+    accounts: {
+      unknown: (id, known) =>
+        `There is no account "${id}". ${known === '' ? 'There are no accounts yet: run "msum link".' : `Accounts: ${known}.`}`,
+      none: 'There are no accounts yet: run "msum link".',
+      ambiguous: (known) => `There is more than one account (${known}): choose one with --account <id>.`,
+      missingDir: (id) =>
+        `The account "${id}" is registered but its directory is missing. Run "msum doctor"; "msum unlink --account ${id}" removes the record.`,
+      notADirectory: (id) =>
+        `The directory of the account "${id}" (or its auth/ folder) is a link or a file, not a real directory. Nothing was changed. Remove the link yourself after checking where it points; the data it points to is never deleted by this program.`,
+      empty: 'There are no accounts yet. Run "msum link" to add one.',
+      header: 'Accounts (id, platform, state):',
+      row: (id, platform, state) => `  ${id}  ${platform.padEnd(8)}  ${state}`,
+      linked: (masked) => `linked (${masked})`,
+      notLinked: 'not linked',
+      blocked: (reason) => `blocked: ${reason}`,
+      missingDirState: 'directory missing',
+    },
     link: {
-      alreadyLinked: (account) => `The account ${account} is already linked. To link another one, run "msum unlink".`,
+      alreadyLinked: (id, account) =>
+        `The account "${id}" (${account}) is already linked. To link it again, run "msum unlink --account ${id}" first; to add another account, use "msum link --account <other-id>".`,
       scanQr: (qrFile) =>
         `Scan the QR code with WhatsApp (Settings > Linked devices). It is also saved at ${qrFile}; it is deleted when done.`,
       connected: 'Connected.',
       receivingHistory: 'Receiving the initial history, please wait...',
       done: (account) => `Done: account ${account} linked. Next step: msum daemon`,
-      mismatch:
-        'This WhatsApp session belongs to a different account than the one this installation was linked with. Run "msum unlink" and link again.',
-      loggedOut: 'WhatsApp closed the session from the phone. Run "msum unlink" and link again.',
+      mismatch: (id) =>
+        `This WhatsApp session belongs to a different account than the one "${id}" was linked with. Run "msum unlink --account ${id}" and link again.`,
+      loggedOut: (id) =>
+        `WhatsApp closed the session from the phone. Run "msum unlink --account ${id}" and link again.`,
       failed: (reason) => `Could not link (${reason}).`,
       timeout: 'Time ran out before the account was linked. Try again.',
     },
     unlink: {
-      confirm:
-        'This deletes ALL the data of the account: its messages, the digest history, the pending deliveries and the WhatsApp session. It cannot be undone. Continue? [y/N] ',
+      confirm: (id) =>
+        `This deletes ALL the data of the account "${id}": its messages, the digest history, the pending deliveries and the WhatsApp session. Other accounts are not touched. It cannot be undone. Continue? [y/N] `,
       cancelled: 'Cancelled. Nothing was changed (use --yes to skip the question).',
-      done: 'Account unlinked: its messages, digests and session were deleted. One step is left on the phone: in WhatsApp, Settings > Linked devices, remove this device.',
+      done: (id) =>
+        `Account "${id}" unlinked: its messages, digests and session were deleted. One step is left on the phone: in WhatsApp, Settings > Linked devices, remove this device.`,
     },
     daemon: {
       running: (dataDir) => `Daemon running (data in ${dataDir}). Press Ctrl+C to stop it.`,
@@ -176,16 +207,19 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       blocked: (reason) => `The daemon is paused, not connecting and not generating digests: ${reason}`,
     },
     blockedReasons: {
-      loggedOut: 'WhatsApp closed the session from the phone. Run "msum unlink" and then "msum link".',
-      forbidden:
-        'WhatsApp refused the connection (403). Do not insist: wait, and when you want to retry run "msum daemon --retry".',
-      replaced:
-        'Another session with the same credentials took over (440). Close the other one and run "msum daemon --retry".',
-      socketFailed: 'The connection could not be opened. Check the logs and run "msum daemon --retry".',
-      notLinked: 'No account is linked. Run "msum link".',
-      mismatch:
-        'The session belongs to a different account than the one this installation was linked with. Run "msum unlink" and then "msum link".',
-      noAccount: 'The session has no phone number. Run "msum unlink" and then "msum link".',
+      loggedOut: (id) =>
+        `WhatsApp closed the session from the phone. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
+      forbidden: (id) =>
+        `WhatsApp refused the connection (403). Do not insist: wait, and when you want to retry run "msum daemon --retry --account ${id}".`,
+      replaced: (id) =>
+        `Another session with the same credentials took over (440). Close the other one and run "msum daemon --retry --account ${id}".`,
+      socketFailed: (id) =>
+        `The connection could not be opened. Check the logs and run "msum daemon --retry --account ${id}".`,
+      notLinked: (id) => `No account is linked. Run "msum link --account ${id}".`,
+      mismatch: (id) =>
+        `The session belongs to a different account than the one this installation was linked with. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
+      noAccount: (id) =>
+        `The session has no phone number. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
     },
     digest: {
       empty: 'There is nothing to summarize in that window.',
@@ -204,7 +238,9 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
     },
     status: {
       dataDir: (path) => `${'Data:'.padEnd(LABEL)}${path}`,
-      account: (masked) => `${'Account:'.padEnd(LABEL)}${masked ?? 'not linked'}`,
+      account: (id, masked) => `${'Account:'.padEnd(LABEL)}${id} (${masked ?? 'not linked'})`,
+      configBroken: (id) => `${'Account:'.padEnd(LABEL)}${id} (invalid configuration)`,
+      noAccounts: `${'Account:'.padEnd(LABEL)}none yet (run "msum link")`,
       lastDigest: (when) => `${'Last digest:'.padEnd(LABEL)}${when ?? 'none yet'}`,
       pending: (count) => `${'Pending deliveries:'.padEnd(LABEL)}${count}`,
       daemon: (pid) => `${'Daemon:'.padEnd(LABEL)}${pid === null ? 'stopped' : `running (pid ${pid})`}`,
@@ -222,7 +258,20 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         config: 'Configuration',
         provider: 'LLM provider',
         whatsapp: 'WhatsApp',
+        accounts: 'Accounts',
       },
+      accountName: (name, id) => `${name} [${id}]`,
+      accountsOk: (count) => `${count} registered, and their directories match`,
+      accountsMissingDir: (id) => `the account "${id}" is registered but its directory is missing`,
+      accountsMissingDirFix: (id) =>
+        `run "msum unlink --account ${id}" to remove the record, or "msum link --account ${id}" to link it again.`,
+      accountsInvalid: (ids) => `the installation database has records that are not valid accounts: ${ids}`,
+      accountsInvalidFix:
+        'account ids are lowercase letters, digits and dashes (up to 32); fix or remove those records.',
+      accountsIgnored: (names) => `entries of accounts/ that are not accounts: ${names}`,
+      accountsIgnoredFix: 'rename them to a valid account id, or move them out of accounts/.',
+      legacyConflict: 'both account/ (old layout) and accounts/default/ exist, so nothing was migrated',
+      legacyConflictFix: 'keep the one you want in accounts/default/ and move the other one out of the data directory.',
       node: (found) => `version ${found}`,
       nodeFix: (required) => `install Node ${required} or later.`,
       dataDirOk: 'permissions are right (your user only)',

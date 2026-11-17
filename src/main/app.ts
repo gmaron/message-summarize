@@ -1,5 +1,6 @@
 import { getCatalog } from '../infrastructure/i18n/index.js'
 import { type CliHandlers, EXIT_FAILURE, runCli } from '../interfaces/cli/run.js'
+import { accountsCommand } from './commands/accounts.js'
 import { daemonCommand } from './commands/daemon.js'
 import { digestCommand } from './commands/digest.js'
 import { doctorCommand } from './commands/doctor.js'
@@ -14,12 +15,13 @@ import { errorCode } from './logger.js'
 export function createHandlers(ctx: CommandContext): CliHandlers {
   return {
     init: () => initCommand(ctx),
-    link: () => linkCommand(ctx),
+    link: (args) => linkCommand(ctx, args),
     unlink: (args) => unlinkCommand(ctx, args),
     daemon: (args) => daemonCommand(ctx, args),
     digest: (args) => digestCommand(ctx, args),
-    status: () => statusCommand(ctx),
-    doctor: () => doctorCommand(ctx),
+    status: (args) => statusCommand(ctx, args),
+    doctor: (args) => doctorCommand(ctx, args),
+    accounts: () => accountsCommand(ctx),
   }
 }
 

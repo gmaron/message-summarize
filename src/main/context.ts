@@ -4,9 +4,9 @@ import type { Clock } from '../application/ports/clock.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import { type Catalog, getCatalog } from '../infrastructure/i18n/index.js'
 import type { CliIo } from '../interfaces/cli/run.js'
-import { type AppConfig, describeConfigIssue, languageHint, loadConfig } from './config.js'
+import { type AppConfig, describeConfigIssue, languageHint, loadEffectiveConfig } from './config.js'
 import type { Logger } from './logger.js'
-import type { DataLayout } from './paths.js'
+import type { AccountLayout, DataLayout } from './paths.js'
 import type { Runtime } from './runtime.js'
 import type { ConnectionFactory } from './whatsapp.js'
 
@@ -70,14 +70,19 @@ export interface LoadedConfig {
 }
 
 /**
- * Loads config.json for a command. When it is invalid, prints every problem (option and reason, in the user's
- * language, RF-73) to stderr and returns null: the command stops.
+ * Loads the configuration a command runs with: the installation's config.json, merged with the account's when there
+ * is an account. When it is invalid, prints every problem (file, option and reason, in the user's language, RF-73) to
+ * stderr and returns null: the command stops.
  */
-export async function loadConfigOrReport(ctx: CommandContext): Promise<LoadedConfig | null> {
-  const loaded = await loadConfig(ctx.layout.configFile)
+export async function loadConfigOrReport(
+  ctx: CommandContext,
+  account: AccountLayout | null = null,
+): Promise<LoadedConfig | null> {
+  const accountFile = account?.configFile ?? null
+  const loaded = await loadEffectiveConfig(ctx.layout.configFile, accountFile)
   if (loaded.ok) return { config: loaded.value, catalog: getCatalog(loaded.value.language) }
-  const catalog = getCatalog(await languageHint(ctx.layout.configFile))
-  ctx.io.err(catalog.cli.config.heading(ctx.layout.configFile))
+  const catalog = getCatalog(await languageHint(ctx.layout.configFile, accountFile))
+  ctx.io.err(catalog.cli.config.heading)
   for (const issue of loaded.error) ctx.io.err(`  - ${describeConfigIssue(catalog, issue)}`)
   return null
 }
@@ -86,9 +91,9 @@ export async function loadConfigOrReport(ctx: CommandContext): Promise<LoadedCon
  * True when the session holds REGISTERED credentials: `creds.json` with a `me` (the linked account). A directory with
  * files from a link that was interrupted before the phone confirmed it is not a session.
  */
-export async function hasSession(layout: DataLayout): Promise<boolean> {
+export async function hasSession(account: Pick<AccountLayout, 'authDir'>): Promise<boolean> {
   try {
-    const creds = JSON.parse(await readFile(join(layout.authDir, 'creds.json'), 'utf8')) as { me?: unknown }
+    const creds = JSON.parse(await readFile(join(account.authDir, 'creds.json'), 'utf8')) as { me?: unknown }
     return typeof creds.me === 'object' && creds.me !== null
   } catch {
     return false

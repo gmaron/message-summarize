@@ -1,4 +1,11 @@
 export { SqliteAccountIdentity } from './account.js'
+export {
+  type AccountPlatform,
+  type AccountRecord,
+  APP_MIGRATIONS,
+  openAppDatabase,
+  SqliteAccountRegistry,
+} from './app-db.js'
 export { SqliteCaptureRepository } from './capture-repository.js'
 export { SqliteCaptureWriter } from './capture-writer.js'
 export { type Database, type OpenDatabaseOptions, openDatabase } from './database.js'

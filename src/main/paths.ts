@@ -1,20 +1,36 @@
-import { chmod, mkdir, stat } from 'node:fs/promises'
+import { chmod, lstat, mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { isValidAccountId } from '../domain/account-id.js'
 
-/** Where everything of one installation lives (one account for now). */
+/** Where everything of one installation lives. The accounts are under `accounts/<id>/` (see `AccountLayout`). */
 export interface DataLayout {
   readonly dataDir: string
+  /** Installation-wide defaults. An account may override options in its own config.json. */
   readonly configFile: string
-  readonly accountDir: string
+  /** The installation database: which accounts exist (and, later, their schedules). */
+  readonly appDbFile: string
+  readonly accountsDir: string
+  /** Held by the running daemon (host, pid and a heartbeat in its mtime). One daemon per installation. */
+  readonly lockFile: string
+  /** The single-account layout of the first versions: `account/`. Migrated to `accounts/default/` (see `accounts.ts`). */
+  readonly legacyAccountDir: string
+  /** The QR of the first versions lived at the root. A pairing credential: deleted when found. */
+  readonly legacyQrFile: string
+}
+
+/** Everything that belongs to ONE account. Deleting `dir` deletes the account (RF-03). */
+export interface AccountLayout {
+  readonly id: string
+  readonly dir: string
   readonly dbFile: string
   readonly authDir: string
   /** The QR of a link in progress. A pairing credential: written only while linking, deleted after. */
   readonly qrFile: string
-  /** Held by the running daemon (host, pid and a heartbeat in its mtime). */
-  readonly lockFile: string
-  /** Present while the daemon must not use the account (see `blocked.ts`). Inside account/, so unlink deletes it. */
+  /** Present while the daemon must not use the account (see `blocked.ts`). */
   readonly blockedFile: string
+  /** Optional overrides of the installation config.json. */
+  readonly configFile: string
 }
 
 export const DIR_MODE = 0o700
@@ -43,31 +59,79 @@ export function resolveDataDir({ env, platform = process.platform, home = homedi
   )
 }
 
-/** Config at the root; everything of the account under account/ (a second account will be a sibling). */
 export function layoutOf(dataDir: string): DataLayout {
-  const accountDir = join(dataDir, 'account')
   return {
     dataDir,
     configFile: join(dataDir, 'config.json'),
-    accountDir,
-    dbFile: join(accountDir, 'db.sqlite'),
-    authDir: join(accountDir, 'auth'),
-    qrFile: join(dataDir, 'qr.png'),
+    appDbFile: join(dataDir, 'app.db'),
+    accountsDir: join(dataDir, 'accounts'),
     lockFile: join(dataDir, 'daemon.pid'),
-    blockedFile: join(accountDir, 'blocked.json'),
+    legacyAccountDir: join(dataDir, 'account'),
+    legacyQrFile: join(dataDir, 'qr.png'),
   }
 }
 
 /**
- * Creates the directories with mode 0700 (RNF-04), and tightens them when they already existed with looser ones.
- * Windows has no POSIX modes: there the chmod is skipped.
+ * The paths of one account. The id becomes a directory name, so it is validated here, the one place that builds the
+ * path: an id that could climb out of `accounts/` (`..`, a slash) never gets this far. Throws on an invalid id.
  */
-export async function ensureDataDirs(layout: DataLayout): Promise<void> {
-  for (const dir of [layout.dataDir, layout.accountDir, layout.authDir]) {
+export function accountLayoutOf(layout: DataLayout, id: string): AccountLayout {
+  if (!isValidAccountId(id)) throw new RangeError('invalid account id')
+  const dir = join(layout.accountsDir, id)
+  return {
+    id,
+    dir,
+    dbFile: join(dir, 'db.sqlite'),
+    authDir: join(dir, 'auth'),
+    qrFile: join(dir, 'qr.png'),
+    blockedFile: join(dir, 'blocked.json'),
+    configFile: join(dir, 'config.json'),
+  }
+}
+
+/** Thrown when a path that must be a real directory is a link or a file: nothing is created or tightened there. */
+export class NotARealDirectoryError extends Error {
+  constructor(readonly path: string) {
+    super('not a real directory')
+    this.name = 'NotARealDirectoryError'
+  }
+}
+
+/** The first of `dirs` that exists and is not a real directory (a symbolic link is not one), or null. */
+export async function firstNotRealDirectory(dirs: readonly string[]): Promise<string | null> {
+  for (const dir of dirs) {
+    const info = await lstat(dir).catch(() => null)
+    if (info !== null && !info.isDirectory()) return dir
+  }
+  return null
+}
+
+async function ensureDirs(dirs: readonly string[]): Promise<void> {
+  // Before any mkdir or chmod: a link must never make this code create or tighten something somewhere else.
+  const bad = await firstNotRealDirectory(dirs)
+  if (bad !== null) throw new NotARealDirectoryError(bad)
+  for (const dir of dirs) {
     await mkdir(dir, { recursive: true, mode: DIR_MODE })
     if (process.platform !== 'win32') await chmod(dir, DIR_MODE)
   }
 }
+
+/**
+ * Creates the installation directories with mode 0700 (RNF-04), and tightens them when they already existed with
+ * looser ones. Windows has no POSIX modes: there the chmod is skipped.
+ */
+export function ensureDataDirs(layout: DataLayout): Promise<void> {
+  return ensureDirs([layout.dataDir, layout.accountsDir])
+}
+
+/** The same for the directories of one account. */
+export function ensureAccountDirs(account: AccountLayout): Promise<void> {
+  return ensureDirs([account.dir, account.authDir])
+}
+
+/** The path of the account that exists and is not a real directory (its directory or `auth/`), or null. */
+export const unsafeAccountPath = (account: AccountLayout): Promise<string | null> =>
+  firstNotRealDirectory([account.dir, account.authDir])
 
 export interface PermissionProblem {
   readonly path: string
@@ -76,13 +140,18 @@ export interface PermissionProblem {
 }
 
 /**
- * The directories of the layout that exist and are accessible to someone other than the owner. For `doctor`. (The
- * database and the session files are tightened to 0600 by their own adapters when they are opened.)
+ * The directories of the installation and of the given accounts that exist and are accessible to someone other than
+ * the owner. For `doctor`. (The databases and the session files are tightened to 0600 by their own adapters when they
+ * are opened.)
  */
-export async function loosePermissions(layout: DataLayout): Promise<PermissionProblem[]> {
+export async function loosePermissions(
+  layout: DataLayout,
+  accounts: readonly AccountLayout[] = [],
+): Promise<PermissionProblem[]> {
   if (process.platform === 'win32') return []
   const problems: PermissionProblem[] = []
-  for (const dir of [layout.dataDir, layout.accountDir, layout.authDir]) {
+  const dirs = [layout.dataDir, layout.accountsDir, ...accounts.flatMap((account) => [account.dir, account.authDir])]
+  for (const dir of dirs) {
     const info = await stat(dir).catch(() => null)
     if (info === null) continue
     const mode = info.mode & 0o777

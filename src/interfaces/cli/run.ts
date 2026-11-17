@@ -1,5 +1,5 @@
 import type { Catalog } from '../../infrastructure/i18n/index.js'
-import { type ArgError, type Command, type DigestArgs, parseCommandLine } from './args.js'
+import { type AccountArg, type ArgError, type Command, type DigestArgs, parseCommandLine } from './args.js'
 
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
@@ -10,12 +10,13 @@ export interface CliIo {
 /** What each command does. Each returns the exit code. The composition root implements them. */
 export interface CliHandlers {
   init(): Promise<number>
-  link(): Promise<number>
-  unlink(args: { readonly yes: boolean }): Promise<number>
-  daemon(args: { readonly retry: boolean }): Promise<number>
+  link(args: AccountArg): Promise<number>
+  unlink(args: { readonly yes: boolean } & AccountArg): Promise<number>
+  daemon(args: { readonly retry: boolean } & AccountArg): Promise<number>
   digest(args: DigestArgs): Promise<number>
-  status(): Promise<number>
-  doctor(): Promise<number>
+  status(args: AccountArg): Promise<number>
+  doctor(args: AccountArg): Promise<number>
+  accounts(): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -38,6 +39,8 @@ export function describeArgError(texts: Catalog['cli'], error: ArgError): string
       return messages.invalidNumber(error.value)
     case 'invalidDate':
       return messages.invalidDate(error.value)
+    case 'invalidAccountId':
+      return messages.invalidAccountId(error.value)
   }
 }
 
@@ -46,17 +49,19 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
     case 'init':
       return handlers.init()
     case 'link':
-      return handlers.link()
+      return handlers.link({ account: command.account })
     case 'unlink':
-      return handlers.unlink({ yes: command.yes })
+      return handlers.unlink({ yes: command.yes, account: command.account })
     case 'daemon':
-      return handlers.daemon({ retry: command.retry })
+      return handlers.daemon({ retry: command.retry, account: command.account })
     case 'digest':
       return handlers.digest(command)
     case 'status':
-      return handlers.status()
+      return handlers.status({ account: command.account })
     case 'doctor':
-      return handlers.doctor()
+      return handlers.doctor({ account: command.account })
+    case 'accounts':
+      return handlers.accounts()
   }
 }
 

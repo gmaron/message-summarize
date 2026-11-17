@@ -96,10 +96,13 @@ export interface Catalog {
       unexpectedArgument(value: string): string
       invalidNumber(option: string): string
       invalidDate(option: string): string
+      invalidAccountId(value: string): string
     }
     /** Problems of config.json that the digest settings do not cover (RF-73). */
     readonly config: {
-      heading(file: string): string
+      /** Printed once before the problems; each problem names its file (`inFile`). */
+      readonly heading: string
+      inFile(file: string, text: string): string
       readonly invalidJson: string
       unknownOption(option: string): string
       notOneOf(option: string, allowed: string): string
@@ -118,21 +121,42 @@ export interface Catalog {
     }
     /** Shared by link, unlink and daemon. */
     daemonRunning(pid: number): string
+    /** The old single-account layout must be migrated and a daemon holds the installation. */
+    legacyDaemonRunning(pid: number): string
+    /** Choosing and listing the accounts of the installation (RF-03). */
+    readonly accounts: {
+      unknown(id: string, known: string): string
+      readonly none: string
+      ambiguous(known: string): string
+      missingDir(id: string): string
+      /** The directory of the account (or its auth/) is a link or a file: nothing is touched. */
+      notADirectory(id: string): string
+      /** `msum accounts`. */
+      readonly empty: string
+      readonly header: string
+      /** `id` is already padded to the width of the longest id. */
+      row(id: string, platform: string, state: string): string
+      linked(masked: string): string
+      readonly notLinked: string
+      /** `reason` is already translated. */
+      blocked(reason: string): string
+      readonly missingDirState: string
+    }
     readonly link: {
-      alreadyLinked(account: string): string
+      alreadyLinked(id: string, account: string): string
       scanQr(qrFile: string): string
       readonly connected: string
       readonly receivingHistory: string
       done(account: string): string
-      readonly mismatch: string
-      readonly loggedOut: string
+      mismatch(id: string): string
+      loggedOut(id: string): string
       failed(reason: string): string
       readonly timeout: string
     }
     readonly unlink: {
-      readonly confirm: string
+      confirm(id: string): string
       readonly cancelled: string
-      readonly done: string
+      done(id: string): string
     }
     readonly daemon: {
       running(dataDir: string): string
@@ -143,7 +167,7 @@ export interface Catalog {
       blocked(reason: string): string
     }
     /** Why the daemon stopped working with the account, and what to do about it. */
-    readonly blockedReasons: Readonly<Record<BlockedReason, string>>
+    readonly blockedReasons: Readonly<Record<BlockedReason, (id: string) => string>>
     readonly digest: {
       readonly empty: string
       readonly dryRun: string
@@ -154,7 +178,10 @@ export interface Catalog {
     }
     readonly status: {
       dataDir(path: string): string
-      account(masked: string | null): string
+      account(id: string, masked: string | null): string
+      /** The block of an account whose configuration is invalid; the problems follow. */
+      configBroken(id: string): string
+      readonly noAccounts: string
       lastDigest(when: string | null): string
       pending(count: number): string
       daemon(pid: number | null): string
@@ -173,7 +200,19 @@ export interface Catalog {
         readonly config: string
         readonly provider: string
         readonly whatsapp: string
+        readonly accounts: string
       }
+      /** Names a check of one account when several are checked. */
+      accountName(name: string, id: string): string
+      accountsOk(count: number): string
+      accountsMissingDir(id: string): string
+      accountsMissingDirFix(id: string): string
+      accountsInvalid(ids: string): string
+      readonly accountsInvalidFix: string
+      accountsIgnored(names: string): string
+      readonly accountsIgnoredFix: string
+      readonly legacyConflict: string
+      readonly legacyConflictFix: string
       node(found: string): string
       nodeFix(required: string): string
       readonly dataDirOk: string

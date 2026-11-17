@@ -1,8 +1,14 @@
 import { parseArgs as nodeParseArgs } from 'node:util'
+import { isValidAccountId } from '../../domain/account-id.js'
 import { err, ok, type Result } from '../../domain/result.js'
 import { type LocalDateTime, parseLocalDateTime } from './local-time.js'
 
-export interface DigestArgs {
+/** `--account <id>`: null when the user gave none (the command then picks the only account, or asks). */
+export interface AccountArg {
+  readonly account: string | null
+}
+
+export interface DigestArgs extends AccountArg {
   /** Show the digest and save or send nothing (RF-64). */
   readonly dryRun: boolean
   /** Wall-clock times in the time zone of the configuration. */
@@ -14,12 +20,13 @@ export interface DigestArgs {
 export type Command =
   | { readonly name: 'help' }
   | { readonly name: 'init' }
-  | { readonly name: 'link' }
-  | { readonly name: 'unlink'; readonly yes: boolean }
-  | { readonly name: 'daemon'; readonly retry: boolean }
+  | ({ readonly name: 'link' } & AccountArg)
+  | ({ readonly name: 'unlink'; readonly yes: boolean } & AccountArg)
+  | ({ readonly name: 'daemon'; readonly retry: boolean } & AccountArg)
   | ({ readonly name: 'digest' } & DigestArgs)
-  | { readonly name: 'status' }
-  | { readonly name: 'doctor' }
+  | ({ readonly name: 'status' } & AccountArg)
+  | ({ readonly name: 'doctor' } & AccountArg)
+  | { readonly name: 'accounts' }
 
 /** Why the arguments are wrong. Codes with the offending text: `cli.argErrors` explains each one. */
 export type ArgError =
@@ -29,13 +36,17 @@ export type ArgError =
   | { readonly kind: 'unexpectedArgument'; readonly value: string }
   | { readonly kind: 'invalidNumber'; readonly value: string }
   | { readonly kind: 'invalidDate'; readonly value: string }
+  | { readonly kind: 'invalidAccountId'; readonly value: string }
 
-const COMMANDS = ['init', 'link', 'unlink', 'daemon', 'digest', 'status', 'doctor'] as const
+const COMMANDS = ['init', 'link', 'unlink', 'daemon', 'digest', 'status', 'doctor', 'accounts'] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
-  unlink: ['yes'],
-  daemon: ['retry'],
-  digest: ['dry-run', 'from', 'to', 'hours'],
+  link: ['account'],
+  unlink: ['yes', 'account'],
+  daemon: ['retry', 'account'],
+  digest: ['dry-run', 'from', 'to', 'hours', 'account'],
+  status: ['account'],
+  doctor: ['account'],
 }
 
 const OPTIONS = {
@@ -46,6 +57,7 @@ const OPTIONS = {
   from: { type: 'string' },
   to: { type: 'string' },
   hours: { type: 'string' },
+  account: { type: 'string' },
 } as const
 
 /** The "--name" a node:util error message talks about. */
@@ -78,11 +90,17 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     if (flag !== 'help' && !accepted.includes(flag)) return err({ kind: 'unknownOption', value: `--${flag}` })
   }
 
+  // The id becomes a directory name: it is checked here, and again where the path is built.
+  if (values.account !== undefined && !isValidAccountId(values.account)) {
+    return err({ kind: 'invalidAccountId', value: values.account })
+  }
+  const account = values.account ?? null
+
   switch (command) {
     case 'unlink':
-      return ok({ name: 'unlink', yes: values.yes === true })
+      return ok({ name: 'unlink', yes: values.yes === true, account })
     case 'daemon':
-      return ok({ name: 'daemon', retry: values.retry === true })
+      return ok({ name: 'daemon', retry: values.retry === true, account })
     case 'digest': {
       const date = (flag: 'from' | 'to'): Result<LocalDateTime | null, ArgError> => {
         const text = values[flag]
@@ -99,9 +117,20 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
         hours = values.hours.trim() === '' ? Number.NaN : Number(values.hours)
         if (!Number.isFinite(hours)) return err({ kind: 'invalidNumber', value: '--hours' })
       }
-      return ok({ name: 'digest', dryRun: values['dry-run'] === true, from: from.value, to: to.value, hours })
+      return ok({
+        name: 'digest',
+        dryRun: values['dry-run'] === true,
+        from: from.value,
+        to: to.value,
+        hours,
+        account,
+      })
     }
+    case 'link':
+    case 'status':
+    case 'doctor':
+      return ok({ name: command, account })
     default:
-      return ok({ name: command as 'init' | 'link' | 'status' | 'doctor' })
+      return ok({ name: command as 'init' | 'accounts' })
   }
 }

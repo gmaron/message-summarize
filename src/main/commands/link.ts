@@ -2,11 +2,13 @@ import { rm } from 'node:fs/promises'
 import type { CaptureMessages } from '../../application/capture-messages.js'
 import { reconcileAccount } from '../../infrastructure/whatsapp/account-binding.js'
 import type { WhatsAppStatus } from '../../infrastructure/whatsapp/connection.js'
-import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
+import type { AccountArg } from '../../interfaces/cli/args.js'
+import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
+import { installationCatalog, isPrepared, prepareAccount } from '../account-command.js'
+import { readAccountState } from '../account-state.js'
 import { clearBlocked, FIXED_BY_LINKING, readBlocked } from '../blocked.js'
-import { type CommandContext, hasSession, loadConfigOrReport, maskAccount, withRuntime } from '../context.js'
+import { type CommandContext, hasSession, maskAccount, withRuntime } from '../context.js'
 import { runningDaemonPid } from '../daemon-lock.js'
-import { ensureDataDirs } from '../paths.js'
 import { qrForTerminal, writeQrPng } from '../qr.js'
 import { createRuntime } from '../runtime.js'
 
@@ -66,135 +68,153 @@ function countingCapture(capture: CaptureMessages): { readonly capture: CaptureM
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
- * `msum link`: connects, shows the QR (in the terminal, and as <dataDir>/qr.png while it is valid), waits until the
+ * `msum link [--account <id>]`: connects, shows the QR (in the terminal, and as accounts/<id>/qr.png while it is valid), waits until the
  * account is connected and the initial history has been captured, then stops cleanly. A stale qr.png is deleted at
  * the start, and Ctrl+C / SIGTERM delete it and stop the connection.
  *
  * "The history has been received" cannot be observed directly, so it is approximated: after connecting, wait at least
  * `minAfterConnectMs`, then until nothing was captured for `quietMs`, and never more than `maxAfterConnectMs`.
  *
+ * The account is created when it does not exist (`default` when there is none and no id was given). One that is
+ * already linked is left alone (a notice and exit 0): `unlink` it first to link it again. A first link that fails,
+ * times out or is interrupted before anything was bound removes the account it created.
+ *
  * A session of a different account than the bound one (or with no phone number) is deleted on the spot, so nothing
  * of it stays or is captured into this installation, and the command fails.
  */
-export async function linkCommand(ctx: CommandContext): Promise<number> {
-  const loaded = await loadConfigOrReport(ctx)
-  if (loaded === null) return EXIT_USAGE
-  const { config, catalog } = loaded
-  const texts = catalog.cli
-  const { io, layout, logger } = ctx
-  await ensureDataDirs(layout)
-  await rm(layout.qrFile, { force: true })
-
-  const daemonPid = await runningDaemonPid(layout.lockFile)
+export async function linkCommand(ctx: CommandContext, args: AccountArg): Promise<number> {
+  const { io, logger } = ctx
+  // Before anything is created: a running daemon owns the session and the files.
+  const daemonPid = await runningDaemonPid(ctx.layout.lockFile)
   if (daemonPid !== null) {
-    io.err(texts.daemonRunning(daemonPid))
+    io.err((await installationCatalog(ctx)).cli.daemonRunning(daemonPid))
     return EXIT_FAILURE
   }
+  const prepared = await prepareAccount(ctx, args.account, 'link')
+  if (!isPrepared(prepared)) return prepared.exit
+  const { config, catalog, account, installation } = prepared
+  const texts = catalog.cli
+  let code = EXIT_FAILURE
+  try {
+    await rm(account.qrFile, { force: true })
 
-  return withRuntime(
-    () => createRuntime({ layout, config, env: ctx.env, clock: ctx.clock, summarizer: null }),
-    async (runtime) => {
-      const bound = runtime.identity.get()
-      if (bound !== null && (await hasSession(layout))) {
-        io.out(texts.link.alreadyLinked(maskAccount(bound)))
-        return EXIT_OK
-      }
+    code = await withRuntime(
+      () => createRuntime({ layout: account, config, env: ctx.env, clock: ctx.clock, summarizer: null }),
+      async (runtime) => {
+        const bound = runtime.identity.get()
+        if (bound !== null && (await hasSession(account))) {
+          // Idempotent for scripts: a notice and success, and the session is not touched.
+          io.out(texts.link.alreadyLinked(account.id, maskAccount(bound)))
+          return EXIT_OK
+        }
 
-      const counted = countingCapture(runtime.capture)
-      const connection = await ctx.connectionFactory(runtime, {
-        capture: counted.capture,
-        onWarning: (code) => logger.warn('adapter.warning', { code }),
-      })
+        const counted = countingCapture(runtime.capture)
+        const connection = await ctx.connectionFactory(runtime, {
+          capture: counted.capture,
+          onWarning: (code) => logger.warn('adapter.warning', { code }),
+        })
 
-      const timing = ctx.linkTiming
-      let qrShown = false
-      let interrupted = false
-      let settle: (outcome: LinkOutcome) => void = () => {}
-      const outcome = new Promise<LinkOutcome>((resolve) => {
-        settle = resolve
-      })
-      void ctx.waitForShutdown().then(() => {
-        interrupted = true
-        settle({ kind: 'interrupted' })
-      })
-      const showQr = async (qr: string): Promise<void> => {
+        const timing = ctx.linkTiming
+        let qrShown = false
+        let interrupted = false
+        let settle: (outcome: LinkOutcome) => void = () => {}
+        const outcome = new Promise<LinkOutcome>((resolve) => {
+          settle = resolve
+        })
+        void ctx.waitForShutdown().then(() => {
+          interrupted = true
+          settle({ kind: 'interrupted' })
+        })
+        const showQr = async (qr: string): Promise<void> => {
+          try {
+            io.out(await qrForTerminal(qr))
+            await writeQrPng(account.qrFile, qr).then(
+              () => {
+                if (!qrShown) io.out(texts.link.scanQr(account.qrFile))
+              },
+              () => {
+                if (!qrShown) io.out(texts.link.scanQr('-'))
+              },
+            )
+            qrShown = true
+          } catch {
+            logger.warn('link.qrFailed', {})
+          }
+        }
+        const unsubscribe = connection.onStatus((status: WhatsAppStatus) => {
+          if (status.state === 'qr') void showQr(status.qr)
+          else if (status.state === 'connected') settle({ kind: 'connected' })
+          else if (status.state === 'loggedOut') settle({ kind: 'loggedOut' })
+          else if (status.state === 'error') settle({ kind: 'failed', reason: status.reason })
+        })
+
+        let timer: ReturnType<typeof setTimeout> | undefined
         try {
-          io.out(await qrForTerminal(qr))
-          await writeQrPng(layout.qrFile, qr).then(
-            () => {
-              if (!qrShown) io.out(texts.link.scanQr(layout.qrFile))
-            },
-            () => {
-              if (!qrShown) io.out(texts.link.scanQr('-'))
-            },
-          )
-          qrShown = true
-        } catch {
-          logger.warn('link.qrFailed', {})
-        }
-      }
-      const unsubscribe = connection.onStatus((status: WhatsAppStatus) => {
-        if (status.state === 'qr') void showQr(status.qr)
-        else if (status.state === 'connected') settle({ kind: 'connected' })
-        else if (status.state === 'loggedOut') settle({ kind: 'loggedOut' })
-        else if (status.state === 'error') settle({ kind: 'failed', reason: status.reason })
-      })
+          await connection.start()
+          const result = await Promise.race([
+            outcome,
+            new Promise<LinkOutcome>((resolve) => {
+              timer = setTimeout(() => resolve({ kind: 'timeout' }), timing.connectTimeoutMs)
+            }),
+          ])
+          clearTimeout(timer)
+          if (result.kind === 'interrupted') return EXIT_INTERRUPTED
+          if (result.kind === 'timeout') {
+            io.err(texts.link.timeout)
+            return EXIT_FAILURE
+          }
+          if (result.kind === 'loggedOut') {
+            io.err(texts.link.loggedOut(account.id))
+            return EXIT_FAILURE
+          }
+          if (result.kind === 'failed') {
+            io.err(texts.link.failed(result.reason))
+            return EXIT_FAILURE
+          }
 
-      let timer: ReturnType<typeof setTimeout> | undefined
-      try {
-        await connection.start()
-        const result = await Promise.race([
-          outcome,
-          new Promise<LinkOutcome>((resolve) => {
-            timer = setTimeout(() => resolve({ kind: 'timeout' }), timing.connectTimeoutMs)
-          }),
-        ])
-        clearTimeout(timer)
-        if (result.kind === 'interrupted') return EXIT_INTERRUPTED
-        if (result.kind === 'timeout') {
-          io.err(texts.link.timeout)
-          return EXIT_FAILURE
-        }
-        if (result.kind === 'loggedOut') {
-          io.err(texts.link.loggedOut)
-          return EXIT_FAILURE
-        }
-        if (result.kind === 'failed') {
-          io.err(texts.link.failed(result.reason))
-          return EXIT_FAILURE
-        }
-
-        const check = reconcileAccount(runtime.identity, connection.selfChat()?.user)
-        if (check === 'mismatch' || check === 'noAccount') {
+          const check = reconcileAccount(runtime.identity, connection.selfChat()?.user)
+          if (check === 'mismatch' || check === 'noAccount') {
+            unsubscribe()
+            await connection.clearSession()
+            io.err(check === 'mismatch' ? texts.link.mismatch(account.id) : texts.link.failed('noAccount'))
+            return EXIT_FAILURE
+          }
+          io.out(texts.link.connected)
+          io.out(texts.link.receivingHistory)
+          const connectedAt = Date.now()
+          while (!interrupted) {
+            await sleep(timing.pollMs)
+            const now = Date.now()
+            const elapsed = now - connectedAt
+            if (elapsed >= timing.maxAfterConnectMs) break
+            if (elapsed >= timing.minAfterConnectMs && now - counted.lastActivity() >= timing.quietMs) break
+          }
+          await connection.stop()
+          if (interrupted) return EXIT_INTERRUPTED
+          // Linking fixes what a daemon was blocked for, except a refused or replaced connection (`daemon --retry`).
+          const marker = await readBlocked(account.blockedFile)
+          if (marker !== null && FIXED_BY_LINKING.includes(marker.reason)) await clearBlocked(account.blockedFile)
+          io.out(texts.link.done(maskAccount(runtime.identity.get() ?? '')))
+          return EXIT_OK
+        } finally {
+          clearTimeout(timer)
           unsubscribe()
-          await connection.clearSession()
-          io.err(check === 'mismatch' ? texts.link.mismatch : texts.link.failed('noAccount'))
-          return EXIT_FAILURE
+          await connection.stop().catch(() => undefined)
+          // The QR is a pairing credential: never left behind.
+          await rm(account.qrFile, { force: true })
         }
-        io.out(texts.link.connected)
-        io.out(texts.link.receivingHistory)
-        const connectedAt = Date.now()
-        while (!interrupted) {
-          await sleep(timing.pollMs)
-          const now = Date.now()
-          const elapsed = now - connectedAt
-          if (elapsed >= timing.maxAfterConnectMs) break
-          if (elapsed >= timing.minAfterConnectMs && now - counted.lastActivity() >= timing.quietMs) break
-        }
-        await connection.stop()
-        if (interrupted) return EXIT_INTERRUPTED
-        // Linking fixes what a daemon was blocked for, except a refused or replaced connection (`daemon --retry`).
-        const marker = await readBlocked(layout.blockedFile)
-        if (marker !== null && FIXED_BY_LINKING.includes(marker.reason)) await clearBlocked(layout.blockedFile)
-        io.out(texts.link.done(maskAccount(runtime.identity.get() ?? '')))
-        return EXIT_OK
-      } finally {
-        clearTimeout(timer)
-        unsubscribe()
-        await connection.stop().catch(() => undefined)
-        // The QR is a pairing credential: never left behind.
-        await rm(layout.qrFile, { force: true })
+      },
+    )
+    return code
+  } finally {
+    // An account this run created and nothing got linked into (no bound number, no session) is not left behind:
+    // a failed, timed-out or interrupted first link must not leave an empty record and directory.
+    if (code !== EXIT_OK && prepared.created) {
+      const state = await readAccountState(account).catch(() => null)
+      if (state !== null && state.masked === null && !(await hasSession(account))) {
+        await installation.deleteAccount(account.id).catch(() => undefined)
       }
-    },
-  )
+    }
+    installation.close()
+  }
 }

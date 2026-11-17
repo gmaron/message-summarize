@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
@@ -62,6 +63,8 @@ export interface ConfigIssue {
   readonly code: ConfigIssueCode
   /** For notOneOf: the accepted values. */
   readonly allowed?: readonly string[]
+  /** The file the problem comes from, when more than one file is read (an installation and an account). */
+  readonly file?: string
 }
 
 export const DEFAULT_LANGUAGE: Language = 'es'
@@ -88,6 +91,9 @@ const TOP_LEVEL = new Set([
 const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
+
+/** Lists an account can only add to (see `mergeConfigJson`). */
+const UNIONED_LISTS = ['localOnlyPatterns', 'excludePatterns'] as const
 
 type Obj = Record<string, unknown>
 const isObject = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -285,24 +291,115 @@ export async function loadConfig(file: string, fallbackTimezone?: string): Promi
 }
 
 /**
- * The language to talk to the user in when the configuration may be broken: the one in the file when it is valid,
- * else the default. Never throws.
+ * The options of an account over those of the installation (RF-03). Every top-level option of the account file
+ * replaces the installation's; `provider` merges per key (primary, backup, and the options of claudeCli and ollama
+ * one by one), so an account can change its model without repeating the rest. A value of the wrong shape is kept as
+ * it is, so the validation of the merged result reports it.
+ *
+ * The privacy lists `localOnlyPatterns` and `excludePatterns` are the exception to "replaces": they are UNIONED with
+ * the installation's (deduplicated, installation first), so an account can add to them but never weaken them.
  */
-export async function languageHint(file: string): Promise<Language> {
-  try {
-    const json = await readJson(file)
-    if (json.ok && isObject(json.value)) {
-      const v = json.value.language
-      if (typeof v === 'string' && (LANGUAGES as readonly string[]).includes(v)) return v as Language
+export function mergeConfigJson(base: Obj, overrides: Obj): Obj {
+  const merged: Obj = { ...base, ...overrides }
+  for (const key of UNIONED_LISTS) {
+    const baseList = base[key]
+    const overrideList = overrides[key]
+    if (Array.isArray(baseList) && Array.isArray(overrideList)) {
+      merged[key] = [...new Set([...baseList, ...overrideList])]
     }
-  } catch {
-    // unreadable: the default
   }
-  return DEFAULT_LANGUAGE
+  const baseProvider = base.provider
+  const overrideProvider = overrides.provider
+  if (isObject(baseProvider) && isObject(overrideProvider)) {
+    const provider: Obj = { ...baseProvider, ...overrideProvider }
+    for (const key of ['claudeCli', 'ollama']) {
+      const baseSection = baseProvider[key]
+      const overrideSection = overrideProvider[key]
+      if (isObject(baseSection) && isObject(overrideSection)) provider[key] = { ...baseSection, ...overrideSection }
+    }
+    merged.provider = provider
+  }
+  return merged
+}
+
+/** True when `path` ("provider.ollama.model", "schedules[1]") is set in `source`. */
+function isSetIn(source: Obj, path: string): boolean {
+  let node: unknown = source
+  for (const key of path.replace(/\[\d+\]/g, '').split('.')) {
+    if (!isObject(node) || !(key in node)) return false
+    node = node[key]
+  }
+  return true
+}
+
+/**
+ * The configuration an account runs with: the installation's `rootFile` merged with the account's optional
+ * `accountFile` (see `mergeConfigJson`), validated as a whole. A problem names the file it comes from: the account's
+ * when that file sets the option, else the installation's. A relative `promptFile` is resolved against the directory
+ * of the file that set it, so the result holds an absolute path.
+ */
+export async function loadEffectiveConfig(
+  rootFile: string,
+  accountFile: string | null,
+  fallbackTimezone?: string,
+): Promise<Result<AppConfig, ConfigIssue[]>> {
+  const files = accountFile === null ? [rootFile] : [rootFile, accountFile]
+  const issues: ConfigIssue[] = []
+  const parts: Obj[] = []
+  for (const file of files) {
+    const json = await readJson(file)
+    if (!json.ok) {
+      if (json.error === 'invalid') issues.push({ option: '(config)', code: 'invalidJson', file })
+      parts.push({})
+    } else if (!isObject(json.value)) {
+      issues.push({ option: '(config)', code: 'notObject', file })
+      parts.push({})
+    } else {
+      parts.push(json.value)
+    }
+  }
+  if (issues.length > 0) return err(issues)
+  const [root = {}, account = {}] = parts
+  const parsed = parseConfig(mergeConfigJson(root, account), fallbackTimezone)
+  const fromAccount = (option: string): boolean => accountFile !== null && isSetIn(account, option)
+  if (!parsed.ok) {
+    return err(
+      parsed.error.map((issue) => ({ ...issue, file: fromAccount(issue.option) ? (accountFile as string) : rootFile })),
+    )
+  }
+  const { promptFile } = parsed.value
+  if (promptFile === null) return parsed
+  const source = fromAccount('promptFile') ? (accountFile as string) : rootFile
+  return ok({ ...parsed.value, promptFile: resolve(dirname(source), promptFile) })
+}
+
+/**
+ * The language to talk to the user in when the configuration may be broken: the one in the file when it is valid,
+ * else the default. With an account file, its language wins over the installation's. Never throws.
+ */
+export async function languageHint(file: string, accountFile: string | null = null): Promise<Language> {
+  const hintOf = async (path: string): Promise<Language | null> => {
+    try {
+      const json = await readJson(path)
+      if (json.ok && isObject(json.value)) {
+        const v = json.value.language
+        if (typeof v === 'string' && (LANGUAGES as readonly string[]).includes(v)) return v as Language
+      }
+    } catch {
+      // unreadable: no hint
+    }
+    return null
+  }
+  return (accountFile === null ? null : await hintOf(accountFile)) ?? (await hintOf(file)) ?? DEFAULT_LANGUAGE
 }
 
 /** One line for the user: the option and the reason, in their language (RF-73). */
 export function describeConfigIssue(catalog: Catalog, issue: ConfigIssue): string {
+  const text = describeIssueText(catalog, issue)
+  return issue.file === undefined ? text : catalog.cli.config.inFile(issue.file, text)
+}
+
+function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
   const texts = catalog.cli.config
   switch (issue.code) {
     case 'invalidJson':

@@ -48,7 +48,7 @@ const linkedWithSession = async (h: Harness) => {
   const runtime = h.runtime()
   runtime.identity.bind(ME)
   runtime.close()
-  writeFileSync(join(h.layout.authDir, 'creds.json'), REGISTERED)
+  writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
 }
 const seed = async (h: Harness, ...messages: Parameters<typeof seedMessages>[1][number][]) => {
   const runtime = h.runtime()
@@ -61,7 +61,7 @@ describe('msum init', () => {
     const h = await makeHarness({ config: null, summarizer: null })
     expect(await run(h, 'init')).toBe(0)
     expect(statSync(h.layout.dataDir).mode & 0o777).toBe(0o700)
-    expect(statSync(h.layout.authDir).mode & 0o777).toBe(0o700)
+    expect(statSync(h.layout.accountsDir).mode & 0o777).toBe(0o700)
     expect(statSync(h.layout.configFile).mode & 0o777).toBe(0o600)
     const written = JSON.parse(readFileSync(h.layout.configFile, 'utf8'))
     // RF-41: no default provider
@@ -102,8 +102,9 @@ describe('configuration errors (RF-73)', () => {
   it('speaks Spanish when the file says so', async () => {
     const h = await makeHarness({ config: { language: 'es', schedules: ['nope'] } })
     expect(await run(h, 'status')).toBe(2)
-    expect(h.err.join('\n')).toContain('La configuración tiene problemas')
-    expect(h.err.join('\n')).toContain('schedules[0]')
+    // status prints every account's block, with the problem inside the block, and exits non-zero at the end
+    expect(h.out.join('\n')).toContain('La configuración tiene problemas')
+    expect(h.out.join('\n')).toContain('schedules[0]')
   })
 
   it('reports a file that is not JSON', async () => {
@@ -284,9 +285,9 @@ describe('msum unlink', () => {
     await seedMessages(runtime, [{ id: 'a1', text: A_SECRET, conversationName: 'Ana of A' }])
     runtime.close()
     await run(h, 'digest') // a digest of A, queued
-    writeFileSync(join(h.layout.authDir, 'creds.json'), REGISTERED)
-    writeFileSync(join(h.layout.authDir, 'session-key-1.json'), '{"key":"A-private-key"}')
-    await writeBlocked(h.layout.blockedFile, 'loggedOut', NOW)
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
+    writeFileSync(join(h.account.authDir, 'session-key-1.json'), '{"key":"A-private-key"}')
+    await writeBlocked(h.account.blockedFile, 'loggedOut', NOW)
   }
 
   /** Every file under the data directory, with its content. */
@@ -306,14 +307,14 @@ describe('msum unlink', () => {
   it('deletes the whole account directory: database (wal, shm), session and marker, but keeps the config', async () => {
     const h = await makeHarness()
     await accountA(h)
-    expect(existsSync(h.layout.dbFile)).toBe(true)
+    expect(existsSync(h.account.dbFile)).toBe(true)
     expect(everything(h).join('')).toContain(A_SECRET)
     expect(await run(h, 'unlink', '--yes')).toBe(0)
-    expect(existsSync(h.layout.accountDir)).toBe(false)
-    expect(existsSync(h.layout.dbFile)).toBe(false)
-    expect(existsSync(`${h.layout.dbFile}-wal`)).toBe(false)
-    expect(existsSync(`${h.layout.dbFile}-shm`)).toBe(false)
-    expect(existsSync(h.layout.blockedFile)).toBe(false)
+    expect(existsSync(h.account.dir)).toBe(false)
+    expect(existsSync(h.account.dbFile)).toBe(false)
+    expect(existsSync(`${h.account.dbFile}-wal`)).toBe(false)
+    expect(existsSync(`${h.account.dbFile}-shm`)).toBe(false)
+    expect(existsSync(h.account.blockedFile)).toBe(false)
     expect(existsSync(h.layout.configFile)).toBe(true)
     expect(everything(h).join('')).not.toContain(A_SECRET)
     expect(everything(h).join('')).not.toContain('A-private-key')
@@ -372,7 +373,7 @@ describe('msum unlink', () => {
     await linked(h)
     expect(await run(h, 'unlink')).toBe(0)
     expect(h.questions).toHaveLength(1)
-    expect(existsSync(h.layout.accountDir)).toBe(false)
+    expect(existsSync(h.account.dir)).toBe(false)
   })
 
   it('refuses while a daemon is running', async () => {
@@ -396,22 +397,22 @@ describe('msum link', () => {
       await flush()
       await flush()
       await new Promise((resolve) => setTimeout(resolve, 50))
-      if (existsSync(h.layout.qrFile)) {
-        pngMode = statSync(h.layout.qrFile).mode & 0o777
-        pngHeader = readFileSync(h.layout.qrFile).subarray(1, 4).toString('latin1')
+      if (existsSync(h.account.qrFile)) {
+        pngMode = statSync(h.account.qrFile).mode & 0o777
+        pngHeader = readFileSync(h.account.qrFile).subarray(1, 4).toString('latin1')
       }
       h.connection.emit({ state: 'connected' })
     }
     expect(await run(h, 'link')).toBe(0)
     const output = h.out.join('\n')
     expect(output).toContain('Scan the QR code')
-    expect(output).toContain(h.layout.qrFile)
+    expect(output).toContain(h.account.qrFile)
     expect(output).toContain('Receiving the initial history')
     expect(output).toContain('Done: account +54')
     expect(output).not.toContain(ME.split('@')[0] as string)
     expect(pngMode).toBe(0o600)
     expect(pngHeader).toBe('PNG')
-    expect(existsSync(h.layout.qrFile)).toBe(false)
+    expect(existsSync(h.account.qrFile)).toBe(false)
     expect((await stateOf(h)).account).toBe(ME)
     expect(h.connection.calls).toEqual(['start', 'stop', 'stop'])
     // the QR is a credential: not in any log
@@ -449,10 +450,13 @@ describe('msum link', () => {
     const runtime = h.runtime()
     runtime.identity.bind(ME)
     runtime.close()
-    writeFileSync(join(h.layout.authDir, 'creds.json'), REGISTERED)
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
+    // idempotent for scripts: a notice and success; the session is not touched
     expect(await run(h, 'link')).toBe(0)
     expect(h.out.join('\n')).toContain('already linked')
+    expect(h.out.join('\n')).toContain('msum unlink --account default')
     expect(h.connection.calls).toEqual([])
+    expect(readFileSync(join(h.account.authDir, 'creds.json'), 'utf8')).toBe(REGISTERED)
   })
 
   it('does not take a half-finished link (credentials with no registered account) for a session', async () => {
@@ -460,7 +464,7 @@ describe('msum link', () => {
     const runtime = h.runtime()
     runtime.identity.bind(ME)
     runtime.close()
-    writeFileSync(join(h.layout.authDir, 'creds.json'), '{"noiseKey":{}}')
+    writeFileSync(join(h.account.authDir, 'creds.json'), '{"noiseKey":{}}')
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     expect(await run(h, 'link')).toBe(0)
     expect(h.connection.calls).toContain('start')
@@ -490,24 +494,24 @@ describe('msum link', () => {
 
   it('clears the marker of a daemon that was waiting for a link, but not one that needs --retry', async () => {
     const h = await makeHarness()
-    await writeBlocked(h.layout.blockedFile, 'notLinked', NOW)
+    await writeBlocked(h.account.blockedFile, 'notLinked', NOW)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     expect(await run(h, 'link')).toBe(0)
-    expect(existsSync(h.layout.blockedFile)).toBe(false)
+    expect(existsSync(h.account.blockedFile)).toBe(false)
 
     const forbidden = await makeHarness()
-    await writeBlocked(forbidden.layout.blockedFile, 'forbidden', NOW)
+    await writeBlocked(forbidden.account.blockedFile, 'forbidden', NOW)
     forbidden.connection.onStart = () => forbidden.connection.emit({ state: 'connected' })
     expect(await run(forbidden, 'link')).toBe(0)
-    expect(existsSync(forbidden.layout.blockedFile)).toBe(true)
+    expect(existsSync(forbidden.account.blockedFile)).toBe(true)
   })
 
   it('deletes a stale qr.png when it starts', async () => {
     const h = await makeHarness()
-    writeFileSync(h.layout.qrFile, 'stale')
+    writeFileSync(h.account.qrFile, 'stale')
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     await run(h, 'link')
-    expect(existsSync(h.layout.qrFile)).toBe(false)
+    expect(existsSync(h.account.qrFile)).toBe(false)
     expect(h.connection.calls[0]).toBe('start')
   })
 
@@ -515,11 +519,11 @@ describe('msum link', () => {
     const h = await makeHarness()
     h.connection.onStart = async () => {
       h.connection.emit({ state: 'qr', qr: 'fake-qr-payload-2' })
-      await vi.waitFor(() => expect(existsSync(h.layout.qrFile)).toBe(true))
+      await vi.waitFor(() => expect(existsSync(h.account.qrFile)).toBe(true))
       h.shutdown()
     }
     expect(await run(h, 'link')).toBe(130)
-    expect(existsSync(h.layout.qrFile)).toBe(false)
+    expect(existsSync(h.account.qrFile)).toBe(false)
     expect(h.connection.calls).toContain('stop')
     expect((await stateOf(h)).account).toBeNull()
   })
@@ -539,7 +543,7 @@ describe('msum link', () => {
     Object.assign(slow.ctx.linkTiming, { connectTimeoutMs: 30 })
     expect(await run(slow, 'link')).toBe(1)
     expect(slow.err.join('\n')).toContain('Time ran out')
-    expect(existsSync(slow.layout.qrFile)).toBe(false)
+    expect(existsSync(slow.account.qrFile)).toBe(false)
   })
 
   it('refuses while a daemon is running', async () => {
@@ -558,7 +562,7 @@ describe('msum daemon', () => {
     const runtime = h.runtime()
     runtime.identity.bind(ME)
     runtime.close()
-    writeFileSync(join(h.layout.authDir, 'creds.json'), REGISTERED)
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon')
     await vi.waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
@@ -574,8 +578,10 @@ describe('msum daemon', () => {
   it('with no account linked it stays idle (marker "notLinked") instead of exiting into a restart loop', async () => {
     const h = await makeHarness()
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(h.err.join('\n')).toContain('No account is linked. Run "msum link"'))
-    expect(JSON.parse(readFileSync(h.layout.blockedFile, 'utf8')).reason).toBe('notLinked')
+    await vi.waitFor(() =>
+      expect(h.err.join('\n')).toContain('No account is linked. Run "msum link --account default"'),
+    )
+    expect(JSON.parse(readFileSync(h.account.blockedFile, 'utf8')).reason).toBe('notLinked')
     expect(h.connection.calls).toEqual([])
     h.shutdown()
     expect(await finished).toBe(0)
@@ -603,7 +609,7 @@ describe('msum daemon', () => {
     h.connection.onStart = () => h.connection.emit({ state: 'loggedOut' })
     const finished = run(h, 'daemon')
     await vi.waitFor(() => expect(h.err.join('\n')).toContain('closed the session from the phone'))
-    expect(JSON.parse(readFileSync(h.layout.blockedFile, 'utf8')).reason).toBe('loggedOut')
+    expect(JSON.parse(readFileSync(h.account.blockedFile, 'utf8')).reason).toBe('loggedOut')
     expect(existsSync(h.layout.lockFile)).toBe(true) // alive, holding the lock
     h.shutdown()
     expect(await finished).toBe(0)
@@ -613,7 +619,7 @@ describe('msum daemon', () => {
   it('restarted with the marker it does not connect at all', async () => {
     const h = await makeHarness()
     await linkedWithSession(h)
-    await writeBlocked(h.layout.blockedFile, 'replaced', NOW)
+    await writeBlocked(h.account.blockedFile, 'replaced', NOW)
     const finished = run(h, 'daemon')
     await vi.waitFor(() => expect(h.err.join('\n')).toContain('Another session with the same credentials'))
     expect(h.connection.calls).toEqual([])
@@ -625,12 +631,12 @@ describe('msum daemon', () => {
   it('--retry clears the marker of a refused or replaced connection and connects', async () => {
     const h = await makeHarness()
     await linkedWithSession(h)
-    await writeBlocked(h.layout.blockedFile, 'forbidden', NOW)
+    await writeBlocked(h.account.blockedFile, 'forbidden', NOW)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon', '--retry')
     await vi.waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
     expect(h.connection.calls).toContain('start')
-    expect(existsSync(h.layout.blockedFile)).toBe(false)
+    expect(existsSync(h.account.blockedFile)).toBe(false)
     h.shutdown()
     expect(await finished).toBe(0)
   })
@@ -638,11 +644,11 @@ describe('msum daemon', () => {
   it('deletes a stale qr.png when it starts', async () => {
     const h = await makeHarness()
     await linkedWithSession(h)
-    writeFileSync(h.layout.qrFile, 'stale')
+    writeFileSync(h.account.qrFile, 'stale')
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon')
     await vi.waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
-    expect(existsSync(h.layout.qrFile)).toBe(false)
+    expect(existsSync(h.account.qrFile)).toBe(false)
     h.shutdown()
     await finished
   })
@@ -699,7 +705,7 @@ describe('msum status', () => {
     expect(await run(h, 'status')).toBe(0)
     expect(h.out.join('\n')).toContain('not linked')
     expect(h.out.join('\n')).toContain('none yet')
-    expect(existsSync(h.layout.dbFile)).toBe(false)
+    expect(existsSync(h.account.dbFile)).toBe(false)
   })
 
   it('reports a running daemon', async () => {
@@ -711,13 +717,13 @@ describe('msum status', () => {
 
   it('shows a blocked account with its translated reason and what to do', async () => {
     const h = await makeHarness({ config: { language: 'en', timezone: BA } })
-    await writeBlocked(h.layout.blockedFile, 'forbidden', NOW)
+    await writeBlocked(h.account.blockedFile, 'forbidden', NOW)
     await run(h, 'status')
     expect(h.out.join('\n')).toMatch(
       /^Blocked: +WhatsApp refused the connection \(403\)\..*msum daemon --retry.* \(17 Nov 2026/m,
     )
     const es = await makeHarness({ config: { language: 'es', timezone: BA } })
-    await writeBlocked(es.layout.blockedFile, 'mismatch', NOW)
+    await writeBlocked(es.account.blockedFile, 'mismatch', NOW)
     await run(es, 'status')
     expect(es.out.join('\n')).toMatch(/^Bloqueada: +La sesión es de otra cuenta/m)
   })
@@ -734,7 +740,7 @@ describe('msum doctor', () => {
     const runtime = h.runtime()
     runtime.identity.bind(ME)
     runtime.close()
-    writeFileSync(join(h.layout.authDir, 'creds.json'), REGISTERED)
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     expect(await run(h, 'doctor')).toBe(0)
     const text = h.out.join('\n')
     expect(text).toContain('[ok]   Node: version 22.16.0')
@@ -774,7 +780,7 @@ describe('msum doctor', () => {
   it('reports loose directory permissions', async () => {
     const h = await makeHarness({ config: { language: 'en', provider: { primary: 'claude-cli' } } })
     const { chmod } = await import('node:fs/promises')
-    await chmod(h.layout.accountDir, 0o755)
+    await chmod(h.account.dir, 0o755)
     expect(await run(h, 'doctor')).toBe(1)
     expect(h.out.join('\n')).toContain('has permissions 755')
     expect(h.out.join('\n')).toContain('chmod 700')
@@ -837,7 +843,7 @@ describe('logs never contain message text (RNF-04)', () => {
     await seed(h, { id: 'm3', text: `new news ${SECRET}`, timestamp: NOW + 30_000 })
     await run(h, 'digest')
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
-    writeFileSync(join(h.layout.authDir, 'creds.json'), REGISTERED)
+    writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     const daemon = run(h, 'daemon')
     await vi.waitFor(() => expect(h.connection.sent.length).toBeGreaterThan(1))
     h.shutdown()

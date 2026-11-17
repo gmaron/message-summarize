@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
 import type { DigestReport, GenerateDigestError } from '../application/generate-digest.js'
 import { err, type Result } from '../domain/result.js'
 import type { Runtime } from './runtime.js'
@@ -33,8 +32,8 @@ export async function runDigest(
   if (generateDigest === null) return err({ kind: 'noProvider' })
   let promptTemplate: string | null = null
   if (config.promptFile !== null) {
-    // A relative path is relative to the data directory, not to wherever the command was started.
-    const path = resolve(runtime.layout.dataDir, config.promptFile)
+    // The configuration loader resolved it against the directory of the file that set it: it is absolute here.
+    const path = config.promptFile
     try {
       promptTemplate = await readFile(path, 'utf8')
     } catch {

@@ -8,15 +8,44 @@ const parse = (...argv: string[]) => parseCommandLine(argv)
 
 describe('parseCommandLine', () => {
   it('knows every command', () => {
-    for (const name of ['init', 'link', 'status', 'doctor']) {
+    for (const name of ['init', 'accounts']) {
       expect(parse(name)).toEqual({ ok: true, value: { name } })
     }
-    expect(parse('daemon')).toEqual({ ok: true, value: { name: 'daemon', retry: false } })
-    expect(parse('daemon', '--retry')).toEqual({ ok: true, value: { name: 'daemon', retry: true } })
+    for (const name of ['link', 'status', 'doctor']) {
+      expect(parse(name)).toEqual({ ok: true, value: { name, account: null } })
+    }
+    expect(parse('daemon')).toEqual({ ok: true, value: { name: 'daemon', retry: false, account: null } })
+    expect(parse('daemon', '--retry')).toEqual({ ok: true, value: { name: 'daemon', retry: true, account: null } })
     expect(parse('status', '--retry')).toEqual({ ok: false, error: { kind: 'unknownOption', value: '--retry' } })
-    expect(parse('unlink')).toEqual({ ok: true, value: { name: 'unlink', yes: false } })
-    expect(parse('unlink', '--yes')).toEqual({ ok: true, value: { name: 'unlink', yes: true } })
-    expect(parse('unlink', '-y')).toEqual({ ok: true, value: { name: 'unlink', yes: true } })
+    expect(parse('unlink')).toEqual({ ok: true, value: { name: 'unlink', yes: false, account: null } })
+    expect(parse('unlink', '--yes')).toEqual({ ok: true, value: { name: 'unlink', yes: true, account: null } })
+    expect(parse('unlink', '-y')).toEqual({ ok: true, value: { name: 'unlink', yes: true, account: null } })
+  })
+
+  it('takes --account on link, unlink, daemon, digest, status and doctor, and nowhere else', () => {
+    for (const name of ['link', 'unlink', 'daemon', 'digest', 'status', 'doctor']) {
+      expect(parse(name, '--account', 'work-2')).toMatchObject({ ok: true, value: { name, account: 'work-2' } })
+      expect(parse(name, '--account=work')).toMatchObject({ ok: true, value: { name, account: 'work' } })
+    }
+    for (const name of ['init', 'accounts']) {
+      expect(parse(name, '--account', 'work')).toEqual({
+        ok: false,
+        error: { kind: 'unknownOption', value: '--account' },
+      })
+    }
+    expect(parse('link', '--account')).toEqual({ ok: false, error: { kind: 'missingValue', value: '--account' } })
+  })
+
+  it('refuses an account id that is not safe as a directory name', () => {
+    const bad = ['', 'Work', '-a', 'a b', '../x', 'a/b', 'a.b', '.', '..', 'a'.repeat(33), 'ñandú', 'a\nb']
+    for (const id of bad) {
+      expect(parse('link', `--account=${id}`), JSON.stringify(id)).toEqual({
+        ok: false,
+        error: { kind: 'invalidAccountId', value: id },
+      })
+    }
+    expect(parse('link', '--account', 'a'.repeat(32))).toMatchObject({ ok: true })
+    expect(parse('link', '--account', '0-9')).toMatchObject({ ok: true })
   })
 
   it('shows help for no command, help, --help and -h', () => {
@@ -28,11 +57,11 @@ describe('parseCommandLine', () => {
   it('parses digest with its flags', () => {
     expect(parse('digest')).toEqual({
       ok: true,
-      value: { name: 'digest', dryRun: false, from: null, to: null, hours: null },
+      value: { name: 'digest', dryRun: false, from: null, to: null, hours: null, account: null },
     })
     expect(parse('digest', '--dry-run', '--hours', '6')).toEqual({
       ok: true,
-      value: { name: 'digest', dryRun: true, from: null, to: null, hours: 6 },
+      value: { name: 'digest', dryRun: true, from: null, to: null, hours: 6, account: null },
     })
     expect(parse('digest', '--from', '2026-11-17 08:00', '--to', '2026-11-17 10:30')).toEqual({
       ok: true,
@@ -42,6 +71,7 @@ describe('parseCommandLine', () => {
         from: { year: 2026, month: 11, day: 17, hour: 8, minute: 0 },
         to: { year: 2026, month: 11, day: 17, hour: 10, minute: 30 },
         hours: null,
+        account: null,
       },
     })
     expect(parse('digest', '--hours=1.5')).toMatchObject({ ok: true, value: { hours: 1.5 } })
@@ -133,6 +163,7 @@ describe('runCli', () => {
     },
     status: handler('status'),
     doctor: handler('doctor'),
+    accounts: handler('accounts'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {
@@ -169,6 +200,7 @@ describe('runCli', () => {
       'unexpectedArgument',
       'invalidNumber',
       'invalidDate',
+      'invalidAccountId',
     ] as const
     for (const language of ['es', 'en'] as const) {
       for (const kind of kinds) {

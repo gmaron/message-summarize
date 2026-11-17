@@ -51,7 +51,7 @@ async function setup(
   })
   const runtime = harness.runtime()
   if (options.bound !== null) runtime.identity.bind(options.bound ?? ME)
-  if (options.marker !== undefined) await writeBlocked(harness.layout.blockedFile, options.marker, Date.now())
+  if (options.marker !== undefined) await writeBlocked(harness.account.blockedFile, options.marker, Date.now())
   const daemon = new Daemon({ runtime, connection: harness.connection, logger: harness.ctx.logger })
   return { harness, runtime, daemon }
 }
@@ -426,9 +426,9 @@ async function expectIdle(s: Setup, reason: BlockedReason): Promise<void> {
   expect(named(harness, 'daemon.blocked')).toEqual([expect.objectContaining({ level: 'error', reason })])
   // the connection was stopped, and the marker holds the reason and the time, private
   expect(harness.connection.calls).toContain('stop')
-  const marker = JSON.parse(readFileSync(harness.layout.blockedFile, 'utf8'))
+  const marker = JSON.parse(readFileSync(harness.account.blockedFile, 'utf8'))
   expect(marker).toEqual({ reason, at: Date.now() })
-  expect(statSync(harness.layout.blockedFile).mode & 0o777).toBe(0o600)
+  expect(statSync(harness.account.blockedFile).mode & 0o777).toBe(0o600)
 
   // idle: no schedule, no digest, no delivery, no new connection, however long it waits
   harness.connection.calls.length = 0
@@ -542,7 +542,7 @@ describe('Daemon: terminal states of the connection (idle, never a reconnect loo
     await daemon.stop()
     expect(await daemon.finished).toBe(0)
     // and the marker is still there for the next restart
-    expect(JSON.parse(readFileSync(s.harness.layout.blockedFile, 'utf8')).reason).toBe('loggedOut')
+    expect(JSON.parse(readFileSync(s.harness.account.blockedFile, 'utf8')).reason).toBe('loggedOut')
   })
 
   it('the QR is never logged', async () => {

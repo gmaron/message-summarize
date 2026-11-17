@@ -1,10 +1,18 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { acquireDaemonLock, runningDaemonPid } from '../../../src/main/daemon-lock.js'
-import { ensureDataDirs, layoutOf, loosePermissions, resolveDataDir } from '../../../src/main/paths.js'
+import {
+  accountLayoutOf,
+  ensureAccountDirs,
+  ensureDataDirs,
+  layoutOf,
+  loosePermissions,
+  resolveDataDir,
+  unsafeAccountPath,
+} from '../../../src/main/paths.js'
 
 describe('resolveDataDir', () => {
   const home = '/home/sam'
@@ -43,18 +51,33 @@ describe('resolveDataDir', () => {
 })
 
 describe('layoutOf', () => {
-  it('puts the config at the root and everything of the account under account/', () => {
+  it('puts the installation files at the root and each account under accounts/<id>/', () => {
     const layout = layoutOf('/d')
     expect(layout).toEqual({
       dataDir: '/d',
       configFile: '/d/config.json',
-      accountDir: '/d/account',
-      dbFile: '/d/account/db.sqlite',
-      authDir: '/d/account/auth',
-      qrFile: '/d/qr.png',
+      appDbFile: '/d/app.db',
+      accountsDir: '/d/accounts',
       lockFile: '/d/daemon.pid',
-      blockedFile: '/d/account/blocked.json',
+      legacyAccountDir: '/d/account',
+      legacyQrFile: '/d/qr.png',
     })
+    expect(accountLayoutOf(layout, 'work')).toEqual({
+      id: 'work',
+      dir: '/d/accounts/work',
+      dbFile: '/d/accounts/work/db.sqlite',
+      authDir: '/d/accounts/work/auth',
+      qrFile: '/d/accounts/work/qr.png',
+      blockedFile: '/d/accounts/work/blocked.json',
+      configFile: '/d/accounts/work/config.json',
+    })
+  })
+
+  it('never builds a path from an id that is not valid (path traversal)', () => {
+    const layout = layoutOf('/d')
+    for (const id of ['..', '../x', 'a/b', '', '.', 'A', '/etc', 'a\\b', 'a'.repeat(33)]) {
+      expect(() => accountLayoutOf(layout, id), id).toThrow('invalid account id')
+    }
   })
 })
 
@@ -72,22 +95,52 @@ describe('data directory permissions (RNF-04)', () => {
 
   it('creates the directories with mode 0700', async () => {
     const layout = layoutOf(join(temp(), 'new', 'data'))
+    const account = accountLayoutOf(layout, 'work')
     await ensureDataDirs(layout)
-    for (const dir of [layout.dataDir, layout.accountDir, layout.authDir]) expect(mode(dir)).toBe(0o700)
-    expect(await loosePermissions(layout)).toEqual([])
+    await ensureAccountDirs(account)
+    for (const dir of [layout.dataDir, layout.accountsDir, account.dir, account.authDir]) expect(mode(dir)).toBe(0o700)
+    expect(await loosePermissions(layout, [account])).toEqual([])
   })
 
   it('tightens directories that existed with looser modes, and reports them before', async () => {
     const layout = layoutOf(join(temp(), 'data'))
+    const account = accountLayoutOf(layout, 'work')
     await ensureDataDirs(layout)
-    await chmod(layout.accountDir, 0o755)
-    expect(await loosePermissions(layout)).toEqual([{ path: layout.accountDir, mode: '755' }])
-    await ensureDataDirs(layout)
-    expect(mode(layout.accountDir)).toBe(0o700)
+    await ensureAccountDirs(account)
+    await chmod(account.dir, 0o755)
+    expect(await loosePermissions(layout, [account])).toEqual([{ path: account.dir, mode: '755' }])
+    await ensureAccountDirs(account)
+    expect(mode(account.dir)).toBe(0o700)
   })
 
   it('reports nothing for directories that do not exist yet', async () => {
     expect(await loosePermissions(layoutOf(join(temp(), 'missing')))).toEqual([])
+  })
+})
+
+describe('directories that are links', () => {
+  it('are refused before anything is created or tightened', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'msum-link-'))
+    try {
+      const layout = layoutOf(join(root, 'data'))
+      await ensureDataDirs(layout)
+      const elsewhere = join(root, 'elsewhere')
+      mkdirSync(join(elsewhere, 'auth'), { recursive: true, mode: 0o755 })
+      const account = accountLayoutOf(layout, 'work')
+      symlinkSync(elsewhere, account.dir)
+      await expect(ensureAccountDirs(account)).rejects.toThrow('not a real directory')
+      expect(statSync(elsewhere).mode & 0o777).toBe(0o755)
+      expect(await unsafeAccountPath(account)).toBe(account.dir)
+      // an auth/ that is a link
+      const other = accountLayoutOf(layout, 'other')
+      mkdirSync(other.dir, { mode: 0o700 })
+      symlinkSync(join(elsewhere, 'auth'), other.authDir)
+      await expect(ensureAccountDirs(other)).rejects.toThrow('not a real directory')
+      expect(await unsafeAccountPath(other)).toBe(other.authDir)
+      expect(await unsafeAccountPath(accountLayoutOf(layout, 'missing'))).toBeNull()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 

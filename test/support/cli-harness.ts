@@ -9,10 +9,11 @@ import type {
   WhatsAppStatus,
   WhatsAppStatusListener,
 } from '../../src/infrastructure/whatsapp/connection.js'
+import { openInstallation } from '../../src/main/accounts.js'
 import { type AppConfig, parseConfig } from '../../src/main/config.js'
 import { type CommandContext, DEFAULT_LINK_TIMING, type DoctorProbes } from '../../src/main/context.js'
 import { createLogger } from '../../src/main/logger.js'
-import { ensureDataDirs, layoutOf } from '../../src/main/paths.js'
+import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/paths.js'
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
 import type { ConnectionHooks, ManagedConnection } from '../../src/main/whatsapp.js'
 
@@ -115,6 +116,8 @@ export interface HarnessOptions {
   /** The clock follows `Date.now()` (for tests with fake timers) instead of staying at `now`. */
   readonly liveClock?: boolean
   readonly stdoutLogs?: boolean
+  /** The accounts that exist before the command runs (directories and records). Default: just "default". */
+  readonly accounts?: readonly string[]
 }
 
 export const BASE_CONFIG = {
@@ -127,6 +130,10 @@ export const BASE_CONFIG = {
 export interface Harness {
   readonly dir: string
   readonly layout: ReturnType<typeof layoutOf>
+  /** The paths of the first account of the harness ("default" unless `accounts` says otherwise). */
+  readonly account: AccountLayout
+  /** The paths of any account id. */
+  accountOf(id: string): AccountLayout
   readonly ctx: CommandContext
   readonly connection: FakeConnection
   readonly summarizer: FakeSummarizer
@@ -138,7 +145,8 @@ export interface Harness {
   readonly clock: { time: number; now(): number }
   /** The validated configuration the harness wrote (defaults applied). */
   config(): AppConfig
-  runtime(): Runtime
+  /** A runtime on an account's database (the first one by default). The caller closes it. */
+  runtime(id?: string): Runtime
   /** Pretends a SIGINT arrived. */
   shutdown(): void
   dispose(): void
@@ -157,6 +165,14 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   if (config !== null) {
     writeFileSync(layout.configFile, typeof config === 'string' ? config : JSON.stringify(config), { mode: 0o600 })
   }
+
+  const accountIds = options.accounts ?? ['default']
+  const clockAt = options.now ?? NOW
+  const opened = await openInstallation({ layout, clock: { now: () => clockAt } })
+  if (!opened.ok) throw new Error('the harness could not open the installation')
+  for (const id of accountIds) await opened.installation.createAccount(id)
+  opened.installation.close()
+  const firstId = accountIds[0] ?? 'default'
 
   const out: string[] = []
   const err: string[] = []
@@ -210,6 +226,8 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   return {
     dir,
     layout,
+    account: accountLayoutOf(layout, firstId),
+    accountOf: (id) => accountLayoutOf(layout, id),
     ctx,
     connection,
     summarizer,
@@ -219,9 +237,9 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     questions,
     clock,
     config: parsed,
-    runtime: () =>
+    runtime: (id) =>
       createRuntime({
-        layout,
+        layout: accountLayoutOf(layout, id ?? firstId),
         config: parsed(),
         env: {},
         clock,

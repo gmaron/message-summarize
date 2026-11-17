@@ -19,13 +19,14 @@ import {
 import { createRenderers } from '../infrastructure/rendering/index.js'
 import { OwnConversationIds } from '../infrastructure/whatsapp/own-ids.js'
 import type { AppConfig } from './config.js'
-import type { DataLayout } from './paths.js'
+import type { AccountLayout } from './paths.js'
 import { buildSummarizer } from './providers.js'
 
 export const systemClock: Clock = { now: () => Date.now() }
 
 export interface RuntimeOptions {
-  readonly layout: DataLayout
+  /** The paths of the account this runtime works on. */
+  readonly layout: AccountLayout
   readonly config: AppConfig
   readonly env: NodeJS.ProcessEnv
   /** The ONE clock of the process: the capture use case, the stores and the digest all read it. */
@@ -40,7 +41,7 @@ export interface RuntimeOptions {
  * and `unlink` can use the database while the daemon owns the session.
  */
 export interface Runtime {
-  readonly layout: DataLayout
+  readonly layout: AccountLayout
   readonly config: AppConfig
   readonly clock: Clock
   readonly renderers: Renderers
