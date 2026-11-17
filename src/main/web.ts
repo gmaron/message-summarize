@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { getCatalog, type Language } from '../infrastructure/i18n/index.js'
+import { getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
 import { EventBus } from '../interfaces/http/events.js'
 import { isLoopbackHost } from '../interfaces/http/hosts.js'
 import type { Route } from '../interfaces/http/router.js'
@@ -11,11 +11,23 @@ import type { DaemonHost } from './daemon-host.js'
 import { errorCode } from './logger.js'
 import { type AccountView, describeAccounts } from './web-accounts.js'
 import { removeWebAddress, writeWebAddress } from './web-address.js'
+import { accountRoutes } from './web-routes.js'
 import { ensureWebToken } from './web-token.js'
 
-/** The events the web pushes over SSE, by name. Later parts add `qr` and `sync`. */
+/**
+ * The events the web pushes over SSE, by name. `qr` carries the raw string of a pairing credential: it exists only here
+ * (memory and the stream of an authenticated client), never on disk and never in a log.
+ */
 export interface WebEvents extends Record<string, unknown> {
   readonly accounts: { readonly accounts: readonly AccountView[] }
+  readonly qr: { readonly account: string; readonly qr: string }
+  readonly sync: {
+    readonly account: string
+    readonly chats: number
+    readonly messages: number
+    readonly done: boolean
+  }
+  readonly link: { readonly account: string; readonly state: string; readonly error?: LinkErrorCode }
 }
 
 /** Where the built web is: `web/` next to the compiled code (`dist/web`). */
@@ -35,8 +47,9 @@ export interface StartWebOptions {
 }
 
 /**
- * Starts the local web inside the daemon (RF-01, RNF-03) and wires it to the host: `GET /api/accounts`, and an
- * `accounts` event whenever an account changes state. The web must never take the daemon down: when it cannot start
+ * Starts the local web inside the daemon (RF-01, RNF-03) and wires it to the host: `GET /api/accounts`, the routes that
+ * create, link and retry accounts, and an `accounts` event whenever an account changes state (plus the `qr`, `sync` and
+ * `link` events of a link in progress). The web must never take the daemon down: when it cannot start
  * (the port is taken, the token cannot be written) it logs `web.failed` with a code, says so, and returns null while
  * the accounts keep running.
  */
@@ -52,6 +65,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       path: '/api/accounts',
       handler: async () => ({ body: { accounts: await describeAccounts(source) } }),
     },
+    ...accountRoutes(source),
   ]
 
   const bus = new EventBus<WebEvents>()
@@ -75,7 +89,28 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       publishing = false
     }
   }
-  const unsubscribe = host.onChange(() => void publishAccounts())
+  const unsubscribeChange = host.onChange(() => void publishAccounts())
+  const unsubscribeLink = host.onLink((event) => {
+    if (event.type === 'qr') bus.publish('qr', { account: event.account, qr: event.qr })
+    else if (event.type === 'sync') {
+      bus.publish('sync', {
+        account: event.account,
+        chats: event.chats,
+        messages: event.messages,
+        done: event.done,
+      })
+    } else {
+      bus.publish('link', {
+        account: event.account,
+        state: event.state,
+        ...(event.error === undefined ? {} : { error: event.error }),
+      })
+    }
+  })
+  const unsubscribe = (): void => {
+    unsubscribeChange()
+    unsubscribeLink()
+  }
 
   let server: WebServer | null = null
   try {

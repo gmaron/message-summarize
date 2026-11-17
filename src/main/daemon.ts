@@ -184,7 +184,8 @@ export class Daemon {
       this.onBlocked(marker.reason)
       return
     }
-    this.setState('connecting')
+    // A connection that is open already (the web linked the account and hands its socket over) is not "connecting".
+    if (this.connection.status.state !== 'connected') this.setState('connecting')
     this.unsubscribe = this.connection.onStatus((status) => this.onStatus(status))
     this.scheduler.start()
     if (this.scheduleSource !== null) {
@@ -198,7 +199,16 @@ export class Daemon {
       count: this.scheduler.count,
       nextRun: next.length === 0 ? null : new Date(Math.min(...next)).toISOString(),
     })
+    // A connection that changed before this subscription (the socket a link handed over, in the moment between the link
+    // and the unit) said it to nobody: a terminal state, or a renewed QR, is acted on now.
+    const current = this.connection.status
+    if (current.state === 'loggedOut' || current.state === 'error' || current.state === 'qr') this.onStatus(current)
+    if (this.blockedReason !== null) return
     await this.connection.start()
+    // Open already: no status event will come for it, so it is checked here (`unverified` keeps it to once).
+    if (this.connection.status.state === 'connected' && this.unverified && this.blockedReason === null) {
+      this.handleConnected()
+    }
   }
 
   /** Stops everything and resolves when it is done. Safe to call more than once. */

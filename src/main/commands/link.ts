@@ -1,5 +1,4 @@
 import { rm } from 'node:fs/promises'
-import type { CaptureMessages } from '../../application/capture-messages.js'
 import { reconcileAccount } from '../../infrastructure/whatsapp/account-binding.js'
 import type { WhatsAppStatus } from '../../infrastructure/whatsapp/connection.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
@@ -9,6 +8,7 @@ import { readAccountState } from '../account-state.js'
 import { daemonUsing } from '../account-use.js'
 import { clearBlocked, FIXED_BY_LINKING, readBlocked } from '../blocked.js'
 import { type CommandContext, hasSession, maskAccount, withRuntime } from '../context.js'
+import { countingCapture } from '../counting-capture.js'
 import { acquireLinkLock, LINK_HEARTBEAT_MS } from '../link-lock.js'
 import { qrForTerminal, writeQrPng } from '../qr.js'
 import { createRuntime } from '../runtime.js'
@@ -22,49 +22,6 @@ type LinkOutcome =
 
 /** Exit code of a command stopped with Ctrl+C (128 + SIGINT). */
 const EXIT_INTERRUPTED = 130
-
-/** The capture use case, counting calls: `link` waits until the initial history stops arriving. */
-function countingCapture(capture: CaptureMessages): { readonly capture: CaptureMessages; lastActivity(): number } {
-  let last = Date.now()
-  const touch = (): void => {
-    last = Date.now()
-  }
-  const wrapped: CaptureMessages = {
-    receiveMessage: (event) => {
-      touch()
-      return capture.receiveMessage(event)
-    },
-    editMessage: (event) => {
-      touch()
-      return capture.editMessage(event)
-    },
-    messagesRead: (event) => {
-      touch()
-      return capture.messagesRead(event)
-    },
-    unreadChanged: (event) => {
-      touch()
-      return capture.unreadChanged(event)
-    },
-    unreadSnapshot: (event) => {
-      touch()
-      return capture.unreadSnapshot(event)
-    },
-    conversationMetadata: (event) => {
-      touch()
-      return capture.conversationMetadata(event)
-    },
-    participantInfo: (event) => {
-      touch()
-      return capture.participantInfo(event)
-    },
-    transcriptReady: (event) => {
-      touch()
-      return capture.transcriptReady(event)
-    },
-  }
-  return { capture: wrapped, lastActivity: () => last }
-}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 

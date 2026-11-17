@@ -26,6 +26,32 @@ export type WebErrorCode =
   | 'payloadTooLarge'
   | 'invalidJson'
   | 'internal'
+  | 'invalidRequest'
+  | 'invalidAccountId'
+  | 'accountExists'
+  | 'invalidConfig'
+  | 'unavailable'
+  | 'inUse'
+  | 'beingLinked'
+  | 'alreadyLinking'
+  | 'needsRetry'
+  | 'needsRelink'
+  | 'notBlocked'
+  | 'notLinking'
+  | 'busy'
+  | 'restricted'
+
+/** Why a link made from the web ended without linking (`link` event and `GET /api/accounts/:id/link`): codes, never text. */
+export type LinkErrorCode =
+  | 'timeout'
+  | 'loggedOut'
+  | 'mismatch'
+  | 'noAccount'
+  | 'socketFailed'
+  | 'forbidden'
+  | 'replaced'
+  | 'cancelled'
+  | 'failed'
 
 /** The signs that the previous tool is running (see `legacyLiveSignals`). */
 export type ImportLiveSignal = 'wal' | 'shm' | 'recentWrite' | 'recentSession'
@@ -134,6 +160,7 @@ export interface Catalog {
   readonly web: {
     readonly notBuilt: { readonly title: string; readonly message: string }
     readonly errors: Readonly<Record<WebErrorCode, string>>
+    readonly linkErrors: Readonly<Record<LinkErrorCode, string>>
   }
 
   readonly errors: {
@@ -325,7 +352,7 @@ export interface Catalog {
       account(id: string, masked: string | null): string
       /** What the running daemon says about the connection: `state` is already translated. */
       connection(state: string, since: string): string
-      stateName(state: 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle'): string
+      stateName(state: 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking'): string
       /** The block of an account whose configuration is invalid; the problems follow. */
       configBroken(id: string): string
       readonly noAccounts: string

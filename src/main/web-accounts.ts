@@ -34,7 +34,7 @@ export interface AccountsSource {
   readonly ctx: Pick<CommandContext, 'env' | 'layout' | 'clock'>
   readonly installation: Installation
   /** The live state (in memory) of the daemon's accounts. */
-  readonly host: { accountState(id: string): AccountState | null }
+  readonly host: { accountState(id: string): AccountState | null; isLinking(id: string): boolean }
 }
 
 /**
@@ -68,8 +68,9 @@ export async function describeAccounts(source: AccountsSource): Promise<AccountV
     }
     const config = loaded.value
     // Nothing of an account is opened while `link` or `unlink` holds it (the directory is that process's), nor when its
-    // directory or database is gone: opening it would recreate it.
-    const untouchable = (await linkLockHolder(account)) !== null || !isDirectory(account.dir)
+    // directory or database is gone: opening it would recreate it. The daemon's own link of the account is not another
+    // process: reading its facts is what shows the number once it is bound.
+    const untouchable = (!host.isLinking(id) && (await linkLockHolder(account)) !== null) || !isDirectory(account.dir)
     const facts = untouchable
       ? { masked: null, pointer: null, pending: 0 }
       : await readAccountFacts(ctx, account, config)

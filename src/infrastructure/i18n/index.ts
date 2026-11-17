@@ -9,6 +9,7 @@ export type {
   ImportLiveSignal,
   ImportSummary,
   Language,
+  LinkErrorCode,
   WebErrorCode,
 } from './catalog.js'
 

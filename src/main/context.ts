@@ -21,6 +21,8 @@ export interface LinkTiming {
   /** ...but never longer than this after connecting. */
   readonly maxAfterConnectMs: number
   readonly pollMs: number
+  /** The web shows the progress of the initial sync at most this often. Default 500. */
+  readonly syncPublishMs?: number
 }
 
 export const DEFAULT_LINK_TIMING: LinkTiming = {
