@@ -63,6 +63,11 @@ export interface CommandContext {
   readonly connectionFactory: ConnectionFactory
   /** Asks a yes/no question. Without a terminal it answers no. */
   confirm(question: string): Promise<boolean>
+  /**
+   * Reads a secret (an API key) from the input: on a terminal the typing is not echoed and `prompt` is shown; piped, the
+   * whole input is read. Never from the arguments (`ps`, shell history). Returns what was read, possibly empty.
+   */
+  readSecret(prompt: string): Promise<string>
   /** Resolves when the process is asked to stop (SIGINT, SIGTERM). */
   waitForShutdown(): Promise<void>
   readonly probes: DoctorProbes

@@ -9,6 +9,7 @@ import { initCommand } from './commands/init.js'
 import { linkCommand } from './commands/link.js'
 import { retryCommand } from './commands/retry.js'
 import { scheduleCommand } from './commands/schedule.js'
+import { secretCommand } from './commands/secret.js'
 import { statusCommand } from './commands/status.js'
 import { unlinkCommand } from './commands/unlink.js'
 import { whisperCommand } from './commands/whisper.js'
@@ -30,6 +31,7 @@ export function createHandlers(ctx: CommandContext): CliHandlers {
     import: (args) => importCommand(ctx, args),
     schedule: (command) => scheduleCommand(ctx, command),
     whisper: (command) => whisperCommand(ctx, command),
+    secret: (command) => secretCommand(ctx, command),
   }
 }
 

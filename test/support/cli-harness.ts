@@ -112,6 +112,10 @@ export interface HarnessOptions {
   readonly summarizer?: Summarizer | null
   /** The answer to the confirmation question. Default yes. */
   readonly confirm?: boolean
+  /** What `readSecret` reads (an API key typed or piped). Default: nothing. */
+  readonly secretInput?: string
+  /** The environment the commands see. Default: empty. */
+  readonly env?: NodeJS.ProcessEnv
   readonly probes?: Partial<DoctorProbes>
   readonly now?: number
   /** The clock follows `Date.now()` (for tests with fake timers) instead of staying at `now`. */
@@ -188,7 +192,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   })
   const sink = { write: (text: string) => logs.push(text) }
   const ctx: CommandContext = {
-    env: {},
+    env: options.env ?? {},
     layout,
     io: { out: (line) => out.push(line), err: (line) => err.push(line) },
     logger: createLogger(sink, sink, () => clock.time),
@@ -200,6 +204,10 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     confirm: async (question) => {
       questions.push(question)
       return options.confirm ?? true
+    },
+    readSecret: async (prompt) => {
+      questions.push(prompt)
+      return options.secretInput ?? ''
     },
     waitForShutdown: () => stopped,
     probes: {

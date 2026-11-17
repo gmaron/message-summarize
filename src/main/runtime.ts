@@ -176,7 +176,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       audioHistoryDays: settings.historyAudioDays,
     })
 
-    const summarizer = options.summarizer === undefined ? buildSummarizer(config, env) : options.summarizer
+    const summarizer = options.summarizer === undefined ? buildSummarizer(config, env, layout) : options.summarizer
     const generateDigest =
       summarizer === null
         ? null

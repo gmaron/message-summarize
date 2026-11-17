@@ -143,6 +143,8 @@ export interface Catalog {
       unknownSubcommand(value: string): string
       invalidTime(value: string): string
       invalidDays(value: string): string
+      /** `msum secret set|rm <provider>` with a provider that has no key; `allowed` is the list of the ones that do. */
+      unknownProvider(allowed: string): string
     }
     /** Problems of config.json that the digest settings do not cover (RF-73). */
     readonly config: {
@@ -158,6 +160,30 @@ export interface Catalog {
       invalidLanguage(option: string): string
       readonly noProvider: string
       promptFile(path: string): string
+      /** An API key written in config.json: keys are secrets and go in secrets.json or the environment (RNF-04). */
+      secretInConfig(option: string): string
+    }
+    /** `msum secret set|rm|ls`: the API keys (RNF-04). A key is never printed, not even partly. */
+    readonly secret: {
+      /** The question on a terminal; the typing is not shown. */
+      keyPrompt(provider: string): string
+      readonly emptyKey: string
+      readonly invalidKey: string
+      stored(provider: string, file: string): string
+      /** A variable of the environment wins over the stored key; `names` is the list of variables. */
+      envWins(names: string): string
+      removed(provider: string, file: string): string
+      notStored(provider: string, file: string): string
+      /** The file exists and is not a JSON object: it is not touched. */
+      invalidFile(file: string): string
+      readonly header: string
+      /** `provider` is already padded to the width of the column; `source` comes from the `source*` texts. */
+      row(provider: string, source: string): string
+      readonly precedence: string
+      sourceEnv(name: string): string
+      sourceAccountFile(file: string): string
+      sourceFile(file: string): string
+      readonly sourceNone: string
     }
     readonly unexpectedError: (code: string) => string
     cannotCreateDataDir(path: string): string
@@ -345,7 +371,11 @@ export interface Catalog {
         readonly ffmpeg: string
         readonly whisperModel: string
         readonly mediaFiles: string
+        readonly secrets: string
       }
+      /** A file with API keys that other users can read (RNF-04). `mode` is octal text. */
+      secretsLoose(file: string, mode: string): string
+      secretsLooseFix(file: string): string
       /** The downloaded audios of the account take (nearly) all the space they are allowed (`transcription.maxMediaMb`). */
       mediaFull(usedMb: number, capMb: number): string
       readonly mediaFullFix: string
@@ -401,6 +431,15 @@ export interface Catalog {
       providerOk(provider: string, detail: string): string
       providerMissing(command: string): string
       providerFix(provider: string): string
+      /** An API provider with its model and the key found (`source` is already translated). No request is made (RNF-01). */
+      providerApiOk(provider: string, model: string, keyName: string, source: string): string
+      /** A compatible server that needs no key and has none. `keyName` is the stored key it would use. */
+      providerApiKeyOptional(provider: string, model: string, keyName: string): string
+      providerApiNoKey(provider: string, keyName: string): string
+      /** `keyName` is the argument of `msum secret set`. */
+      providerApiNoKeyFix(keyName: string, envNames: string): string
+      providerApiNoModel(provider: string): string
+      providerApiNoModelFix(provider: string): string
       readonly providerNone: string
       readonly whatsappOk: string
       readonly whatsappNone: string

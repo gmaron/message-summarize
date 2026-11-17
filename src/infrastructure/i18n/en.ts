@@ -128,6 +128,11 @@ Commands:
   whisper models                      Lists the whisper.cpp models (to transcribe audios locally) with their sizes
   whisper download <name>             Downloads a model into the data directory and checks its SHA-256. It is the only
                                       download the program makes, from huggingface.co, and only when you ask for it
+  secret set <provider> [--account <id>]  Saves the API key of openai, openai-compatible (any other server
+                                      behind provider.openai.baseUrl), anthropic or gemini, read from the input (hidden on
+                                      a terminal, or piped); never as an argument. Not in config.json
+  secret rm <provider> [--account <id>]   Removes a saved key
+  secret ls [--account <id>]          Shows which providers have a key and where it comes from, never the key
   help                                Shows this help
 
 Accounts: link, unlink, daemon and digest work on one account, chosen with --account <id> (lowercase letters, digits
@@ -152,6 +157,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidDays: (value) =>
         `The days ${JSON.stringify(value)} are not valid: use daily, weekdays, weekends, or day names like mon,wed or mon-fri (also in Spanish: lun, mar, mie, jue, vie, sab, dom).`,
       invalidDate: (option) => `The value of ${option} must look like "YYYY-MM-DD HH:MM" (a valid date and time).`,
+      unknownProvider: (allowed) => `That provider does not take an API key. Use one of: ${allowed}.`,
     },
     config: {
       heading: 'The configuration has problems:',
@@ -165,8 +171,28 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidLanguage: (option) =>
         `The option "${option}" must be "auto" (detect the language) or a language code such as "es" or "en".`,
       noProvider:
-        'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli" or "ollama") in the configuration.',
+        'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" or "gemini") in the configuration.',
       promptFile: (path) => `The prompt file (promptFile) could not be read: ${path}`,
+      secretInConfig: (option) =>
+        `"${option}" looks like an API key, and config.json does not hold secrets. Remove it and run "msum secret set <provider>" (or set the environment variable of the provider).`,
+    },
+    secret: {
+      keyPrompt: (provider) => `API key for ${provider} (what you type is not shown): `,
+      emptyKey: 'No key was given. Nothing was saved.',
+      invalidKey: 'A key has no spaces or line breaks inside. Nothing was saved.',
+      stored: (provider, file) => `The key of ${provider} was saved in ${file} (only you can read it).`,
+      envWins: (names) => `Note: ${names} is set in the environment and takes precedence over the saved key.`,
+      removed: (provider, file) => `The key of ${provider} was removed from ${file}.`,
+      notStored: (provider, file) => `There is no key of ${provider} in ${file}. Nothing changed.`,
+      invalidFile: (file) => `${file} is not a JSON object. It was not touched: fix it or delete it, then try again.`,
+      header: 'API keys (the values are never shown):',
+      row: (provider, source) => `  ${provider}  ${source}`,
+      precedence:
+        'A key is taken from the environment first, then from accounts/<id>/secrets.json, then from secrets.json. "openai" (OPENAI_API_KEY) is only used for https://api.openai.com; any other provider.openai.baseUrl uses "openai-compatible" (MSUM_OPENAI_API_KEY).',
+      sourceEnv: (name) => `environment (${name})`,
+      sourceAccountFile: (file) => `account file (${file})`,
+      sourceFile: (file) => `file (${file})`,
+      sourceNone: 'no key',
     },
     whisper: {
       modelsHeader: 'whisper.cpp models (ggml format). Bigger ones transcribe better and slower:',
@@ -430,6 +456,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         ffmpeg: 'ffmpeg',
         whisperModel: 'Whisper model',
         mediaFiles: 'Audio files',
+        secrets: 'API keys file',
       },
       mediaFull: (usedMb, capMb) =>
         `the downloaded audios take ${usedMb} MB of the ${capMb} MB allowed: new audios are refused until some are transcribed`,
@@ -499,6 +526,18 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         provider === 'ollama'
           ? 'start Ollama ("ollama serve") and check "provider.ollama.baseUrl".'
           : 'install Claude Code, sign in with "claude" and check "provider.claudeCli.command".',
+      providerApiOk: (provider, model, keyName, source) =>
+        `${provider} (model ${model}; uses the "${keyName}" key, from ${source})`,
+      providerApiKeyOptional: (provider, model, keyName) =>
+        `${provider} (model ${model}; no "${keyName}" key, which this server may not need; the "openai" key is never sent to it)`,
+      providerApiNoKey: (provider, keyName) => `no "${keyName}" API key for ${provider}`,
+      providerApiNoKeyFix: (keyName, envNames) =>
+        `run "msum secret set ${keyName}" (the key is read from the input, never from the command line) or set ${envNames} in the environment.`,
+      secretsLoose: (file, mode) => `${file} has permissions ${mode}: other users can read the API keys in it`,
+      secretsLooseFix: (file) => `run "chmod 600 ${file}".`,
+      providerApiNoModel: (provider) => `no model chosen for ${provider}`,
+      providerApiNoModelFix: (provider) =>
+        `set "provider.${provider}.model" in config.json: there is no default model, as model names change often.`,
       providerNone: 'no provider chosen',
       whatsappOk: 'account linked',
       whatsappNone: 'no account linked',

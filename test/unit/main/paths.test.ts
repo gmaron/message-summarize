@@ -56,6 +56,7 @@ describe('layoutOf', () => {
     expect(layout).toEqual({
       dataDir: '/d',
       configFile: '/d/config.json',
+      secretsFile: '/d/secrets.json',
       appDbFile: '/d/app.db',
       accountsDir: '/d/accounts',
       modelsDir: '/d/models',
@@ -73,6 +74,8 @@ describe('layoutOf', () => {
       qrFile: '/d/accounts/work/qr.png',
       blockedFile: '/d/accounts/work/blocked.json',
       configFile: '/d/accounts/work/config.json',
+      secretsFile: '/d/accounts/work/secrets.json',
+      installationSecretsFile: '/d/secrets.json',
       linkLockFile: '/d/accounts/work/link.lock',
       stateFile: '/d/accounts/work/state.json',
     })

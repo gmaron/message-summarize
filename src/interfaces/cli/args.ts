@@ -2,6 +2,7 @@ import { parseArgs as nodeParseArgs } from 'node:util'
 import { isValidAccountId } from '../../domain/account-id.js'
 import { err, ok, type Result } from '../../domain/result.js'
 import { formatTime, parseTime, type Weekday } from '../../domain/schedule.js'
+import { isKeyProvider, type KeyProvider } from '../../infrastructure/secrets/index.js'
 import { parseDaysSpec } from './days.js'
 import { type LocalDateTime, parseLocalDateTime } from './local-time.js'
 
@@ -53,6 +54,9 @@ export type Command =
   /** `msum whisper models`: the known models. `msum whisper download <name>`: one of them, verified. */
   | { readonly name: 'whisper'; readonly action: 'models' }
   | { readonly name: 'whisper'; readonly action: 'download'; readonly model: string }
+  /** `msum secret set|rm <provider>` and `msum secret ls`: the API keys (the key itself is never an argument). */
+  | ({ readonly name: 'secret'; readonly action: 'set' | 'rm'; readonly provider: KeyProvider } & AccountArg)
+  | ({ readonly name: 'secret'; readonly action: 'ls' } & AccountArg)
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
       readonly name: 'schedule'
@@ -76,6 +80,7 @@ export type ArgError =
   | { readonly kind: 'invalidTime'; readonly value: string }
   | { readonly kind: 'invalidDays'; readonly value: string }
   | { readonly kind: 'conflictingOptions'; readonly value: string }
+  | { readonly kind: 'unknownProvider' }
 
 const COMMANDS = [
   'init',
@@ -90,6 +95,7 @@ const COMMANDS = [
   'retry',
   'import',
   'whisper',
+  'secret',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -100,6 +106,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   status: ['account'],
   doctor: ['account'],
   retry: ['account'],
+  secret: ['account'],
   schedule: ['account', 'time', 'days'],
   import: ['from', 'account', 'instance', 'all', 'yes', 'schedule', 'data', 'session-only', 'force'],
 }
@@ -147,7 +154,7 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
   if (values.help || command === undefined || command === 'help') return ok({ name: 'help' })
   if (!(COMMANDS as readonly string[]).includes(command)) return err({ kind: 'unknownCommand', value: command })
   // `schedule` and `whisper` have a subcommand (and `rm` an id, `download` a name); the other commands take no positional arguments.
-  if (command !== 'schedule' && command !== 'whisper' && rest.length > 0) {
+  if (command !== 'schedule' && command !== 'whisper' && command !== 'secret' && rest.length > 0) {
     return err({ kind: 'unexpectedArgument', value: rest[0] as string })
   }
 
@@ -201,6 +208,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       return parseSchedule(rest, values, account)
     case 'whisper':
       return parseWhisper(rest)
+    case 'secret':
+      return parseSecret(rest, account)
     case 'import':
       return parseImport(values, account)
     case 'link':
@@ -225,6 +234,23 @@ function parseWhisper(rest: readonly string[]): Result<Command, ArgError> {
   if (model === undefined || model.trim() === '') return err({ kind: 'missingValue', value: '<name>' })
   if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: extra[0] as string })
   return ok({ name: 'whisper', action: 'download', model })
+}
+
+/** `msum secret set|rm <provider>` and `msum secret ls`. The key is not an argument: it is read from the input. */
+function parseSecret(rest: readonly string[], account: string | null): Result<Command, ArgError> {
+  const [action = 'ls', ...more] = rest
+  if (action !== 'set' && action !== 'rm' && action !== 'ls') return err({ kind: 'unknownSubcommand', value: action })
+  if (action === 'ls') {
+    if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
+    return ok({ name: 'secret', action: 'ls', account })
+  }
+  const [provider, ...extra] = more
+  if (provider === undefined || provider.trim() === '') return err({ kind: 'missingValue', value: '<provider>' })
+  // The word is not echoed in the error: it may be the key itself, typed where the provider goes.
+  if (!isKeyProvider(provider)) return err({ kind: 'unknownProvider' })
+  // A second word could be somebody typing the key as an argument: it is refused, and never echoed back.
+  if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: '(...)' })
+  return ok({ name: 'secret', action, provider, account })
 }
 
 /** `msum schedule [ls|add|rm]`: the subcommand, and its arguments validated. */

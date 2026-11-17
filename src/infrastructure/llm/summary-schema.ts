@@ -15,6 +15,12 @@ export const SUMMARY_JSON_SCHEMA = {
 
 export const SUMMARY_JSON_SCHEMA_TEXT = JSON.stringify(SUMMARY_JSON_SCHEMA)
 
+/**
+ * The same schema with `additionalProperties: false`, which the structured-output modes of OpenAI (strict) and
+ * Anthropic require on every object. Gemini accepts it too. The shared schema above stays as the CLI and Ollama get it.
+ */
+export const STRICT_SUMMARY_JSON_SCHEMA = { ...SUMMARY_JSON_SCHEMA, additionalProperties: false } as const
+
 /** Short, safe excerpt of text coming from a provider, for error reasons. Never pass the transcript here. */
 export function excerpt(text: string, max = 200): string {
   const flat = text.replace(/\s+/g, ' ').trim()

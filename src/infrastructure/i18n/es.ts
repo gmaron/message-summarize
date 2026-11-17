@@ -129,6 +129,11 @@ Comandos:
   whisper models                      Lista los modelos de whisper.cpp (para transcribir audios en tu máquina) con su tamaño
   whisper download <nombre>           Descarga un modelo al directorio de datos y verifica su SHA-256. Es la única descarga
                                       que hace el programa, desde huggingface.co, y solo cuando la pedís
+  secret set <proveedor> [--account <id>]  Guarda la clave de API de openai, openai-compatible (cualquier otro
+                                      servidor en provider.openai.baseUrl), anthropic o gemini, leída de la entrada (oculta
+                                      en una terminal, o por pipe); nunca como argumento. No va en config.json
+  secret rm <proveedor> [--account <id>]   Quita una clave guardada
+  secret ls [--account <id>]          Muestra qué proveedores tienen clave y de dónde sale, nunca la clave
   help                                Muestra esta ayuda
 
 Cuentas: link, unlink, daemon y digest trabajan sobre una cuenta, elegida con --account <id> (letras minúsculas,
@@ -153,6 +158,7 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         `Los días ${JSON.stringify(value)} no son válidos: usá daily, weekdays, weekends, o nombres de días como lun,mie o lun-vie (también en inglés: mon, tue, wed, thu, fri, sat, sun).`,
       invalidDate: (option) =>
         `El valor de ${option} tiene que tener la forma "AAAA-MM-DD HH:MM" (fecha y hora válidas).`,
+      unknownProvider: (allowed) => `Ese proveedor no usa clave de API. Usá uno de: ${allowed}.`,
     },
     config: {
       heading: 'La configuración tiene problemas:',
@@ -166,8 +172,28 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       invalidLanguage: (option) =>
         `La opción "${option}" tiene que ser "auto" (detectar el idioma) o un código de idioma como "es" o "en".`,
       noProvider:
-        'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli" u "ollama") en la configuración.',
+        'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" o "gemini") en la configuración.',
       promptFile: (path) => `No se pudo leer el archivo del prompt (promptFile): ${path}`,
+      secretInConfig: (option) =>
+        `"${option}" parece una clave de API, y config.json no guarda secretos. Quitala y corré "msum secret set <proveedor>" (o definí la variable de entorno del proveedor).`,
+    },
+    secret: {
+      keyPrompt: (provider) => `Clave de API de ${provider} (lo que escribas no se muestra): `,
+      emptyKey: 'No se recibió ninguna clave. No se guardó nada.',
+      invalidKey: 'Una clave no tiene espacios ni saltos de línea adentro. No se guardó nada.',
+      stored: (provider, file) => `La clave de ${provider} se guardó en ${file} (solo vos podés leerla).`,
+      envWins: (names) => `Ojo: ${names} está definida en el entorno y tiene prioridad sobre la clave guardada.`,
+      removed: (provider, file) => `Se quitó la clave de ${provider} de ${file}.`,
+      notStored: (provider, file) => `No hay clave de ${provider} en ${file}. No cambió nada.`,
+      invalidFile: (file) => `${file} no es un objeto JSON. No se tocó: corregilo o borralo y probá de nuevo.`,
+      header: 'Claves de API (los valores nunca se muestran):',
+      row: (provider, source) => `  ${provider}  ${source}`,
+      precedence:
+        'La clave se toma primero del entorno, luego de accounts/<id>/secrets.json y luego de secrets.json. "openai" (OPENAI_API_KEY) solo se usa con https://api.openai.com; cualquier otro provider.openai.baseUrl usa "openai-compatible" (MSUM_OPENAI_API_KEY).',
+      sourceEnv: (name) => `entorno (${name})`,
+      sourceAccountFile: (file) => `archivo de la cuenta (${file})`,
+      sourceFile: (file) => `archivo (${file})`,
+      sourceNone: 'sin clave',
     },
     whisper: {
       modelsHeader: 'Modelos de whisper.cpp (formato ggml). Los más grandes transcriben mejor y más lento:',
@@ -433,6 +459,7 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         ffmpeg: 'ffmpeg',
         whisperModel: 'Modelo de whisper',
         mediaFiles: 'Archivos de audio',
+        secrets: 'Archivo de claves de API',
       },
       mediaFull: (usedMb, capMb) =>
         `los audios descargados ocupan ${usedMb} MB de los ${capMb} MB permitidos: no se aceptan audios nuevos hasta que se transcriban algunos`,
@@ -502,6 +529,19 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         provider === 'ollama'
           ? 'iniciá Ollama ("ollama serve") y revisá "provider.ollama.baseUrl".'
           : 'instalá Claude Code, iniciá sesión con "claude" y revisá "provider.claudeCli.command".',
+      providerApiOk: (provider, model, keyName, source) =>
+        `${provider} (modelo ${model}; usa la clave "${keyName}", desde ${source})`,
+      providerApiKeyOptional: (provider, model, keyName) =>
+        `${provider} (modelo ${model}; sin clave "${keyName}", que este servidor puede no necesitar; la clave "openai" nunca se le envía)`,
+      providerApiNoKey: (provider, keyName) => `no hay clave de API "${keyName}" para ${provider}`,
+      providerApiNoKeyFix: (keyName, envNames) =>
+        `corré "msum secret set ${keyName}" (la clave se lee de la entrada, nunca de la línea de comandos) o definí ${envNames} en el entorno.`,
+      secretsLoose: (file, mode) =>
+        `${file} tiene permisos ${mode}: otros usuarios pueden leer las claves de API que guarda`,
+      secretsLooseFix: (file) => `corré "chmod 600 ${file}".`,
+      providerApiNoModel: (provider) => `no hay modelo elegido para ${provider}`,
+      providerApiNoModelFix: (provider) =>
+        `poné "provider.${provider}.model" en config.json: no hay modelo por defecto porque los nombres de los modelos cambian seguido.`,
       providerNone: 'no hay proveedor elegido',
       whatsappOk: 'cuenta vinculada',
       whatsappNone: 'sin cuenta vinculada',

@@ -8,6 +8,8 @@ export interface DataLayout {
   readonly dataDir: string
   /** Installation-wide defaults. An account may override options in its own config.json. */
   readonly configFile: string
+  /** The API keys of the installation (0600, never in config.json): `{ "openai": "...", ... }`. See `msum secret`. */
+  readonly secretsFile: string
   /** The installation database: which accounts exist (and, later, their schedules). */
   readonly appDbFile: string
   readonly accountsDir: string
@@ -37,6 +39,10 @@ export interface AccountLayout {
   readonly blockedFile: string
   /** Optional overrides of the installation config.json. */
   readonly configFile: string
+  /** Optional API keys of this account: they win over those of the installation (`secretsFile` of `DataLayout`). */
+  readonly secretsFile: string
+  /** The API keys of the installation, so a runtime can resolve a key without the `DataLayout`. */
+  readonly installationSecretsFile: string
   /** Held by a running `msum link` of this account (pid and heartbeat, like the daemon lock): the daemon leaves the account alone meanwhile. */
   readonly linkLockFile: string
   /** What the daemon last said about the connection of this account (see `unit-state.ts`). */
@@ -73,6 +79,7 @@ export function layoutOf(dataDir: string): DataLayout {
   return {
     dataDir,
     configFile: join(dataDir, 'config.json'),
+    secretsFile: join(dataDir, 'secrets.json'),
     appDbFile: join(dataDir, 'app.db'),
     accountsDir: join(dataDir, 'accounts'),
     modelsDir: join(dataDir, 'models'),
@@ -99,6 +106,8 @@ export function accountLayoutOf(layout: DataLayout, id: string): AccountLayout {
     qrFile: join(dir, 'qr.png'),
     blockedFile: join(dir, 'blocked.json'),
     configFile: join(dir, 'config.json'),
+    secretsFile: join(dir, 'secrets.json'),
+    installationSecretsFile: layout.secretsFile,
     linkLockFile: join(dir, 'link.lock'),
     stateFile: join(dir, 'state.json'),
   }

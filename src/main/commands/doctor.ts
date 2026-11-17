@@ -1,15 +1,17 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { type Catalog, getCatalog } from '../../infrastructure/i18n/index.js'
+import { envNames, type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/index.js'
 import { findModelByFile, resolveModelPath, sha256File } from '../../infrastructure/transcription/index.js'
 import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { openInstallation } from '../accounts.js'
-import { describeConfigIssue, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
+import { describeConfigIssue, isApiProvider, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
 import { type CommandContext, hasSession } from '../context.js'
 import { IMPORT_DIR_PATTERN, importDirs } from '../import-workdirs.js'
 import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.js'
+import { openAiKeyProvider } from '../providers.js'
 import { createRuntime } from '../runtime.js'
 import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
 
@@ -32,7 +34,8 @@ export function compareVersions(a: string, b: string): number {
  * `--account`): a valid configuration (the installation's with the account's overrides), the provider command (or
  * Ollama server) and the linked WhatsApp account. It also reports what `app.db` and `accounts/` disagree on. Each
  * failure says how to fix it. Exit code 1 if any fails.
- * The only things it contacts are the configured providers and, for Ollama, the configured base URL.
+ * The only things it contacts are the configured CLI and, for Ollama, the configured base URL. For an API provider it
+ * checks that the model is set and that a key exists, and makes no request.
  */
 export async function doctorCommand(ctx: CommandContext, args: AccountArg): Promise<number> {
   const { io, layout } = ctx
@@ -104,6 +107,7 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
     if (registryProblems.length === 0) ok(texts.names.accounts, texts.accountsOk(known.length))
     for (const [detail, fix] of registryProblems) fail(texts.names.accounts, detail, fix)
 
+    const checkedSecretFiles = new Set<string>()
     for (const account of targets) {
       // With several accounts each line says which one it is about.
       const label = (name: string): string =>
@@ -136,6 +140,44 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
                 accountTexts.providerFix(kind),
               )
             } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, version))
+          } else if (isApiProvider(kind)) {
+            // An API provider: the model and the key are checked, without any request (RNF-01; the real connection
+            // test is a separate step).
+            const model = provider[kind].model
+            if (model === null) {
+              fail(
+                label(accountTexts.names.provider),
+                accountTexts.providerApiNoModel(kind),
+                accountTexts.providerApiNoModelFix(kind),
+              )
+              continue
+            }
+            // Which stored key this configuration uses: for openai, by the origin of its baseUrl (never the real
+            // OpenAI key for another server).
+            const keyName: KeyProvider = kind === 'openai' ? openAiKeyProvider(provider.openai.baseUrl) : kind
+            const found = resolveApiKey(keyName, {
+              env: ctx.env,
+              accountFile: account?.secretsFile,
+              file: layout.secretsFile,
+            })
+            const keyTexts = accountCatalog.cli.secret
+            if (found !== null) {
+              const source =
+                found.source.kind === 'env'
+                  ? keyTexts.sourceEnv(found.source.name)
+                  : found.source.kind === 'accountFile'
+                    ? keyTexts.sourceAccountFile(found.source.file)
+                    : keyTexts.sourceFile(found.source.file)
+              ok(label(accountTexts.names.provider), accountTexts.providerApiOk(kind, model, keyName, source))
+            } else if (keyName === 'openai-compatible') {
+              ok(label(accountTexts.names.provider), accountTexts.providerApiKeyOptional(kind, model, keyName))
+            } else {
+              fail(
+                label(accountTexts.names.provider),
+                accountTexts.providerApiNoKey(kind, keyName),
+                accountTexts.providerApiNoKeyFix(keyName, envNames(keyName).join(' / ')),
+              )
+            }
           } else {
             const reachable = await ctx.probes.ollamaReachable(provider.ollama.baseUrl)
             if (!reachable) {
@@ -145,6 +187,22 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
                 accountTexts.providerFix(kind),
               )
             } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, provider.ollama.baseUrl))
+          }
+        }
+
+        // The files that hold API keys must be readable by the owner only (RNF-04).
+        if (process.platform !== 'win32') {
+          for (const file of [layout.secretsFile, account?.secretsFile]) {
+            if (file === undefined || checkedSecretFiles.has(file)) continue
+            checkedSecretFiles.add(file)
+            const mode = statSync(file, { throwIfNoEntry: false })?.mode
+            if (mode !== undefined && (mode & 0o077) !== 0) {
+              fail(
+                accountTexts.names.secrets,
+                accountTexts.secretsLoose(file, (mode & 0o777).toString(8)),
+                accountTexts.secretsLooseFix(file),
+              )
+            }
           }
         }
 

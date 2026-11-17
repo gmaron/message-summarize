@@ -48,6 +48,15 @@ describe('parseConfig defaults', () => {
         backup: null,
         claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: 180_000 },
         ollama: { baseUrl: 'http://127.0.0.1:11434', model: null, numCtx: 16384, keepAlive: '1m', timeoutMs: 180_000 },
+        openai: {
+          baseUrl: 'https://api.openai.com/v1',
+          model: null,
+          timeoutMs: 180_000,
+          structuredOutput: 'json_schema',
+        },
+        anthropic: { model: null, timeoutMs: 180_000, maxTokens: 16_000, effort: null },
+        gemini: { model: null, timeoutMs: 180_000 },
+        retry: { maxRetries: 3, maxWaitMs: 120_000, maxTotalMs: 300_000 },
       },
       transcription: {
         enabled: false,
@@ -139,7 +148,11 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
   it('reports a language and a provider that are not in the list, with the accepted values', () => {
     expect(issuesOf({ language: 'fr', provider: { primary: 'gpt' } })).toEqual([
       { option: 'language', code: 'notOneOf', allowed: ['es', 'en'] },
-      { option: 'provider.primary', code: 'notOneOf', allowed: ['claude-cli', 'ollama'] },
+      {
+        option: 'provider.primary',
+        code: 'notOneOf',
+        allowed: ['claude-cli', 'ollama', 'openai', 'anthropic', 'gemini'],
+      },
     ])
   })
 

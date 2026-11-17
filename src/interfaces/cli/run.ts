@@ -1,4 +1,5 @@
 import type { Catalog } from '../../infrastructure/i18n/index.js'
+import { KEY_PROVIDERS } from '../../infrastructure/secrets/index.js'
 import {
   type AccountArg,
   type ArgError,
@@ -13,6 +14,9 @@ export type ScheduleCommand = Extract<Command, { name: 'schedule' }>
 
 /** The `whisper` command with its subcommand. */
 export type WhisperCommand = Extract<Command, { name: 'whisper' }>
+
+/** The `secret` command with its subcommand. */
+export type SecretCommand = Extract<Command, { name: 'secret' }>
 
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
@@ -34,6 +38,7 @@ export interface CliHandlers {
   accounts(): Promise<number>
   schedule(command: ScheduleCommand): Promise<number>
   whisper(command: WhisperCommand): Promise<number>
+  secret(command: SecretCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -64,6 +69,8 @@ export function describeArgError(texts: Catalog['cli'], error: ArgError): string
       return messages.invalidTime(error.value)
     case 'invalidDays':
       return messages.invalidDays(error.value)
+    case 'unknownProvider':
+      return messages.unknownProvider(KEY_PROVIDERS.join(', '))
     case 'conflictingOptions':
       return messages.conflictingOptions(error.value)
   }
@@ -95,6 +102,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.schedule(command)
     case 'whisper':
       return handlers.whisper(command)
+    case 'secret':
+      return handlers.secret(command)
   }
 }
 
