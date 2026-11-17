@@ -12,6 +12,8 @@ export type {
   Language,
   LinkErrorCode,
   WebErrorCode,
+  WebStateName,
+  WebTexts,
 } from './catalog.js'
 
 export const LANGUAGES: readonly Language[] = ['es', 'en']

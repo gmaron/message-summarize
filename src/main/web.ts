@@ -18,12 +18,12 @@ import { scheduleRoutes } from './web-schedules.js'
 import { ensureWebToken } from './web-token.js'
 
 /**
- * The events the web pushes over SSE, by name. `qr` carries the raw string of a pairing credential: it exists only here
- * (memory and the stream of an authenticated client), never on disk and never in a log.
+ * The events the web pushes over SSE, by name. `qr` only says that the QR of a link changed (`seq` counts them): the
+ * pairing credential itself is drawn on request by `GET /api/accounts/:id/link/qr.svg`, from memory, never from disk.
  */
 export interface WebEvents extends Record<string, unknown> {
   readonly accounts: { readonly accounts: readonly AccountView[] }
-  readonly qr: { readonly account: string; readonly qr: string }
+  readonly qr: { readonly account: string; readonly seq: number }
   readonly sync: {
     readonly account: string
     readonly chats: number
@@ -108,6 +108,8 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     }
   }
   const routes: Route[] = [
+    // What the page needs before it can draw anything: the language of the installation.
+    { method: 'GET', path: '/api/info', handler: () => ({ body: { language: options.language } }) },
     {
       method: 'GET',
       path: '/api/accounts',
@@ -118,6 +120,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ...digestRoutes({ ...source, previews }),
   ]
 
+  const qrCount = new Map<string, number>()
   const unsubscribeChange = host.onChange(() => {
     previews.prune()
     void publishAccounts()
@@ -125,8 +128,11 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
   const unsubscribeLink = host.onLink((event) => {
     // A new link may bind another number: what was summarized before is not that account's any more.
     if (event.type === 'link') previews.forget(event.account)
-    if (event.type === 'qr') bus.publish('qr', { account: event.account, qr: event.qr })
-    else if (event.type === 'sync') {
+    if (event.type === 'qr') {
+      const seq = (qrCount.get(event.account) ?? 0) + 1
+      qrCount.set(event.account, seq)
+      bus.publish('qr', { account: event.account, seq })
+    } else if (event.type === 'sync') {
       bus.publish('sync', {
         account: event.account,
         chats: event.chats,

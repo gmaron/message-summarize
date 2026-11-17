@@ -73,12 +73,15 @@ export async function world(
     summarizer?: HarnessOptions['summarizer']
     /** How long a finished preview is kept. */
     previewTtlMs?: number
+    /** Where the daemon looks for the built web. */
+    staticDir?: string
   } = {},
 ): Promise<World> {
   const h = await makeHarness({
     config: options.config ?? BASE,
     accounts: options.accounts ?? [],
     liveClock: true,
+    ...(options.staticDir === undefined ? {} : { web: { staticDir: options.staticDir } }),
     ...(options.summarizer === undefined ? {} : { summarizer: options.summarizer }),
   })
   const conn = h.connection

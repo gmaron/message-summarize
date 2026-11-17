@@ -1,4 +1,5 @@
 import type { Catalog } from './catalog.js'
+import { webEs } from './web-es.js'
 
 const chats = (n: number): string => (n === 1 ? 'chat' : 'chats')
 /** Width of the label column of `msum status`. */
@@ -69,62 +70,7 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
     failedChats: (count) => `⚠️ ${count} chats no se pudieron resumir`,
   },
 
-  web: {
-    notBuilt: {
-      title: 'message-summarize',
-      message:
-        'La interfaz web todavía no está compilada, así que no hay nada para mostrar acá. Compilala (npm run build) y recargá esta página.',
-    },
-    errors: {
-      unauthorized: 'Falta el token de acceso o es incorrecto. Abrí la web de nuevo con "msum open".',
-      forbidden: 'Se rechazó este pedido: no viene de esta web.',
-      notFound: 'No se encontró.',
-      methodNotAllowed: 'Ese método no está permitido acá.',
-      payloadTooLarge: 'El pedido es demasiado grande.',
-      invalidJson: 'El pedido no es un JSON válido.',
-      internal: 'Algo salió mal.',
-      invalidRequest: 'El pedido no tiene la forma esperada.',
-      invalidAccountId: 'El identificador de la cuenta no es válido: usá minúsculas, números y guiones.',
-      accountExists: 'Ya existe una cuenta con ese identificador.',
-      invalidConfig: 'La configuración de la cuenta no es válida: corregila y volvé a intentar.',
-      unavailable: 'El daemon se está deteniendo.',
-      inUse: 'La cuenta está vinculada y en uso: desvinculala primero para vincularla de nuevo.',
-      beingLinked: 'Otro proceso (por ejemplo "msum link") está trabajando en esta cuenta. Esperá a que termine.',
-      alreadyLinking: 'La cuenta ya se está vinculando.',
-      needsRetry: 'La cuenta está bloqueada por un motivo que se arregla reintentando, no vinculando de nuevo.',
-      needsRelink: 'La cuenta está bloqueada por un motivo que solo se arregla vinculándola de nuevo.',
-      notBlocked: 'La cuenta no está bloqueada.',
-      notLinking: 'La cuenta no se está vinculando.',
-      busy: 'El daemon está haciendo otra operación sobre esta cuenta. Esperá a que termine.',
-      restricted: 'Este daemon corre una sola cuenta (--account): no puede crear ni vincular otras.',
-      invalidSchedule: 'El horario no es válido: revisá los días y la hora.',
-      notRunning:
-        'El daemon no está corriendo esta cuenta (no está vinculada, está bloqueada o está arrancando): no puede enviar un digest ahora.',
-    },
-    linkErrors: {
-      timeout: 'Pasó el tiempo sin que se escaneara el QR. Volvé a intentar.',
-      loggedOut: 'WhatsApp cerró la sesión. Volvé a intentar.',
-      mismatch: 'El teléfono escaneado es de otra cuenta que la vinculada en esta instalación. No se guardó nada.',
-      noAccount: 'La sesión no tiene número de teléfono. No se guardó nada.',
-      socketFailed: 'No se pudo abrir la conexión. Revisá los logs y volvé a intentar.',
-      forbidden: 'WhatsApp rechazó la conexión (403). No insistas: esperá antes de volver a intentar.',
-      replaced: 'Otra sesión con las mismas credenciales tomó el control (440).',
-      cancelled: 'La vinculación se canceló.',
-      failed: 'No se pudo vincular la cuenta.',
-    },
-    digestErrors: {
-      noProvider: 'Esta cuenta no tiene un proveedor de resúmenes configurado.',
-      promptFile: 'No se puede leer el archivo del prompt personalizado.',
-      concurrentRun: 'Otro digest terminó primero: este no se guardó. Volvé a intentar.',
-      invalidWindow: 'La ventana de tiempo del digest no es válida.',
-      failed: 'El digest falló. Revisá los logs.',
-    },
-    scheduleIssues: {
-      noDays: 'Elegí al menos un día.',
-      invalidDay: 'Un día no es válido.',
-      invalidTime: 'La hora no es válida: usá HH:MM.',
-    },
-  },
+  web: webEs,
 
   errors: {
     settings: {

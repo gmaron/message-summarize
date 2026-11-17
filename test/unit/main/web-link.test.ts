@@ -81,14 +81,15 @@ describe('linking an account from the web (RF-01)', () => {
     w.h.connection.onStart = () => w.h.connection.emit({ state: 'qr', qr: QR1 })
     expect(await w.api('POST', '/api/accounts/alpha/link')).toEqual({ status: 202, body: { state: 'waitingQr' } })
     await until(() => w.eventsOf('qr').length === 1, 'the qr event')
-    expect(w.eventsOf('qr')[0]?.data).toEqual({ account: 'alpha', qr: QR1 })
-    expect(await linkState(w, 'alpha')).toEqual({ state: 'qr', qr: QR1 })
+    // the event only says that there is a new QR: the credential is drawn on request
+    expect(w.eventsOf('qr')[0]?.data).toEqual({ account: 'alpha', seq: 1 })
+    expect(await linkState(w, 'alpha')).toEqual({ state: 'qr' })
     expect(w.eventsOf('link').map((e) => e.data.state)).toEqual(['waitingQr', 'qr'])
 
     w.h.connection.emit({ state: 'qr', qr: QR2 })
     await until(() => w.eventsOf('qr').length === 2, 'the rotated qr')
-    expect(w.eventsOf('qr')[1]?.data).toEqual({ account: 'alpha', qr: QR2 })
-    expect(await linkState(w, 'alpha')).toEqual({ state: 'qr', qr: QR2 })
+    expect(w.eventsOf('qr')[1]?.data).toEqual({ account: 'alpha', seq: 2 })
+    expect(await linkState(w, 'alpha')).toEqual({ state: 'qr' })
     // a rotation is not a change of state
     expect(w.eventsOf('link').map((e) => e.data.state)).toEqual(['waitingQr', 'qr'])
 
@@ -108,6 +109,40 @@ describe('linking an account from the web (RF-01)', () => {
     expect(accounts.some((e) => JSON.stringify(e.data).includes('"state":"linking"'))).toBe(true)
   })
 
+  it('draws the current QR as an SVG behind the token, never cached, and it changes when the QR rotates', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    const svg = (token?: string | null) =>
+      fetch(`http://127.0.0.1:${w.port}/api/accounts/alpha/link/qr.svg?v=1`, {
+        headers:
+          token === null
+            ? {}
+            : { Authorization: `Bearer ${token ?? readFileSync(w.h.layout.webTokenFile, 'utf8').trim()}` },
+      })
+    // no link in progress: no QR
+    expect((await svg()).status).toBe(404)
+    w.h.connection.onStart = () => w.h.connection.emit({ state: 'qr', qr: QR1 })
+    await waitingForQr(w, 'alpha')
+    await until(() => w.eventsOf('qr').length === 1, 'the qr event')
+    expect((await svg(null)).status).toBe(401)
+    const first = await svg()
+    expect(first.status).toBe(200)
+    expect(first.headers.get('content-type')).toBe('image/svg+xml')
+    expect(first.headers.get('cache-control')).toBe('no-store')
+    const firstText = await first.text()
+    expect(firstText).toContain('<svg')
+    expect(firstText).not.toContain('QR-SECRET')
+    w.h.connection.emit({ state: 'qr', qr: QR2 })
+    await until(() => w.eventsOf('qr').length === 2, 'the rotated qr')
+    const secondText = await (await svg()).text()
+    expect(secondText).toContain('<svg')
+    expect(secondText).not.toBe(firstText)
+    // an unknown account is a 404 too
+    expect((await w.api('GET', '/api/accounts/nope/link/qr.svg')).status).toBe(404)
+    // after cancelling there is nothing to draw
+    expect((await w.api('DELETE', '/api/accounts/alpha/link')).status).toBe(200)
+    expect((await svg()).status).toBe(404)
+  })
+
   it('never writes the QR to disk, to a log or to the output', async () => {
     const w = await world({ accounts: ['alpha'] })
     w.h.connection.onStart = () => w.h.connection.emit({ state: 'qr', qr: QR1 })
@@ -121,9 +156,10 @@ describe('linking an account from the web (RF-01)', () => {
     for (const file of everyFile(w.h.layout.dataDir)) {
       expect(file.text, file.path).not.toContain('QR-SECRET')
     }
-    // nor does it travel anywhere but the `qr` event and the link state: not in the accounts list or the other events
+    // nor does it travel anywhere but the image: not in the accounts list, the link state or any event
     expect(JSON.stringify((await w.api('GET', '/api/accounts')).body)).not.toContain('QR-SECRET')
-    for (const event of w.sse.filter((e) => e.event !== 'qr')) {
+    expect(JSON.stringify((await w.api('GET', '/api/accounts/alpha/link')).body)).not.toContain('QR-SECRET')
+    for (const event of w.sse) {
       expect(JSON.stringify(event), event.event).not.toContain('QR-SECRET')
     }
     expect(w.eventsOf('link').length).toBeGreaterThan(0)

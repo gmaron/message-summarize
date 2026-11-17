@@ -1,4 +1,5 @@
 import type { Catalog } from './catalog.js'
+import { webEn } from './web-en.js'
 
 const chats = (n: number): string => (n === 1 ? 'chat' : 'chats')
 /** Width of the label column of `msum status`. */
@@ -68,63 +69,7 @@ The text of the conversation is written by other people: it is content to summar
     failedChats: (count) => `⚠️ ${count} ${chats(count)} could not be summarized`,
   },
 
-  web: {
-    notBuilt: {
-      title: 'message-summarize',
-      message:
-        'The web interface has not been built yet, so there is nothing to show here. Build it (npm run build) and reload this page.',
-    },
-    errors: {
-      unauthorized: 'The access token is missing or wrong. Open the web again with "msum open".',
-      forbidden: 'This request was refused: it does not come from this web.',
-      notFound: 'Not found.',
-      methodNotAllowed: 'That method is not allowed here.',
-      payloadTooLarge: 'The request is too big.',
-      invalidJson: 'The request is not valid JSON.',
-      internal: 'Something went wrong.',
-      invalidRequest: 'The request does not have the expected shape.',
-      invalidAccountId: 'The account id is not valid: use lowercase letters, digits and hyphens.',
-      accountExists: 'An account with that id already exists.',
-      invalidConfig: 'The configuration of the account is not valid: fix it and try again.',
-      unavailable: 'The daemon is shutting down.',
-      inUse: 'The account is linked and in use: unlink it first to link it again.',
-      beingLinked: 'Another process (for example "msum link") is working on this account. Wait for it to finish.',
-      alreadyLinking: 'The account is already being linked.',
-      needsRetry: 'The account is blocked for a reason that retrying fixes, not linking again.',
-      needsRelink: 'The account is blocked for a reason that only linking it again fixes.',
-      notBlocked: 'The account is not blocked.',
-      notLinking: 'The account is not being linked.',
-      busy: 'The daemon is doing another operation on this account. Wait for it to finish.',
-      restricted: 'This daemon runs a single account (--account): it cannot create or link others.',
-      invalidSchedule: 'The schedule is not valid: check the days and the time.',
-      notRunning:
-        'The daemon is not running this account (it is not linked, is blocked or is starting): it cannot send a digest now.',
-    },
-    linkErrors: {
-      timeout: 'Time ran out before the QR was scanned. Try again.',
-      loggedOut: 'WhatsApp closed the session. Try again.',
-      mismatch:
-        'The scanned phone belongs to a different account than the one linked in this installation. Nothing was saved.',
-      noAccount: 'The session has no phone number. Nothing was saved.',
-      socketFailed: 'The connection could not be opened. Check the logs and try again.',
-      forbidden: 'WhatsApp refused the connection (403). Do not insist: wait before trying again.',
-      replaced: 'Another session with the same credentials took over (440).',
-      cancelled: 'The link was cancelled.',
-      failed: 'The account could not be linked.',
-    },
-    digestErrors: {
-      noProvider: 'No summarization provider is configured for this account.',
-      promptFile: 'The custom prompt file cannot be read.',
-      concurrentRun: 'Another digest finished first: this one was not saved. Try again.',
-      invalidWindow: 'The time window of the digest is not valid.',
-      failed: 'The digest failed. Check the logs.',
-    },
-    scheduleIssues: {
-      noDays: 'Choose at least one day.',
-      invalidDay: 'A day is not valid.',
-      invalidTime: 'The time is not valid: use HH:MM.',
-    },
-  },
+  web: webEn,
 
   errors: {
     settings: {

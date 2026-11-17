@@ -2,7 +2,15 @@ import { rm } from 'node:fs/promises'
 import { mergeByTime, scheduleToCron } from '../domain/schedule.js'
 import { getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
 import { type Installation, isDirectory } from './accounts.js'
-import { type BlockedReason, clearBlocked, FIXED_BY_LINKING, readBlocked, writeBlocked } from './blocked.js'
+import {
+  type BlockedReason,
+  clearBlocked,
+  FIXED_BY_LINKING,
+  readBlocked,
+  WAIT_BEFORE_RETRY,
+  WEB_RETRY_MIN_WAIT_MS,
+  writeBlocked,
+} from './blocked.js'
 import { type AppConfig, describeConfigIssue, loadEffectiveConfig } from './config.js'
 import { type CommandContext, hasSession } from './context.js'
 import { type CountingCapture, countingCapture } from './counting-capture.js'
@@ -132,6 +140,8 @@ export type RetryAccountResult =
         | 'needsRelink'
         | 'unsafePath'
     }
+  /** Too soon after a block WhatsApp asked to wait for: `retryAfter` is when the web's retry is allowed (epoch ms). */
+  | { readonly ok: false; readonly reason: 'tooSoon'; readonly retryAfter: number }
 
 /** The runtime and socket of a link that went well, taken over by a normal unit without closing the socket. */
 interface AdoptedLink {
@@ -815,7 +825,8 @@ export class DaemonHost {
 
   /**
    * Where the link of an account is: the one in progress, or how the last one ended. Null when this host has not linked
-   * the account since it started. The QR in it is the raw pairing credential: only the authenticated web gets it.
+   * the account since it started. The QR in it is the raw pairing credential: it reaches the web only as the SVG that
+   * `GET /api/accounts/:id/link/qr.svg` draws from it (behind the token), never in a JSON or an event.
    */
   linkSnapshot(id: string): LinkSnapshot | null {
     return this.linkSnapshots.get(id) ?? null
@@ -984,7 +995,8 @@ export class DaemonHost {
       timing: this.ctx.linkTiming,
       onSnapshot: (snapshot) => {
         this.linkSnapshots.set(id, snapshot)
-        // The raw QR goes to the event stream and nowhere else: not to disk, not to a log.
+        // The raw QR goes to `onLink` listeners (the web turns it into an SVG on request) and nowhere else: not to disk, not
+        // to a log, not to an event of the stream.
         if (snapshot.state === 'qr' && snapshot.qr !== undefined) {
           this.emitLink({ type: 'qr', account: id, qr: snapshot.qr })
         }
@@ -1092,6 +1104,10 @@ export class DaemonHost {
   /**
    * `msum retry` from the web: clears the block of an account if retrying fixes it, under the account's link lock.
    * The unit starts on the next look of the host (this asks for one).
+   *
+   * For a block WhatsApp asked to wait for (`forbidden`, `replaced`) it is refused (`tooSoon`, with when it is allowed)
+   * until `WEB_RETRY_MIN_WAIT_MS` have passed since the block: one click of a button must not reconnect at once. The
+   * commands `msum retry` and `msum daemon --retry` do not wait (typed on purpose), and use `retryBlock` directly.
    */
   async retryAccount(id: string): Promise<RetryAccountResult> {
     if (!this.accountIds().includes(id)) return { ok: false, reason: 'unknown' }
@@ -1107,6 +1123,15 @@ export class DaemonHost {
       if ((await unsafeAccountPath(account)) !== null) return { ok: false, reason: 'unsafePath' }
       lock = isDirectory(account.dir) ? await acquireLinkLock(account, this.linkLockPid) : null
       if (lock !== null && !lock.ok) return { ok: false, reason: 'beingLinked' }
+      const marker = await readBlocked(account.blockedFile)
+      const blockedFor = marker?.reason ?? this.blocks.get(id)?.reason ?? null
+      if (blockedFor !== null && WAIT_BEFORE_RETRY.includes(blockedFor)) {
+        // The time of the block: its marker, or (a block only in memory) when the account became blocked.
+        const at = marker?.at ?? this.states.get(id)?.since ?? null
+        if (at !== null && this.ctx.clock.now() < at + WEB_RETRY_MIN_WAIT_MS) {
+          return { ok: false, reason: 'tooSoon', retryAfter: at + WEB_RETRY_MIN_WAIT_MS }
+        }
+      }
       const outcome = await retryBlock(account)
       const remembered = this.blocks.get(id)
       if (outcome.result === 'needsRelink') return { ok: false, reason: 'needsRelink' }

@@ -4,6 +4,7 @@ import type { Installation } from './accounts.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
 import { accountLayoutOf, unsafeAccountPath } from './paths.js'
+import { qrAsSvg } from './qr.js'
 
 export interface AccountRoutesSource {
   readonly ctx: Pick<CommandContext, 'layout'>
@@ -86,13 +87,27 @@ export function accountRoutes(source: AccountRoutesSource): Route[] {
       },
     },
     {
-      // What a page that (re)connects needs to show the current QR without waiting for the next one.
+      // Where a page that (re)connects finds the link: the phase, the sync and the error. The QR is not in it: it is an
+      // image at `.../link/qr.svg`, so the pairing credential travels as little as possible.
       method: 'GET',
       path: '/api/accounts/:id/link',
       handler: ({ params }) => {
         const id = knownAccount(source, params)
         const snapshot = host.linkSnapshot(id)
-        return { body: snapshot ?? { state: 'idle' } }
+        if (snapshot === null) return { body: { state: 'idle' } }
+        const { qr: _qr, ...rest } = snapshot
+        return { body: rest }
+      },
+    },
+    {
+      // The CURRENT QR of a link in progress, drawn from memory on each request (never stored, never cached).
+      method: 'GET',
+      path: '/api/accounts/:id/link/qr.svg',
+      handler: async ({ params }) => {
+        const id = knownAccount(source, params)
+        const snapshot = host.linkSnapshot(id)
+        if (snapshot?.state !== 'qr' || snapshot.qr === undefined) throw new HttpError(404, 'notFound')
+        return { raw: { type: 'image/svg+xml', text: await qrAsSvg(snapshot.qr) } }
       },
     },
     {
@@ -111,6 +126,9 @@ export function accountRoutes(source: AccountRoutesSource): Route[] {
         const id = knownAccount(source, params)
         const retried = await host.retryAccount(id)
         if (retried.ok) return { body: { ok: true } }
+        if (retried.reason === 'tooSoon') {
+          return { status: 409, body: { error: 'tooSoon', retryAfter: retried.retryAfter } }
+        }
         switch (retried.reason) {
           case 'unknown':
             throw new HttpError(404, 'notFound')

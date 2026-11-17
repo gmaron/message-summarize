@@ -15,6 +15,8 @@ export interface RouteResult {
   readonly status?: number
   /** Sent as JSON. */
   readonly body?: unknown
+  /** Sent as is, with this content type, instead of `body` (the QR as an image). */
+  readonly raw?: { readonly type: string; readonly text: string }
 }
 
 export interface Route {

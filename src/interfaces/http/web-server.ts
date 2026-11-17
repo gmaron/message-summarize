@@ -214,6 +214,14 @@ export function createWebServer(options: WebServerOptions): WebServer {
       res.end()
       return
     }
+    if (result.raw !== undefined) {
+      res.writeHead(result.status ?? 200, {
+        'Content-Type': result.raw.type,
+        'Content-Length': Buffer.byteLength(result.raw.text),
+      })
+      res.end(result.raw.text)
+      return
+    }
     sendJson(res, result.status ?? 200, result.body ?? {})
   }
 

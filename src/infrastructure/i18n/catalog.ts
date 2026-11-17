@@ -43,6 +43,7 @@ export type WebErrorCode =
   | 'restricted'
   | 'invalidSchedule'
   | 'notRunning'
+  | 'tooSoon'
 
 /** Why a digest asked from the web (or a scheduled one) produced nothing: codes, never text (`digest` and `preview` events). */
 export type DigestErrorCode = 'noProvider' | 'promptFile' | 'concurrentRun' | 'invalidWindow' | 'failed'
@@ -162,15 +163,8 @@ export interface Catalog {
     failedChats(count: number): string
   }
 
-  /** Texts of the local web: the page shown while it is not built, and the errors of its API. */
-  readonly web: {
-    readonly notBuilt: { readonly title: string; readonly message: string }
-    readonly errors: Readonly<Record<WebErrorCode, string>>
-    readonly linkErrors: Readonly<Record<LinkErrorCode, string>>
-    readonly digestErrors: Readonly<Record<DigestErrorCode, string>>
-    /** Why a schedule sent to `POST /api/accounts/:id/schedules` was refused (`issue`). */
-    readonly scheduleIssues: Readonly<Record<ScheduleIssue, string>>
-  }
+  /** Texts of the local web: the page shown while it is not built, the errors of its API and the whole interface. */
+  readonly web: WebTexts
 
   readonly errors: {
     /** One message per issue code; each names the option and the reason (RF-73). */
@@ -428,6 +422,136 @@ export interface Catalog {
       readonly whatsappFix: string
       readonly summaryOk: string
       readonly summaryFail: string
+    }
+  }
+}
+
+/** The unit states the web labels (`UnitState` plus `notLinked`, which an idle account without a number shows). */
+export type WebStateName = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking' | 'notLinked'
+
+/**
+ * Everything the web shows (RNF-13). Templates use `{name}` placeholders that the page fills in. Kept in its own
+ * module per language (`web-es.ts`, `web-en.ts`) so the bundle of the page does not carry the prompts or the CLI texts.
+ */
+export interface WebTexts {
+  /** BCP 47 locale for dates and weekday names. */
+  readonly locale: string
+  readonly notBuilt: { readonly title: string; readonly message: string }
+  readonly errors: Readonly<Record<WebErrorCode, string>>
+  readonly linkErrors: Readonly<Record<LinkErrorCode, string>>
+  readonly digestErrors: Readonly<Record<DigestErrorCode, string>>
+  /** Why a schedule sent to `POST /api/accounts/:id/schedules` was refused (`issue`). */
+  readonly scheduleIssues: Readonly<Record<ScheduleIssue, string>>
+  readonly ui: {
+    readonly title: string
+    readonly loading: string
+    readonly loadFailed: string
+    readonly retry: string
+    readonly close: string
+    readonly cancel: string
+    readonly unauthorizedTitle: string
+    readonly offline: string
+    readonly accountsTitle: string
+    readonly noAccounts: string
+    readonly addAccount: {
+      readonly button: string
+      readonly idLabel: string
+      readonly idHint: string
+      readonly submit: string
+    }
+    readonly account: {
+      readonly number: string
+      readonly noNumber: string
+      readonly lastDigest: string
+      readonly never: string
+      readonly nextRun: string
+      readonly noSchedules: string
+      readonly timezone: string
+      readonly invalidConfig: string
+      /** `{when}`. */
+      readonly blockedSince: string
+      /** `{when}`: when the web's retry becomes available. */
+      readonly retryAvailable: string
+    }
+    readonly retryConfirm: { readonly confirm: string; readonly yes: string; readonly no: string }
+    readonly states: Readonly<Record<WebStateName, string>>
+    readonly blockedReasons: Readonly<Record<BlockedReason, string>>
+    readonly actions: {
+      readonly digestNow: string
+      readonly preview: string
+      readonly schedules: string
+      readonly link: string
+      readonly relink: string
+      readonly retry: string
+    }
+    readonly digest: {
+      readonly running: string
+      readonly started: string
+      readonly deferred: string
+      /** `{summarized}`, `{parts}`. */
+      readonly done: string
+      /** `{summarized}`, `{failed}`. */
+      readonly doneFailed: string
+      readonly empty: string
+      readonly failed: string
+      readonly busy: string
+    }
+    readonly link: {
+      /** `{account}`. */
+      readonly title: string
+      readonly starting: string
+      readonly waitingQr: string
+      readonly scan: string
+      readonly qrAlt: string
+      readonly connected: string
+      readonly syncing: string
+      /** `{count}`. */
+      readonly chats: string
+      /** `{count}`. */
+      readonly messages: string
+      readonly syncDone: string
+      readonly done: string
+      readonly failed: string
+      readonly tryAgain: string
+      readonly cancel: string
+    }
+    readonly schedules: {
+      /** `{account}`. */
+      readonly title: string
+      /** `{timezone}`. */
+      readonly timezone: string
+      readonly empty: string
+      readonly daysLabel: string
+      readonly timeLabel: string
+      /** `{when}`. */
+      readonly nextRun: string
+      readonly everyDay: string
+      readonly weekdays: string
+      readonly add: string
+      readonly save: string
+      readonly edit: string
+      readonly delete: string
+      readonly saving: string
+    }
+    readonly preview: {
+      /** `{account}`. */
+      readonly title: string
+      readonly running: string
+      readonly notSent: string
+      /** `{when}`. */
+      readonly generatedAt: string
+      /** `{summarized}`, `{failed}`. */
+      readonly stats: string
+      /** `{summarized}`. */
+      readonly statsClean: string
+      readonly empty: string
+      readonly failed: string
+      readonly none: string
+      /** `{n}`, `{total}`. */
+      readonly part: string
+      readonly copy: string
+      readonly copied: string
+      readonly generate: string
     }
   }
 }

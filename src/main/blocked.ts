@@ -47,5 +47,13 @@ export async function clearBlocked(file: string): Promise<void> {
   await rm(file, { force: true })
 }
 
+/**
+ * Reasons for which WhatsApp itself asked to wait (refused, 403; replaced, 440): reconnecting at once is what can get a
+ * number banned. The web's retry waits `WEB_RETRY_MIN_WAIT_MS` after the block for these (see `DaemonHost.retryAccount`).
+ * `msum retry` and `msum daemon --retry` do not wait: they are typed, deliberate commands of someone at the terminal.
+ */
+export const WAIT_BEFORE_RETRY: readonly BlockedReason[] = ['forbidden', 'replaced']
+export const WEB_RETRY_MIN_WAIT_MS = 30 * 60_000
+
 /** Reasons that linking again fixes: `msum link` clears them. The others need `msum daemon --retry`. */
 export const FIXED_BY_LINKING: readonly BlockedReason[] = ['loggedOut', 'notLinked', 'mismatch', 'noAccount']

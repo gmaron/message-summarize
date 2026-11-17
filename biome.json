@@ -8,6 +8,7 @@
       "!**/coverage",
       "!**/node_modules",
       "!**/.claude",
+      "!**/*.svelte",
       "!test/golden/scenarios",
       "!test/fixtures/architecture",
       "!test/golden/generate.mjs",
