@@ -24,10 +24,10 @@ import {
   MAIN_ME_CHAT,
   MAIN_POINTER,
   makeOld,
+  standardData,
   TALLER_ME,
   TALLER_ME_CHAT,
   tallerOptions,
-  standardData,
 } from '../../support/legacy-fixture.js'
 
 afterEach(() => {
@@ -399,8 +399,14 @@ describe('msum import: instances', () => {
 
   it('an instance without a prompt of its own takes the root one; --account names the account', async () => {
     const { h, root } = await setup()
-    buildLegacy(root, { config: LEGACY_CONFIG, prompt: LEGACY_PROMPT }, { taller: { ...tallerOptions(), prompt: null } })
-    expect(await run(h, 'import', '--from', root, '--instance', 'taller', '--account', 'celular-de-taller', '--yes')).toBe(0)
+    buildLegacy(
+      root,
+      { config: LEGACY_CONFIG, prompt: LEGACY_PROMPT },
+      { taller: { ...tallerOptions(), prompt: null } },
+    )
+    expect(
+      await run(h, 'import', '--from', root, '--instance', 'taller', '--account', 'celular-de-taller', '--yes'),
+    ).toBe(0)
     expect(await accounts(h)).toEqual(['celular-de-taller'])
     expect(readFileSync(join(h.accountOf('celular-de-taller').dir, 'prompt.md'), 'utf8')).toContain(
       'Sos el asistente de {{name}}.',
