@@ -27,6 +27,9 @@ const FIELDS = [
   'pointer',
   'nextRun',
   'pid',
+  // Where the local web listens: an address and a port, never a token.
+  'host',
+  'port',
   // The id of an account of the installation (a short name the user chose, validated: it is not a secret).
   'account',
 ] as const

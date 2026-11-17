@@ -29,6 +29,7 @@ export interface CliHandlers {
   retry(args: AccountArg): Promise<number>
   import(args: ImportArgs): Promise<number>
   accounts(): Promise<number>
+  open(args: { readonly print: boolean }): Promise<number>
   schedule(command: ScheduleCommand): Promise<number>
 }
 
@@ -87,6 +88,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.import(command)
     case 'accounts':
       return handlers.accounts()
+    case 'open':
+      return handlers.open({ print: command.print })
     case 'schedule':
       return handlers.schedule(command)
   }

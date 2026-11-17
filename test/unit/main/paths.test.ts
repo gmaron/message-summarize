@@ -61,6 +61,8 @@ describe('layoutOf', () => {
       lockFile: '/d/daemon.pid',
       legacyAccountDir: '/d/account',
       legacyQrFile: '/d/qr.png',
+      webTokenFile: '/d/web-token',
+      webAddressFile: '/d/web.json',
     })
     expect(accountLayoutOf(layout, 'work')).toEqual({
       id: 'work',

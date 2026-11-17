@@ -33,6 +33,16 @@ export interface ProviderConfig {
   readonly ollama: OllamaConfig
 }
 
+/** The local web (RNF-03). Only the installation's config.json sets it: an account cannot. */
+export interface WebConfig {
+  readonly enabled: boolean
+  /** "127.0.0.1" by default. Any other address is the explicit opt-in to expose the web beyond this machine. */
+  readonly host: string
+  readonly port: number
+}
+
+export const DEFAULT_WEB: WebConfig = { enabled: true, host: '127.0.0.1', port: 8787 }
+
 /** The validated contents of config.json. A missing option has its default (RF-73). */
 export interface AppConfig {
   readonly language: Language
@@ -46,6 +56,7 @@ export interface AppConfig {
   /** Cron expressions (RF-60). */
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
+  readonly web: WebConfig
 }
 
 export type ConfigIssueCode =
@@ -55,6 +66,9 @@ export type ConfigIssueCode =
   | 'notOneOf'
   | 'required'
   | 'invalidTimezone'
+  | 'invalidPort'
+  /** An option that only the installation's config.json may set, found in an account's. */
+  | 'installationOnly'
 
 /** A problem of config.json: which option and why. Codes, not text: `describeConfigIssue` translates them. */
 export interface ConfigIssue {
@@ -86,9 +100,11 @@ const TOP_LEVEL = new Set([
   'concurrency',
   'schedules',
   'provider',
+  'web',
 ])
 const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
+const WEB_KEYS = new Set(['enabled', 'host', 'port'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
 
 /** Lists an account can only add to (see `mergeConfigJson`). */
@@ -206,6 +222,22 @@ export function parseConfig(
   const ollamaKeepAlive = text(ollamaObj, 'keepAlive', 'provider.ollama.keepAlive')
   const ollamaTimeout = positiveInt(ollamaObj, 'timeoutMs', 'provider.ollama.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
 
+  const webObj = section(input, 'web', 'web', WEB_KEYS)
+  const webEnabled = ((): boolean | undefined => {
+    const v = webObj.enabled
+    if (v === undefined) return DEFAULT_WEB.enabled
+    return typeof v === 'boolean' ? v : add('web.enabled', 'notBoolean')
+  })()
+  const webHost = text(webObj, 'host', 'web.host')
+  const webPort = ((): number | undefined => {
+    const v = webObj.port
+    if (v === undefined) return DEFAULT_WEB.port
+    if (typeof v !== 'number') return add('web.port', 'notNumber')
+    if (!Number.isInteger(v)) return add('web.port', 'notInteger')
+    if (v < 1 || v > 65535) return add('web.port', 'invalidPort')
+    return v
+  })()
+
   const usesOllama =
     primary === 'ollama' || backup === 'ollama' || (localOnlyPatterns !== undefined && localOnlyPatterns.length > 0)
   if (usesOllama && ollamaModel === null) add('provider.ollama.model', 'required')
@@ -228,7 +260,10 @@ export function parseConfig(
     ollamaModel === undefined ||
     ollamaNumCtx === undefined ||
     ollamaKeepAlive === undefined ||
-    ollamaTimeout === undefined
+    ollamaTimeout === undefined ||
+    webEnabled === undefined ||
+    webHost === undefined ||
+    webPort === undefined
   ) {
     return err(issues)
   }
@@ -252,6 +287,7 @@ export function parseConfig(
         timeoutMs: ollamaTimeout,
       },
     },
+    web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort },
   })
 }
 
@@ -349,6 +385,13 @@ export async function loadEffectiveConfig(
       parts.push(json.value)
     }
   }
+  // The web belongs to the installation (one server for every account): an account file cannot configure it.
+  if (accountFile !== null) {
+    const accountPart = parts[1]
+    if (accountPart !== undefined && 'web' in accountPart) {
+      issues.push({ option: 'web', code: 'installationOnly', file: accountFile })
+    }
+  }
   if (issues.length > 0) return err(issues)
   const [root = {}, account = {}] = parts
   const parsed = parseConfig(mergeConfigJson(root, account), fallbackTimezone)
@@ -403,6 +446,10 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.required(issue.option)
     case 'invalidTimezone':
       return texts.invalidTimezone(issue.option)
+    case 'invalidPort':
+      return texts.invalidPort(issue.option)
+    case 'installationOnly':
+      return texts.installationOnly(issue.option)
     default:
       return catalog.errors.settings[issue.code](issue.option)
   }

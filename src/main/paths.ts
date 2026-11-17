@@ -17,6 +17,10 @@ export interface DataLayout {
   readonly legacyAccountDir: string
   /** The QR of the first versions lived at the root. A pairing credential: deleted when found. */
   readonly legacyQrFile: string
+  /** The access token of the local web (RNF-03), generated once per installation. A secret: mode 0600, never logged. */
+  readonly webTokenFile: string
+  /** Where the running daemon's web really listens (host and port as bound). Exists only while it does: see `web-address.ts`. */
+  readonly webAddressFile: string
 }
 
 /** Everything that belongs to ONE account. Deleting `dir` deletes the account (RF-03). */
@@ -72,6 +76,8 @@ export function layoutOf(dataDir: string): DataLayout {
     lockFile: join(dataDir, 'daemon.pid'),
     legacyAccountDir: join(dataDir, 'account'),
     legacyQrFile: join(dataDir, 'qr.png'),
+    webTokenFile: join(dataDir, 'web-token'),
+    webAddressFile: join(dataDir, 'web.json'),
   }
 }
 

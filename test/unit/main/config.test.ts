@@ -49,6 +49,7 @@ describe('parseConfig defaults', () => {
         claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: 180_000 },
         ollama: { baseUrl: 'http://127.0.0.1:11434', model: null, numCtx: 16384, keepAlive: '1m', timeoutMs: 180_000 },
       },
+      web: { enabled: true, host: '127.0.0.1', port: 8787 },
     })
   })
 
@@ -185,6 +186,39 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
       'timezone',
       'concurrency',
     ])
+  })
+})
+
+describe('the web section (RNF-03)', () => {
+  it('is on, on 127.0.0.1:8787, unless the file says otherwise', () => {
+    const result = parse({ web: { enabled: false, host: '0.0.0.0', port: 9000 } })
+    expect(result.ok && result.value.web).toEqual({ enabled: false, host: '0.0.0.0', port: 9000 })
+    const partial = parse({ web: { port: 1 } })
+    expect(partial.ok && partial.value.web).toEqual({ enabled: true, host: '127.0.0.1', port: 1 })
+  })
+
+  it('refuses a port that is not an integer between 1 and 65535', () => {
+    expect(issuesOf({ web: { port: 0 } })).toEqual([{ option: 'web.port', code: 'invalidPort' }])
+    expect(issuesOf({ web: { port: 65536 } })).toEqual([{ option: 'web.port', code: 'invalidPort' }])
+    expect(issuesOf({ web: { port: 80.5 } })).toEqual([{ option: 'web.port', code: 'notInteger' }])
+    expect(issuesOf({ web: { port: '8787' } })).toEqual([{ option: 'web.port', code: 'notNumber' }])
+    expect(parse({ web: { port: 65535 } }).ok).toBe(true)
+  })
+
+  it('refuses a host or a flag of the wrong type, an unknown key and a section that is not an object', () => {
+    expect(issuesOf({ web: { host: 5 } })).toEqual([{ option: 'web.host', code: 'notString' }])
+    expect(issuesOf({ web: { host: '' } })).toEqual([{ option: 'web.host', code: 'emptyString' }])
+    expect(issuesOf({ web: { enabled: 'yes' } })).toEqual([{ option: 'web.enabled', code: 'notBoolean' }])
+    expect(issuesOf({ web: { token: 'x' } })).toEqual([{ option: 'web.token', code: 'unknownOption' }])
+    expect(issuesOf({ web: 'on' })).toEqual([{ option: 'web', code: 'notObject' }])
+  })
+
+  it('describes the new issues in both languages, naming the option', () => {
+    for (const language of ['es', 'en'] as const) {
+      const catalog = getCatalog(language)
+      expect(describeConfigIssue(catalog, { option: 'web.port', code: 'invalidPort' })).toContain('web.port')
+      expect(describeConfigIssue(catalog, { option: 'web', code: 'installationOnly' })).toContain('web')
+    }
   })
 })
 
@@ -408,6 +442,19 @@ describe('loadEffectiveConfig', () => {
     const weakening = setup('{"localOnlyPatterns":["bank"]}', '{"localOnlyPatterns":null}')
     const rejected = await loadEffectiveConfig(weakening.rootFile, weakening.accountFile, BA)
     expect(rejected.ok).toBe(false)
+  })
+
+  it('rejects a web section in an account file, naming that file, and accepts it in the installation one', async () => {
+    const found = setup('{"web":{"port":9000}}', '{"web":{"port":9001}}')
+    expect(await loadEffectiveConfig(found.rootFile, found.accountFile, BA)).toEqual({
+      ok: false,
+      error: [{ option: 'web', code: 'installationOnly', file: found.accountFile }],
+    })
+    const fine = setup('{"web":{"port":9000}}', '{"language":"en"}')
+    const result = await loadEffectiveConfig(fine.rootFile, fine.accountFile, BA)
+    expect(result.ok && result.value.web.port).toBe(9000)
+    // without an account file, the installation's own web section is the one read
+    expect((await loadEffectiveConfig(fine.rootFile, null, BA)).ok).toBe(true)
   })
 
   it('reports a file that is not JSON, or not an object, with its name', async () => {

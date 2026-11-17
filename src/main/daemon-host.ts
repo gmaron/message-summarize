@@ -41,6 +41,15 @@ export interface DaemonHostTiming {
   readonly unitMaxFailures?: number
 }
 
+/** What the host says about the connection of one account, in memory (the web shows it live). */
+export interface AccountState {
+  readonly state: UnitState
+  /** Epoch ms of the last change of state. */
+  readonly since: number
+  /** Why the account is blocked, when its state is `blocked`. */
+  readonly blockedReason: BlockedReason | null
+}
+
 export interface DaemonHostOptions {
   readonly ctx: CommandContext
   /** Open for as long as the host runs: the registry and the schedules are read on every poll. */
@@ -124,6 +133,8 @@ export class DaemonHost {
   private again = false
   private stopping: Promise<void> | null = null
   private finish: (code: number) => void = () => {}
+  private readonly changeListeners = new Set<() => void>()
+  private changeQueued = false
   /** Resolves (with exit code 0) once the daemon has stopped. */
   readonly finished: Promise<number> = new Promise((resolve) => {
     this.finish = resolve
@@ -151,6 +162,40 @@ export class DaemonHost {
   /** The `Daemon` of an account that has a unit, for diagnostics and tests. */
   daemonOf(id: string): Daemon | undefined {
     return this.units.get(id)?.daemon
+  }
+
+  /** The state of an account as the host holds it now, or null when the host has not looked at the account yet. */
+  accountState(id: string): AccountState | null {
+    const entry = this.states.get(id)
+    if (entry === undefined) return null
+    const blocked = entry.state === 'blocked' ? (this.blocks.get(id)?.reason ?? null) : null
+    return { state: entry.state, since: entry.since, blockedReason: blocked }
+  }
+
+  /**
+   * Calls `listener` after any account changes state (or gets blocked). Several changes in the same tick make one call,
+   * made after they all happened, so what `accountState` says is the settled picture. Returns the way to stop listening.
+   */
+  onChange(listener: () => void): () => void {
+    this.changeListeners.add(listener)
+    return () => {
+      this.changeListeners.delete(listener)
+    }
+  }
+
+  private notifyChange(): void {
+    if (this.changeQueued || this.changeListeners.size === 0) return
+    this.changeQueued = true
+    queueMicrotask(() => {
+      this.changeQueued = false
+      for (const listener of [...this.changeListeners]) {
+        try {
+          listener()
+        } catch (error) {
+          this.ctx.logger.error('daemon.listenerFailed', { code: errorCode(error) })
+        }
+      }
+    })
   }
 
   /** The ids of the accounts that have a unit running (or idling because they are blocked). */
@@ -303,6 +348,7 @@ export class DaemonHost {
     }
     this.states.set(id, entry)
     this.writeState(id, entry)
+    this.notifyChange()
   }
 
   /**
@@ -489,6 +535,7 @@ export class DaemonHost {
    */
   private async blockAccount(id: string, reason: BlockedReason): Promise<void> {
     this.blocks.set(id, { reason, persisted: false, warned: false })
+    this.notifyChange()
     this.setIdle(id, `blocked:${reason}`, 'blocked', reason)
     await this.persistBlock(id)
   }
@@ -500,6 +547,7 @@ export class DaemonHost {
    */
   private blockUnit(id: string, reason: BlockedReason): void {
     this.blocks.set(id, { reason, persisted: false, warned: false })
+    this.notifyChange()
     const release = Promise.resolve()
       .then(async () => {
         await this.stopUnit(id, 'blocked')

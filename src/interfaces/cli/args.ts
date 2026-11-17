@@ -50,6 +50,8 @@ export type Command =
   | ({ readonly name: 'retry' } & AccountArg)
   | ({ readonly name: 'import' } & ImportArgs)
   | { readonly name: 'accounts' }
+  /** `msum open [--print]`: the web in the browser; `print` only prints the address. */
+  | { readonly name: 'open'; readonly print: boolean }
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
       readonly name: 'schedule'
@@ -86,6 +88,7 @@ const COMMANDS = [
   'schedule',
   'retry',
   'import',
+  'open',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -97,6 +100,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   doctor: ['account'],
   retry: ['account'],
   schedule: ['account', 'time', 'days'],
+  open: ['print', 'no-browser'],
   import: ['from', 'account', 'instance', 'all', 'yes', 'schedule', 'data', 'session-only', 'force'],
 }
 
@@ -117,6 +121,8 @@ const OPTIONS = {
   data: { type: 'string' },
   'session-only': { type: 'boolean' },
   force: { type: 'boolean' },
+  print: { type: 'boolean' },
+  'no-browser': { type: 'boolean' },
 } as const
 
 /** The "--name" a node:util error message talks about. */
@@ -195,6 +201,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       return parseSchedule(rest, values, account)
     case 'import':
       return parseImport(values, account)
+    case 'open':
+      return ok({ name: 'open', print: values.print === true || values['no-browser'] === true })
     case 'link':
     case 'status':
     case 'doctor':

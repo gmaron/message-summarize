@@ -12,7 +12,12 @@ import type {
 } from '../../src/infrastructure/whatsapp/connection.js'
 import { openInstallation } from '../../src/main/accounts.js'
 import { type AppConfig, parseConfig } from '../../src/main/config.js'
-import { type CommandContext, DEFAULT_LINK_TIMING, type DoctorProbes } from '../../src/main/context.js'
+import {
+  type CommandContext,
+  DEFAULT_LINK_TIMING,
+  type DoctorProbes,
+  type WebOverrides,
+} from '../../src/main/context.js'
 import { createLogger } from '../../src/main/logger.js'
 import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/paths.js'
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
@@ -119,6 +124,10 @@ export interface HarnessOptions {
   readonly stdoutLogs?: boolean
   /** The accounts that exist before the command runs (directories and records). Default: just "default". */
   readonly accounts?: readonly string[]
+  /** How the daemon starts the web. Default: a free port on 127.0.0.1 (never the configured one: tests run in parallel). */
+  readonly web?: WebOverrides
+  /** What opening the browser does. Default: it succeeds. */
+  readonly openUrl?: (url: string) => Promise<void>
 }
 
 export const BASE_CONFIG = {
@@ -143,6 +152,8 @@ export interface Harness {
   /** Everything the structured logger wrote, as one string per line (stdout and stderr together). */
   readonly logs: string[]
   readonly questions: string[]
+  /** The addresses `msum open` asked the browser to open. */
+  readonly browserOpened: string[]
   readonly clock: { time: number; now(): number }
   /** The validated configuration the harness wrote (defaults applied). */
   config(): AppConfig
@@ -179,6 +190,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   const err: string[] = []
   const logs: string[] = []
   const questions: string[] = []
+  const browserOpened: string[] = []
   const clock = { time: options.now ?? NOW, now: () => (options.liveClock === true ? Date.now() : clock.time) }
   const connection = new FakeConnection()
   const summarizer = new FakeSummarizer()
@@ -207,6 +219,11 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
       ollamaReachable: async () => true,
       ...options.probes,
     },
+    openUrl: async (url) => {
+      browserOpened.push(url)
+      await options.openUrl?.(url)
+    },
+    web: { host: '127.0.0.1', port: 0, ...options.web },
     nodeVersion: '22.16.0',
     linkTiming: {
       ...DEFAULT_LINK_TIMING,
@@ -236,6 +253,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     err,
     logs,
     questions,
+    browserOpened,
     clock,
     config: parsed,
     runtime: (id) =>

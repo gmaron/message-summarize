@@ -39,6 +39,16 @@ export interface DoctorProbes {
   ollamaReachable(baseUrl: string): Promise<boolean>
 }
 
+/** What the daemon uses to start the local web, over the configuration. For tests: they ask for a free port. */
+export interface WebOverrides {
+  readonly host?: string
+  /** 0 asks the system for a free port. */
+  readonly port?: number
+  /** Where the built web is. Default: `web/` next to the compiled code. */
+  readonly staticDir?: string
+  readonly heartbeatMs?: number
+}
+
 /** Everything the commands need from the outside. The composition root builds it; tests build their own. */
 export interface CommandContext {
   readonly env: NodeJS.ProcessEnv
@@ -52,6 +62,8 @@ export interface CommandContext {
   /** Resolves when the process is asked to stop (SIGINT, SIGTERM). */
   waitForShutdown(): Promise<void>
   readonly probes: DoctorProbes
+  /** Opens an address in the user's browser (`msum open`). Tests replace it: nothing is spawned. */
+  openUrl(url: string): Promise<void>
   readonly nodeVersion: string
   readonly linkTiming: LinkTiming
   /** Replaces the configured providers. For tests. */
@@ -60,6 +72,7 @@ export interface CommandContext {
   readonly afterLock?: () => void | Promise<void>
   /** Called after each step of an import (session, database, config, built, renamed). For tests: they interrupt it. */
   readonly afterImportStep?: (step: 'session' | 'database' | 'config' | 'built' | 'renamed') => void | Promise<void>
+  readonly web?: WebOverrides
   readonly daemonTiming?: {
     readonly heartbeatMs?: number
     readonly sweepMs?: number

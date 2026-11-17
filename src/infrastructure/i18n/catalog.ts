@@ -17,6 +17,16 @@ export type BlockedReason =
   | 'mismatch'
   | 'noAccount'
 
+/** The codes of the errors the local web answers with (`{ "error": code }`): the web shows the text of each. */
+export type WebErrorCode =
+  | 'unauthorized'
+  | 'forbidden'
+  | 'notFound'
+  | 'methodNotAllowed'
+  | 'payloadTooLarge'
+  | 'invalidJson'
+  | 'internal'
+
 /** The signs that the previous tool is running (see `legacyLiveSignals`). */
 export type ImportLiveSignal = 'wal' | 'shm' | 'recentWrite' | 'recentSession'
 
@@ -120,6 +130,12 @@ export interface Catalog {
     failedChats(count: number): string
   }
 
+  /** Texts of the local web: the page shown while it is not built, and the errors of its API. */
+  readonly web: {
+    readonly notBuilt: { readonly title: string; readonly message: string }
+    readonly errors: Readonly<Record<WebErrorCode, string>>
+  }
+
   readonly errors: {
     /** One message per issue code; each names the option and the reason (RF-73). */
     readonly settings: Readonly<Record<SettingsIssueCode, (option: string) => string>>
@@ -154,6 +170,9 @@ export interface Catalog {
       notOneOf(option: string, allowed: string): string
       required(option: string): string
       invalidTimezone(option: string): string
+      invalidPort(option: string): string
+      /** An option of the installation's config.json that an account's file cannot set. */
+      installationOnly(option: string): string
       readonly noProvider: string
       promptFile(path: string): string
     }
@@ -223,6 +242,23 @@ export interface Catalog {
       readonly stopped: string
       /** The daemon is idle because the account is blocked: `reason` is already translated. */
       blocked(reason: string): string
+    }
+    /** The local web (RF-82, RNF-03). */
+    readonly web: {
+      listening(host: string, port: number): string
+      /** The web could not start (`code` is a system error code); the accounts keep running. */
+      failed(host: string, port: number, code: string): string
+      /** The web listens beyond this machine: anyone who can reach it and has the token sees every chat. */
+      exposed(host: string): string
+    }
+    /** `msum open`. */
+    readonly open: {
+      readonly daemonNotRunning: string
+      /** The daemon runs but its web does not listen (it is off, or it could not start). */
+      readonly webNotListening: string
+      /** The URL with the token: it is a secret, so it is printed only to the terminal of the user. */
+      url(url: string): string
+      openFailed(code: string): string
     }
     /** Why the daemon stopped working with the account, and what to do about it. */
     readonly blockedReasons: Readonly<Record<BlockedReason, (id: string) => string>>

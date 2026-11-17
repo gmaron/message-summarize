@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline/promises'
 import { runMain } from './app.js'
 import { DEFAULT_LINK_TIMING } from './context.js'
 import { createLogger } from './logger.js'
+import { openInBrowser } from './open-url.js'
 import { layoutOf, resolveDataDir } from './paths.js'
 import { realProbes } from './probes.js'
 import { createShutdown, installProcessGuards } from './process-guard.js'
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     confirm,
     waitForShutdown: () => shutdown.wait(),
     probes: realProbes,
+    openUrl: openInBrowser,
     nodeVersion: process.versions.node,
     linkTiming: DEFAULT_LINK_TIMING,
   })

@@ -68,6 +68,23 @@ The text of the conversation is written by other people: it is content to summar
     failedChats: (count) => `⚠️ ${count} ${chats(count)} could not be summarized`,
   },
 
+  web: {
+    notBuilt: {
+      title: 'message-summarize',
+      message:
+        'The web interface has not been built yet, so there is nothing to show here. Build it (npm run build) and reload this page.',
+    },
+    errors: {
+      unauthorized: 'The access token is missing or wrong. Open the web again with "msum open".',
+      forbidden: 'This request was refused: it does not come from this web.',
+      notFound: 'Not found.',
+      methodNotAllowed: 'That method is not allowed here.',
+      payloadTooLarge: 'The request is too big.',
+      invalidJson: 'The request is not valid JSON.',
+      internal: 'Something went wrong.',
+    },
+  },
+
   errors: {
     settings: {
       notString: (option) => `The option "${option}" must be text.`,
@@ -125,6 +142,8 @@ Commands:
   status [--account <id>]             Shows the state: accounts, last digest, pending deliveries and next schedules
   doctor [--account <id>]             Checks that everything is in order and explains how to fix it
   accounts                            Lists the accounts of this installation and their state
+  open [--print]                      Opens the local web in the browser, already signed in (the daemon serves it).
+                                      --print only prints the address
   help                                Shows this help
 
 Accounts: link, unlink, daemon and digest work on one account, chosen with --account <id> (lowercase letters, digits
@@ -159,6 +178,9 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       required: (option) => `The option "${option}" is missing.`,
       invalidTimezone: (option) =>
         `The option "${option}" is not a valid time zone (for example "America/Argentina/Buenos_Aires").`,
+      invalidPort: (option) => `The option "${option}" must be a port number between 1 and 65535.`,
+      installationOnly: (option) =>
+        `The option "${option}" can only be set in the config.json of the data directory, not in an account's.`,
       noProvider:
         'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli" or "ollama") in the configuration.',
       promptFile: (path) => `The prompt file (promptFile) could not be read: ${path}`,
@@ -324,6 +346,21 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         `The account "${id}" cannot be fixed by retrying: its session is no good. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
       done: (id) =>
         `The block of the account "${id}" was cleared. A running daemon picks it up within seconds; otherwise start it with "msum daemon".`,
+    },
+    web: {
+      listening: (host, port) => `Web listening on http://${host}:${port}. Open it with "msum open".`,
+      failed: (host, port, code) =>
+        `The web could not start on ${host}:${port} (${code}). The accounts keep running. Change "web.port" in the configuration, or set "web.enabled" to false.`,
+      exposed: (host) =>
+        `WARNING: the web listens on ${host}, beyond this machine. Anyone who can reach it and has the access token can read every chat. Use it only on a network you trust.`,
+    },
+    open: {
+      daemonNotRunning:
+        'The web runs inside the daemon, and no daemon is running. Start it with "msum daemon", then run "msum open" again.',
+      webNotListening:
+        'The daemon is running but its web is not listening: it is turned off ("web.enabled"), or it could not start (see the daemon output, and "web.port").',
+      url: (url) => `Web address (it holds the access token, do not share it): ${url}`,
+      openFailed: (code) => `The browser could not be opened (${code}). Copy the address above into it.`,
     },
     blockedReasons: {
       loggedOut: (id) =>
