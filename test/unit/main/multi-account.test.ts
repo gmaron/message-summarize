@@ -27,6 +27,7 @@ import {
   NOW,
   OTHER,
   seedMessages,
+  waitFor,
 } from '../../support/cli-harness.js'
 
 afterEach(() => {
@@ -519,7 +520,7 @@ describe('msum daemon with accounts', () => {
     link(h, 'beta', ME)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon', '--account', 'beta')
-    await vi.waitFor(() => expect(text(h.out)).toContain('Daemon running'))
+    await waitFor(() => expect(text(h.out)).toContain('Daemon running'))
     expect(existsSync(h.layout.lockFile)).toBe(true)
     h.shutdown()
     expect(await finished).toBe(0)
@@ -531,7 +532,7 @@ describe('msum daemon with accounts', () => {
     const h = await makeHarness({ config: CONFIG, accounts: ['alpha', 'beta'] })
     link(h, 'alpha', ME)
     const finished = run(h, 'daemon', '--account', 'beta')
-    await vi.waitFor(() => expect(text(h.err)).toContain('No account is linked'))
+    await waitFor(() => expect(text(h.err)).toContain('No account is linked'))
     expect(JSON.parse(readFileSync(h.accountOf('beta').blockedFile, 'utf8')).reason).toBe('notLinked')
     expect(existsSync(h.accountOf('alpha').blockedFile)).toBe(false)
     h.shutdown()
@@ -553,7 +554,7 @@ describe('msum daemon with accounts', () => {
     renameSync(h.accountOf('default').dir, h.layout.legacyAccountDir)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(text(h.out)).toContain('Daemon running'))
+    await waitFor(() => expect(text(h.out)).toContain('Daemon running'))
     expect(existsSync(h.layout.legacyAccountDir)).toBe(false)
     expect(existsSync(h.accountOf('default').dbFile)).toBe(true)
     h.shutdown()
@@ -661,8 +662,10 @@ describe('RF-51 holds per account', () => {
     h.connection.user = { id: OTHER }
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon', '--account', 'alpha')
-    await vi.waitFor(() => expect(existsSync(h.accountOf('alpha').blockedFile)).toBe(true))
-    expect(JSON.parse(readFileSync(h.accountOf('alpha').blockedFile, 'utf8')).reason).toBe('mismatch')
+    // the file exists a moment before its content is complete: wait for the content
+    await waitFor(() =>
+      expect(JSON.parse(readFileSync(h.accountOf('alpha').blockedFile, 'utf8')).reason).toBe('mismatch'),
+    )
     expect(h.connection.sent).toEqual([])
     expect(existsSync(h.accountOf('beta').blockedFile)).toBe(false)
     h.shutdown()

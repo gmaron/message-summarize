@@ -164,6 +164,7 @@ describe('runCli', () => {
     status: handler('status'),
     doctor: handler('doctor'),
     accounts: handler('accounts'),
+    schedule: handler('schedule'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {
@@ -201,6 +202,9 @@ describe('runCli', () => {
       'invalidNumber',
       'invalidDate',
       'invalidAccountId',
+      'unknownSubcommand',
+      'invalidTime',
+      'invalidDays',
     ] as const
     for (const language of ['es', 'en'] as const) {
       for (const kind of kinds) {

@@ -66,7 +66,7 @@ describe('app.db', () => {
       expect(currentVersion(db as never)).toBe(APP_MIGRATIONS.length)
       expect((db.prepare('PRAGMA journal_mode').get() as { journal_mode: string }).journal_mode).toBe('wal')
       const columns = db.prepare('PRAGMA table_info(accounts)').all() as { name: string }[]
-      expect(columns.map((c) => c.name)).toEqual(['id', 'platform', 'created_at'])
+      expect(columns.map((c) => c.name)).toEqual(['id', 'platform', 'created_at', 'schedules_imported'])
     } finally {
       db.close()
     }
@@ -102,7 +102,7 @@ describe('app.db', () => {
       for (const id of ['../x', 'A', '', 'a/b']) expect(() => registry.register(id)).toThrow('invalid account id')
       // a row written by hand (or by something else) with an id that would be a path
       db.exec(
-        "INSERT INTO accounts VALUES ('../escape', 'whatsapp', 'x'), ('ok', 'whatsapp', 'x'), ('odd', 'sms', 'x')",
+        "INSERT INTO accounts (id, platform, created_at) VALUES ('../escape', 'whatsapp', 'x'), ('ok', 'whatsapp', 'x'), ('odd', 'sms', 'x')",
       )
       expect(registry.list().map((r) => r.id)).toEqual(['ok'])
       expect(registry.invalidIds()).toEqual(['../escape', 'odd'])
@@ -219,7 +219,7 @@ describe('openInstallation: reconciling app.db with accounts/', () => {
     const first = await open(layout)
     first.close()
     const db = new DatabaseSync(layout.appDbFile)
-    db.exec("INSERT INTO accounts VALUES ('../escape', 'whatsapp', 'x')")
+    db.exec("INSERT INTO accounts (id, platform, created_at) VALUES ('../escape', 'whatsapp', 'x')")
     db.close()
     const installation = await open(layout)
     try {

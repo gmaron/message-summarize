@@ -1,6 +1,9 @@
 import type { Catalog } from '../../infrastructure/i18n/index.js'
 import { type AccountArg, type ArgError, type Command, type DigestArgs, parseCommandLine } from './args.js'
 
+/** The `schedule` command with its subcommand. */
+export type ScheduleCommand = Extract<Command, { name: 'schedule' }>
+
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
   out(line: string): void
@@ -17,6 +20,7 @@ export interface CliHandlers {
   status(args: AccountArg): Promise<number>
   doctor(args: AccountArg): Promise<number>
   accounts(): Promise<number>
+  schedule(command: ScheduleCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -41,6 +45,12 @@ export function describeArgError(texts: Catalog['cli'], error: ArgError): string
       return messages.invalidDate(error.value)
     case 'invalidAccountId':
       return messages.invalidAccountId(error.value)
+    case 'unknownSubcommand':
+      return messages.unknownSubcommand(error.value)
+    case 'invalidTime':
+      return messages.invalidTime(error.value)
+    case 'invalidDays':
+      return messages.invalidDays(error.value)
   }
 }
 
@@ -62,6 +72,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.doctor({ account: command.account })
     case 'accounts':
       return handlers.accounts()
+    case 'schedule':
+      return handlers.schedule(command)
   }
 }
 

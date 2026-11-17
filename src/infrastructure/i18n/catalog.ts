@@ -97,6 +97,9 @@ export interface Catalog {
       invalidNumber(option: string): string
       invalidDate(option: string): string
       invalidAccountId(value: string): string
+      unknownSubcommand(value: string): string
+      invalidTime(value: string): string
+      invalidDays(value: string): string
     }
     /** Problems of config.json that the digest settings do not cover (RF-73). */
     readonly config: {
@@ -108,7 +111,6 @@ export interface Catalog {
       notOneOf(option: string, allowed: string): string
       required(option: string): string
       invalidTimezone(option: string): string
-      invalidCron(option: string): string
       readonly noProvider: string
       promptFile(path: string): string
     }
@@ -148,6 +150,8 @@ export interface Catalog {
       readonly connected: string
       readonly receivingHistory: string
       done(account: string): string
+      /** Printed after a successful link when the account has no schedule yet. */
+      readonly scheduleHint: string
       mismatch(id: string): string
       loggedOut(id: string): string
       failed(reason: string): string
@@ -176,6 +180,20 @@ export interface Catalog {
       /** What to tell the user about each window error, naming the flags of the CLI. */
       readonly flagHint: Readonly<Record<WindowError, string>>
     }
+    /** `msum schedule` (RF-60..62). */
+    readonly schedule: {
+      /** Short name of a day, 0 being Sunday. */
+      dayName(day: number): string
+      readonly everyDay: string
+      readonly workdays: string
+      readonly weekend: string
+      /** `next` is already formatted in the time zone of the account. */
+      row(id: number, days: string, time: string, next: string | null): string
+      readonly empty: string
+      added(id: number, days: string, time: string, next: string | null): string
+      removed(id: number): string
+      notFound(id: number): string
+    }
     readonly status: {
       dataDir(path: string): string
       account(id: string, masked: string | null): string
@@ -188,11 +206,15 @@ export interface Catalog {
       /** Shown when the account is blocked: `reason` is already translated, `when` formatted. */
       blocked(reason: string, when: string): string
       readonly noSchedules: string
-      schedule(expression: string, next: string | null): string
+      /** There are schedules and no provider to run them. */
+      readonly schedulesNoProvider: string
+      schedule(id: number, days: string, time: string, next: string | null): string
     }
     readonly doctor: {
       readonly title: string
       ok(name: string, detail: string): string
+      /** A warning does not make `doctor` fail. */
+      warn(name: string, detail: string, fix: string): string
       fail(name: string, detail: string, fix: string): string
       readonly names: {
         readonly node: string
@@ -201,7 +223,16 @@ export interface Catalog {
         readonly provider: string
         readonly whatsapp: string
         readonly accounts: string
+        readonly schedules: string
       }
+      schedulesOk(count: number): string
+      readonly schedulesNone: string
+      readonly schedulesNoneFix: string
+      readonly schedulesNoProvider: string
+      schedulesNotImported(expressions: string): string
+      readonly schedulesNotImportedFix: string
+      readonly schedulesIgnored: string
+      readonly schedulesIgnoredFix: string
       /** Names a check of one account when several are checked. */
       accountName(name: string, id: string): string
       accountsOk(count: number): string

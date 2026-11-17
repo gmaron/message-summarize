@@ -98,7 +98,9 @@ describe('parseConfig defaults', () => {
       // RF-41: no default provider, `init` leaves the choice to the user
       expect(result.value.provider.primary).toBeNull()
       expect(result.value.provider.backup).toBeNull()
-      expect(result.value.schedules).toEqual(['0 7 * * *', '0 19 * * *'])
+      // the times of the digests are set with `msum schedule add`: a new installation starts with none
+      expect(result.value.schedules).toEqual([])
+      expect(JSON.parse(defaultConfigJson(BA))).not.toHaveProperty('schedules')
     }
   })
 })
@@ -136,11 +138,9 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
     expect(issuesOf({ timezone: 3 })).toEqual([{ option: 'timezone', code: 'notString' }])
   })
 
-  it('reports each invalid cron expression with its position', () => {
-    expect(issuesOf({ schedules: ['0 7 * * *', 'every day', '99 * * * *'] })).toEqual([
-      { option: 'schedules[1]', code: 'invalidCron' },
-      { option: 'schedules[2]', code: 'invalidCron' },
-    ])
+  it('accepts any list of texts as schedules: it is only imported once, doctor lists what cannot be imported', () => {
+    const result = parse({ schedules: ['0 7 * * *', 'every day', '99 * * * *', '*/5 * * * *'] })
+    expect(result.ok && result.value.schedules).toEqual(['0 7 * * *', 'every day', '99 * * * *', '*/5 * * * *'])
     expect(issuesOf({ schedules: 'daily' })).toEqual([{ option: 'schedules', code: 'notArray' }])
     expect(issuesOf({ schedules: [7] })).toEqual([{ option: 'schedules', code: 'notStringList' }])
   })
@@ -196,7 +196,6 @@ describe('describeConfigIssue', () => {
       { option: 'language', code: 'notOneOf', allowed: ['es', 'en'] },
       { option: 'provider.primary', code: 'required' },
       { option: 'timezone', code: 'invalidTimezone' },
-      { option: 'schedules[0]', code: 'invalidCron' },
       { option: 'concurrency', code: 'notPositive' },
     ]
     for (const language of ['es', 'en'] as const) {

@@ -1,6 +1,8 @@
 import { parseArgs as nodeParseArgs } from 'node:util'
 import { isValidAccountId } from '../../domain/account-id.js'
 import { err, ok, type Result } from '../../domain/result.js'
+import { formatTime, parseTime, type Weekday } from '../../domain/schedule.js'
+import { parseDaysSpec } from './days.js'
 import { type LocalDateTime, parseLocalDateTime } from './local-time.js'
 
 /** `--account <id>`: null when the user gave none (the command then picks the only account, or asks). */
@@ -27,6 +29,15 @@ export type Command =
   | ({ readonly name: 'status' } & AccountArg)
   | ({ readonly name: 'doctor' } & AccountArg)
   | { readonly name: 'accounts' }
+  | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
+  | ({
+      readonly name: 'schedule'
+      readonly action: 'add'
+      readonly days: readonly Weekday[]
+      /** "HH:MM". */
+      readonly time: string
+    } & AccountArg)
+  | ({ readonly name: 'schedule'; readonly action: 'rm'; readonly id: number } & AccountArg)
 
 /** Why the arguments are wrong. Codes with the offending text: `cli.argErrors` explains each one. */
 export type ArgError =
@@ -37,8 +48,11 @@ export type ArgError =
   | { readonly kind: 'invalidNumber'; readonly value: string }
   | { readonly kind: 'invalidDate'; readonly value: string }
   | { readonly kind: 'invalidAccountId'; readonly value: string }
+  | { readonly kind: 'unknownSubcommand'; readonly value: string }
+  | { readonly kind: 'invalidTime'; readonly value: string }
+  | { readonly kind: 'invalidDays'; readonly value: string }
 
-const COMMANDS = ['init', 'link', 'unlink', 'daemon', 'digest', 'status', 'doctor', 'accounts'] as const
+const COMMANDS = ['init', 'link', 'unlink', 'daemon', 'digest', 'status', 'doctor', 'accounts', 'schedule'] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
   link: ['account'],
@@ -47,6 +61,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   digest: ['dry-run', 'from', 'to', 'hours', 'account'],
   status: ['account'],
   doctor: ['account'],
+  schedule: ['account', 'time', 'days'],
 }
 
 const OPTIONS = {
@@ -58,6 +73,8 @@ const OPTIONS = {
   to: { type: 'string' },
   hours: { type: 'string' },
   account: { type: 'string' },
+  time: { type: 'string' },
+  days: { type: 'string' },
 } as const
 
 /** The "--name" a node:util error message talks about. */
@@ -83,9 +100,15 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
 
   if (values.help || command === undefined || command === 'help') return ok({ name: 'help' })
   if (!(COMMANDS as readonly string[]).includes(command)) return err({ kind: 'unknownCommand', value: command })
-  if (rest.length > 0) return err({ kind: 'unexpectedArgument', value: rest[0] as string })
+  // `schedule` has a subcommand (and `rm` an id); the other commands take no positional arguments.
+  if (command !== 'schedule' && rest.length > 0) return err({ kind: 'unexpectedArgument', value: rest[0] as string })
 
-  const accepted = FLAGS[command] ?? []
+  const accepted =
+    command === 'schedule'
+      ? (FLAGS.schedule ?? []).filter(
+          (flag) => flag === 'account' || (rest[0] === 'add' && ['time', 'days'].includes(flag)),
+        )
+      : (FLAGS[command] ?? [])
   for (const flag of Object.keys(values)) {
     if (flag !== 'help' && !accepted.includes(flag)) return err({ kind: 'unknownOption', value: `--${flag}` })
   }
@@ -126,6 +149,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
         account,
       })
     }
+    case 'schedule':
+      return parseSchedule(rest, values, account)
     case 'link':
     case 'status':
     case 'doctor':
@@ -133,4 +158,30 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     default:
       return ok({ name: command as 'init' | 'accounts' })
   }
+}
+
+/** `msum schedule [ls|add|rm]`: the subcommand, and its arguments validated. */
+function parseSchedule(
+  rest: readonly string[],
+  values: { readonly time?: string | undefined; readonly days?: string | undefined },
+  account: string | null,
+): Result<Command, ArgError> {
+  const [action = 'ls', ...more] = rest
+  if (action !== 'ls' && action !== 'add' && action !== 'rm') return err({ kind: 'unknownSubcommand', value: action })
+  if (action === 'rm') {
+    const [idText, ...extra] = more
+    if (idText === undefined) return err({ kind: 'missingValue', value: '<id>' })
+    if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: extra[0] as string })
+    const id = /^\d+$/.test(idText) ? Number(idText) : Number.NaN
+    if (!Number.isSafeInteger(id) || id <= 0) return err({ kind: 'invalidNumber', value: '<id>' })
+    return ok({ name: 'schedule', action: 'rm', id, account })
+  }
+  if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
+  if (action === 'ls') return ok({ name: 'schedule', action: 'ls', account })
+  if (values.time === undefined) return err({ kind: 'missingValue', value: '--time' })
+  const time = parseTime(values.time)
+  if (time === null) return err({ kind: 'invalidTime', value: values.time })
+  const days = values.days === undefined ? parseDaysSpec('daily') : parseDaysSpec(values.days)
+  if (days === null) return err({ kind: 'invalidDays', value: values.days ?? '' })
+  return ok({ name: 'schedule', action: 'add', days, time: formatTime(time), account })
 }

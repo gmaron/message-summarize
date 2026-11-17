@@ -61,6 +61,7 @@ export interface CommandContext {
     readonly sweepMs?: number
     readonly missedRunDelayMs?: number
     readonly shutdownGraceMs?: number
+    readonly scheduleReloadMs?: number
   }
 }
 

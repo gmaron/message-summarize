@@ -20,6 +20,8 @@ import {
   OTHER,
   SUMMARY,
   seedMessages,
+  until,
+  waitFor,
 } from '../../support/cli-harness.js'
 
 afterEach(() => {
@@ -66,13 +68,16 @@ describe('msum init', () => {
     const written = JSON.parse(readFileSync(h.layout.configFile, 'utf8'))
     // RF-41: no default provider
     expect(written.provider.primary).toBeNull()
-    expect(written.schedules).toEqual(['0 7 * * *', '0 19 * * *'])
+    // no schedules are written: they are added with `msum schedule add`
+    expect(written).not.toHaveProperty('schedules')
+    expect(h.out.join('\n')).toContain('msum schedule add')
     expect(h.out.join('\n')).toContain('msum link')
     // it says which time zone it wrote (the system's), and what to do in Docker
     expect(written.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
     expect(h.out.join('\n')).toContain(`Zona horaria: ${written.timezone}`)
     expect(h.out.join('\n')).toContain('en Docker definí TZ o "timezone"')
     // and a daemon refuses to run schedules until the provider is chosen
+    expect(await run(h, 'schedule', 'add', '--time', '07:00')).toBe(0)
     expect(await run(h, 'daemon')).toBe(2)
     expect(h.err.join('\n')).toContain('provider.primary')
     // and the commands accept it
@@ -100,11 +105,11 @@ describe('configuration errors (RF-73)', () => {
   })
 
   it('speaks Spanish when the file says so', async () => {
-    const h = await makeHarness({ config: { language: 'es', schedules: ['nope'] } })
+    const h = await makeHarness({ config: { language: 'es', concurrency: 0 } })
     expect(await run(h, 'status')).toBe(2)
     // status prints every account's block, with the problem inside the block, and exits non-zero at the end
     expect(h.out.join('\n')).toContain('La configuración tiene problemas')
-    expect(h.out.join('\n')).toContain('schedules[0]')
+    expect(h.out.join('\n')).toContain('concurrency')
   })
 
   it('reports a file that is not JSON', async () => {
@@ -394,13 +399,11 @@ describe('msum link', () => {
     h.connection.onStart = async () => {
       h.connection.emit({ state: 'connecting' })
       h.connection.emit({ state: 'qr', qr: 'fake-qr-payload-1' })
-      await flush()
-      await flush()
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      if (existsSync(h.account.qrFile)) {
-        pngMode = statSync(h.account.qrFile).mode & 0o777
-        pngHeader = readFileSync(h.account.qrFile).subarray(1, 4).toString('latin1')
-      }
+      // the QR is written asynchronously: wait until it is there, not for a guessed time
+      // (the file exists, empty and private, before the image is written into it: wait for the image)
+      await until(() => existsSync(h.account.qrFile) && statSync(h.account.qrFile).size > 8, 'the QR image')
+      pngMode = statSync(h.account.qrFile).mode & 0o777
+      pngHeader = readFileSync(h.account.qrFile).subarray(1, 4).toString('latin1')
       h.connection.emit({ state: 'connected' })
     }
     expect(await run(h, 'link')).toBe(0)
@@ -421,27 +424,41 @@ describe('msum link', () => {
 
   it('waits until the history stops arriving', async () => {
     const h = await makeHarness()
-    const started = Date.now()
-    h.connection.onStart = async () => {
+    // A generous quiet window, so a slow machine cannot make the link believe the history is over between two events.
+    const quietMs = 1_000
+    Object.assign(h.ctx, {
+      linkTiming: { ...h.ctx.linkTiming, quietMs, maxAfterConnectMs: 30_000, connectTimeoutMs: 30_000 },
+    })
+    let lastCaptureAt = 0
+    let delivering: Promise<void> = Promise.resolve()
+    h.connection.onStart = () => {
       h.connection.emit({ state: 'connected' })
-      // history keeps arriving for a while through the capture use case
-      for (let i = 0; i < 6; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 15))
-        await h.connection.hooks?.capture?.conversationMetadata({
-          conversation: {
-            id: `c${i}@s.whatsapp.net`,
-            isGroup: false,
-            name: null,
-            participantId: null,
-            address: `c${i}`,
-          },
-        })
-      }
+      // the history keeps arriving AFTER the connection opened, through the capture use case
+      delivering = (async () => {
+        for (let i = 0; i < 6; i++) {
+          await flush()
+          lastCaptureAt = Date.now()
+          await h.connection.hooks?.capture?.conversationMetadata({
+            conversation: {
+              id: `c${i}@s.whatsapp.net`,
+              isGroup: false,
+              name: null,
+              participantId: null,
+              address: `c${i}`,
+            },
+          })
+        }
+      })()
     }
     expect(await run(h, 'link')).toBe(0)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(90)
+    await delivering
+    // it did not stop before the history stopped: it waited a full quiet window after the last event...
+    expect(Date.now() - lastCaptureAt).toBeGreaterThanOrEqual(quietMs)
+    // ...and every conversation of the history was captured
     const runtime = h.runtime()
-    expect(await runtime.repository.findConversation('c5@s.whatsapp.net')).not.toBeNull()
+    for (let i = 0; i < 6; i++) {
+      expect(await runtime.repository.findConversation(`c${i}@s.whatsapp.net`)).not.toBeNull()
+    }
     runtime.close()
   })
 
@@ -519,7 +536,7 @@ describe('msum link', () => {
     const h = await makeHarness()
     h.connection.onStart = async () => {
       h.connection.emit({ state: 'qr', qr: 'fake-qr-payload-2' })
-      await vi.waitFor(() => expect(existsSync(h.account.qrFile)).toBe(true))
+      await waitFor(() => expect(existsSync(h.account.qrFile)).toBe(true))
       h.shutdown()
     }
     expect(await run(h, 'link')).toBe(130)
@@ -565,7 +582,7 @@ describe('msum daemon', () => {
     writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
+    await waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
     expect(existsSync(h.layout.lockFile)).toBe(true)
     h.shutdown()
     expect(await finished).toBe(0)
@@ -578,9 +595,7 @@ describe('msum daemon', () => {
   it('with no account linked it stays idle (marker "notLinked") instead of exiting into a restart loop', async () => {
     const h = await makeHarness()
     const finished = run(h, 'daemon')
-    await vi.waitFor(() =>
-      expect(h.err.join('\n')).toContain('No account is linked. Run "msum link --account default"'),
-    )
+    await waitFor(() => expect(h.err.join('\n')).toContain('No account is linked. Run "msum link --account default"'))
     expect(JSON.parse(readFileSync(h.account.blockedFile, 'utf8')).reason).toBe('notLinked')
     expect(h.connection.calls).toEqual([])
     h.shutdown()
@@ -608,7 +623,15 @@ describe('msum daemon', () => {
     await linkedWithSession(h)
     h.connection.onStart = () => h.connection.emit({ state: 'loggedOut' })
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(h.err.join('\n')).toContain('closed the session from the phone'))
+    await waitFor(() => expect(h.err.join('\n')).toContain('closed the session from the phone'))
+    // the user is told first and the marker is written right after, in parallel with stopping the connection
+    await until(() => {
+      try {
+        return JSON.parse(readFileSync(h.account.blockedFile, 'utf8')).reason === 'loggedOut'
+      } catch {
+        return false // not there yet, or not completely written
+      }
+    }, 'the blocked marker')
     expect(JSON.parse(readFileSync(h.account.blockedFile, 'utf8')).reason).toBe('loggedOut')
     expect(existsSync(h.layout.lockFile)).toBe(true) // alive, holding the lock
     h.shutdown()
@@ -621,7 +644,7 @@ describe('msum daemon', () => {
     await linkedWithSession(h)
     await writeBlocked(h.account.blockedFile, 'replaced', NOW)
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(h.err.join('\n')).toContain('Another session with the same credentials'))
+    await waitFor(() => expect(h.err.join('\n')).toContain('Another session with the same credentials'))
     expect(h.connection.calls).toEqual([])
     expect(h.logs.map((l) => JSON.parse(l).event)).toContain('daemon.blocked')
     h.shutdown()
@@ -634,7 +657,7 @@ describe('msum daemon', () => {
     await writeBlocked(h.account.blockedFile, 'forbidden', NOW)
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon', '--retry')
-    await vi.waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
+    await waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
     expect(h.connection.calls).toContain('start')
     expect(existsSync(h.account.blockedFile)).toBe(false)
     h.shutdown()
@@ -647,7 +670,7 @@ describe('msum daemon', () => {
     writeFileSync(h.account.qrFile, 'stale')
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
+    await waitFor(() => expect(h.out.join('\n')).toContain('Daemon running'))
     expect(existsSync(h.account.qrFile)).toBe(false)
     h.shutdown()
     await finished
@@ -659,10 +682,10 @@ describe('msum daemon', () => {
     Object.assign(h.ctx, { daemonTiming: { heartbeatMs: 10 } })
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     const finished = run(h, 'daemon')
-    await vi.waitFor(() => expect(existsSync(h.layout.lockFile)).toBe(true))
+    await waitFor(() => expect(existsSync(h.layout.lockFile)).toBe(true))
     const old = new Date(Date.now() - 2 * 60 * 60_000)
     utimesSync(h.layout.lockFile, old, old)
-    await vi.waitFor(() => expect(Date.now() - statSync(h.layout.lockFile).mtimeMs).toBeLessThan(5_000))
+    await waitFor(() => expect(Date.now() - statSync(h.layout.lockFile).mtimeMs).toBeLessThan(5_000))
     h.shutdown()
     await finished
   })
@@ -694,8 +717,8 @@ describe('msum status', () => {
       expect(row.slice(0, 20)).toMatch(/^[A-Za-z ]+: *$/)
       expect(row[20]).not.toBe(' ')
     }
-    expect(text).toContain('0 7 * * *')
-    expect(text).toContain('0 19 * * *')
+    expect(text).toMatch(/^Schedule: +#\d+ every day at 07:00 +next: /m)
+    expect(text).toMatch(/^Schedule: +#\d+ every day at 19:00 +next: /m)
     expect(text).not.toContain('CONFIDENTIAL')
     expect(text).not.toContain(SUMMARY.resumen)
   })
@@ -845,7 +868,7 @@ describe('logs never contain message text (RNF-04)', () => {
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })
     writeFileSync(join(h.account.authDir, 'creds.json'), REGISTERED)
     const daemon = run(h, 'daemon')
-    await vi.waitFor(() => expect(h.connection.sent.length).toBeGreaterThan(1))
+    await waitFor(() => expect(h.connection.sent.length).toBeGreaterThan(1))
     h.shutdown()
     await daemon
     // 3. status and doctor

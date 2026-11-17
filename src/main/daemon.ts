@@ -29,6 +29,13 @@ export interface DaemonOptions {
   readonly missedRunDelayMs?: number
   /** Total time a shutdown may take (connection and a digest in progress). Default 7 s: see `DEFAULT_SHUTDOWN_GRACE_MS`. */
   readonly shutdownGraceMs?: number
+  /**
+   * Where the schedules come from, as cron expressions, read again every `scheduleReloadMs` (RF-61). Without it the
+   * daemon runs the `schedules` of the configuration of the runtime and never reloads (the old behavior, for tests).
+   */
+  readonly scheduleSource?: () => readonly string[]
+  /** How often the schedules are read again. Default 5 s. */
+  readonly scheduleReloadMs?: number
   /** Called once when the daemon goes idle because the account cannot be used (for a message to the user). */
   readonly onBlocked?: (reason: BlockedReason) => void
 }
@@ -38,6 +45,7 @@ export type DigestTrigger = 'schedule' | 'missed'
 export type DigestOutcome = 'ran' | 'busy' | 'failed'
 
 export const DEFAULT_SWEEP_MS = 30_000
+export const DEFAULT_SCHEDULE_RELOAD_MS = 5_000
 export const DEFAULT_MISSED_RUN_DELAY_MS = 60_000
 /**
  * The whole shutdown (connection stop plus waiting for a digest in progress) is cut at this time, so the process is
@@ -87,6 +95,9 @@ export class Daemon {
   private readonly missedRunDelayMs: number
   private readonly shutdownGraceMs: number
   private readonly onBlocked: (reason: BlockedReason) => void
+  private readonly scheduleSource: (() => readonly string[]) | null
+  private readonly scheduleReloadMs: number
+  private reloadTimer: ReturnType<typeof setInterval> | null = null
 
   /** True until the account of the live socket was checked against the bound one on this connection. */
   private unverified = true
@@ -115,13 +126,15 @@ export class Daemon {
     this.missedRunDelayMs = options.missedRunDelayMs ?? DEFAULT_MISSED_RUN_DELAY_MS
     this.shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS
     this.onBlocked = options.onBlocked ?? (() => {})
+    this.scheduleSource = options.scheduleSource ?? null
+    this.scheduleReloadMs = options.scheduleReloadMs ?? DEFAULT_SCHEDULE_RELOAD_MS
     this.deliverPending = new DeliverPending(
       options.runtime.outbox,
       new WhatsAppSelfChatDelivery(options.connection, options.runtime.identity),
     )
     this.scheduler = new CronerScheduler({
       timezone: options.runtime.config.timezone,
-      schedules: options.runtime.config.schedules,
+      schedules: options.scheduleSource === undefined ? options.runtime.config.schedules : options.scheduleSource(),
       onTick: (schedule) => this.onTick(schedule),
     })
   }
@@ -147,12 +160,15 @@ export class Daemon {
     }
     this.unsubscribe = this.connection.onStatus((status) => this.onStatus(status))
     this.scheduler.start()
+    if (this.scheduleSource !== null) {
+      this.reloadTimer = setInterval(() => this.reloadSchedules(), this.scheduleReloadMs)
+    }
     this.sweepTimer = setInterval(() => void this.deliver(), this.sweepMs)
     const next = this.scheduler
       .nextRuns(new Date(this.runtime.clock.now()))
       .flatMap(({ next }) => (next === null ? [] : [next.getTime()]))
     this.logger.info('daemon.started', {
-      count: this.runtime.config.schedules.length,
+      count: this.scheduler.count,
       nextRun: next.length === 0 ? null : new Date(Math.min(...next)).toISOString(),
     })
     await this.connection.start()
@@ -209,6 +225,28 @@ export class Daemon {
     } catch (error) {
       this.logger.error('digest.failed', { trigger, code: errorCode(error) })
       return 'failed'
+    }
+  }
+
+  /**
+   * RF-61: reads the schedules again and, only when they changed, swaps the jobs. The digest in progress, the missed
+   * run catch-up and the single-flight guard are untouched: they look at the current set the next time they run.
+   */
+  private reloadSchedules(): void {
+    if (this.scheduleSource === null || this.blockedReason !== null) return
+    try {
+      const found = this.scheduleSource()
+      const current = this.scheduler.expressions
+      if (found.length === current.length && found.every((expression, index) => expression === current[index])) return
+      const hadNone = current.length === 0
+      this.scheduler.replace(found)
+      this.logger.info('schedules.reloaded', { count: this.scheduler.count })
+      // Schedules arrived while nothing can summarize: say so once. The daemon keeps running (capture only is valid).
+      if (hadNone && this.scheduler.count > 0 && this.runtime.generateDigest === null) {
+        this.logger.warn('schedules.noProvider', { count: this.scheduler.count })
+      }
+    } catch (error) {
+      this.logger.error('schedules.reloadFailed', { code: errorCode(error) })
     }
   }
 
@@ -323,6 +361,8 @@ export class Daemon {
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer)
     this.sweepTimer = null
     this.clearCatchUp()
+    if (this.reloadTimer !== null) clearInterval(this.reloadTimer)
+    this.reloadTimer = null
     this.scheduler.stop()
     this.unsubscribe?.()
     this.unsubscribe = null

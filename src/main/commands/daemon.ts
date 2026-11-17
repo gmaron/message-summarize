@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises'
+import { mergeByTime, scheduleToCron } from '../../domain/schedule.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { installationCatalog, isPrepared, prepareAccount } from '../account-command.js'
@@ -58,7 +59,10 @@ export async function daemonCommand(
         }),
       async (runtime) => {
         if (args.retry) await clearBlocked(account.blockedFile)
-        if (config.schedules.length === 0) io.err(texts.daemon.noSchedules)
+        // One job per distinct time, with the union of its days. Read again by the daemon every few seconds (RF-61).
+        const schedulesOf = (): string[] =>
+          mergeByTime(installation.schedules.list(account.id).map((stored) => stored.schedule)).map(scheduleToCron)
+        if (schedulesOf().length === 0) io.err(texts.daemon.noSchedules)
         else if (runtime.generateDigest === null) {
           io.err(texts.config.noProvider)
           return EXIT_USAGE
@@ -77,6 +81,7 @@ export async function daemonCommand(
           runtime,
           connection,
           logger,
+          scheduleSource: schedulesOf,
           ...timing,
           onBlocked: (reason) => io.err(texts.daemon.blocked(texts.blockedReasons[reason](account.id))),
         })

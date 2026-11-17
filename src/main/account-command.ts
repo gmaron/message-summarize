@@ -5,6 +5,7 @@ import type { AppConfig } from './config.js'
 import { languageHint } from './config.js'
 import { type CommandContext, type LoadedConfig, loadConfigOrReport } from './context.js'
 import { type AccountLayout, accountLayoutOf, ensureAccountDirs, unsafeAccountPath } from './paths.js'
+import { importConfigSchedules } from './schedules.js'
 
 /** What a command that works on one account gets. The command closes the installation when it is done. */
 export interface PreparedAccount extends LoadedConfig {
@@ -81,6 +82,7 @@ export async function prepareAccount(
       installation.close()
       return { exit: EXIT_USAGE }
     }
+    importConfigSchedules(installation, layout.id, loaded.config)
     return { ...loaded, installation, account: layout, created: !selection.exists }
   } catch (error) {
     installation.close()

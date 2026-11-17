@@ -7,6 +7,7 @@ import { describeConfigIssue, languageHint, loadEffectiveConfig, type ProviderKi
 import { type CommandContext, hasSession } from '../context.js'
 import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.js'
 import { createRuntime } from '../runtime.js'
+import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
 
 /** Oldest Node this project supports (package.json "engines"). */
 export const MINIMUM_NODE = '22.16.0'
@@ -137,6 +138,34 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
               )
             } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, provider.ollama.baseUrl))
           }
+        }
+      }
+
+      // Schedules (RF-60): in the database; the "schedules" of the configuration were imported once
+      if (account !== null && loaded.ok) {
+        importConfigSchedules(installation, account.id, loaded.value)
+        const notImported = unrepresentableCrons(loaded.value)
+        const count = installation.schedules.list(account.id).length
+        const name = label(accountTexts.names.schedules)
+        if (notImported.length > 0) {
+          // Once imported (the flag is set) what could not be imported is a notice, not a failure: the key is ignored.
+          const detail = accountTexts.schedulesNotImported(notImported.join(', '))
+          if (installation.schedules.imported(account.id)) {
+            io.out(accountTexts.warn(name, detail, accountTexts.schedulesNotImportedFix))
+          } else fail(name, detail, accountTexts.schedulesNotImportedFix)
+        }
+        if (count === 0) io.out(accountTexts.warn(name, accountTexts.schedulesNone, accountTexts.schedulesNoneFix))
+        else if (loaded.value.provider.primary === null) {
+          fail(name, accountTexts.schedulesNoProvider, accountCatalog.cli.config.noProvider)
+        } else ok(name, accountTexts.schedulesOk(count))
+        if (loaded.value.schedules.length > 0) {
+          io.out(
+            accountTexts.warn(
+              label(accountTexts.names.schedules),
+              accountTexts.schedulesIgnored,
+              accountTexts.schedulesIgnoredFix,
+            ),
+          )
         }
       }
 

@@ -7,6 +7,7 @@ import {
   type Database,
   openAppDatabase,
   SqliteAccountRegistry,
+  SqliteScheduleRepository,
 } from '../infrastructure/persistence/sqlite/index.js'
 import { acquireDaemonLock, type DaemonLock } from './daemon-lock.js'
 import {
@@ -37,6 +38,8 @@ export interface ReconcileReport {
 export interface Installation {
   readonly layout: DataLayout
   readonly registry: SqliteAccountRegistry
+  /** The schedules of the accounts, on the same `app.db` connection. */
+  readonly schedules: SqliteScheduleRepository
   readonly report: ReconcileReport
   /** Registered accounts (after reconciling), ordered by id. */
   accounts(): AccountRecord[]
@@ -145,6 +148,7 @@ export async function openInstallation(options: OpenInstallationOptions): Promis
     const installation: Installation = {
       layout,
       registry,
+      schedules: new SqliteScheduleRepository(db, () => clock.now()),
       report,
       accounts: () => registry.list(),
       createAccount: async (id) => {

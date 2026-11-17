@@ -5,7 +5,7 @@ import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
 import type { Catalog, Language } from '../infrastructure/i18n/index.js'
 import { LANGUAGES } from '../infrastructure/i18n/index.js'
-import { isValidCron, isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
+import { isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
 
 export const PROVIDERS = ['claude-cli', 'ollama'] as const
 export type ProviderKind = (typeof PROVIDERS)[number]
@@ -55,7 +55,6 @@ export type ConfigIssueCode =
   | 'notOneOf'
   | 'required'
   | 'invalidTimezone'
-  | 'invalidCron'
 
 /** A problem of config.json: which option and why. Codes, not text: `describeConfigIssue` translates them. */
 export interface ConfigIssue {
@@ -185,17 +184,9 @@ export function parseConfig(
     if (v === undefined) return []
     if (!Array.isArray(v)) return add('schedules', 'notArray')
     if (!v.every((s) => typeof s === 'string')) return add('schedules', 'notStringList')
-    const found: string[] = []
-    let valid = true
-    v.forEach((expression: string, index) => {
-      // Without a valid time zone there is nothing to check the expression against.
-      if (timezone !== undefined && !isValidCron(expression, timezone)) {
-        add(`schedules[${index}]`, 'invalidCron')
-        valid = false
-      }
-      found.push(expression)
-    })
-    return valid ? found : undefined
+    // Only imported once, at the first use of an account (see `importConfigSchedules`), and ignored afterwards: an
+    // expression that cannot be imported is not a reason to refuse the whole configuration. `doctor` lists those.
+    return [...(v as string[])]
   })()
 
   const providerObj = section(input, 'provider', 'provider', PROVIDER_KEYS)
@@ -412,8 +403,6 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.required(issue.option)
     case 'invalidTimezone':
       return texts.invalidTimezone(issue.option)
-    case 'invalidCron':
-      return texts.invalidCron(issue.option)
     default:
       return catalog.errors.settings[issue.code](issue.option)
   }
@@ -432,7 +421,7 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
     flagUnsaved: false,
     hideRest: false,
     concurrency: DEFAULT_CONCURRENCY,
-    schedules: ['0 7 * * *', '0 19 * * *'],
+    // No "schedules": the times of the digests are set with `msum schedule add` (they live in the database).
     provider: {
       // RF-41: there is no default provider. Set "claude-cli" or "ollama" here.
       primary: null,

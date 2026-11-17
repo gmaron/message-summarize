@@ -30,6 +30,27 @@ CREATE TABLE accounts (
 );
 `,
   },
+  {
+    version: 2,
+    description: 'Schedules of each account',
+    sql: `
+-- When an account's digests run (RF-60): days of the week as a sorted list of 0 (Sunday) to 6, and a local time
+-- HH:MM. The time zone is the account's, not stored here. Deleting an account deletes its schedules (the connection
+-- has foreign keys on).
+CREATE TABLE schedules (
+  id         INTEGER PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  days       TEXT NOT NULL,
+  time       TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX schedules_by_account ON schedules (account_id, id);
+
+-- Set once the "schedules" of the configuration files were imported for this account (see the commit that moved
+-- schedules here): it is never set back, so schedules the user deletes later do not come back.
+ALTER TABLE accounts ADD COLUMN schedules_imported INTEGER NOT NULL DEFAULT 0 CHECK (schedules_imported IN (0, 1));
+`,
+  },
 ]
 
 /** Opens (creating it when missing) the installation database: 0600, WAL, migrated. */

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
+import { formatTime, scheduleToCron } from '../../domain/schedule.js'
 import { getCatalog } from '../../infrastructure/i18n/index.js'
-import { CronerScheduler } from '../../infrastructure/scheduling/croner-scheduler.js'
+import { nextRunOf } from '../../infrastructure/scheduling/croner-scheduler.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { installationCatalog } from '../account-command.js'
@@ -11,6 +12,8 @@ import { type CommandContext, formatInstant, loadConfigOrReport, maskAccount } f
 import { runningDaemonPid } from '../daemon-lock.js'
 import { accountLayoutOf } from '../paths.js'
 import { createRuntime } from '../runtime.js'
+import { describeDays } from '../schedule-format.js'
+import { importConfigSchedules } from '../schedules.js'
 
 /**
  * `msum status`: where the data is, whether a daemon runs and, for each account (or the one of `--account`): its id and
@@ -67,6 +70,7 @@ export async function statusCommand(ctx: CommandContext, args: AccountArg): Prom
         continue
       }
       const config = loaded.value
+      importConfigSchedules(installation, id, config)
       const catalog = getCatalog(config.language)
       const texts = catalog.cli.status
 
@@ -97,15 +101,18 @@ export async function statusCommand(ctx: CommandContext, args: AccountArg): Prom
         const when = blocked.at === 0 ? '-' : formatInstant(blocked.at, catalog, config.timezone)
         lines.push(texts.blocked(catalog.cli.blockedReasons[blocked.reason](id), when))
       }
-      if (config.schedules.length === 0) lines.push(texts.noSchedules)
-      const scheduler = new CronerScheduler({
-        timezone: config.timezone,
-        schedules: config.schedules,
-        onTick: () => {},
-      })
-      for (const { schedule, next } of scheduler.nextRuns(new Date(now))) {
+      const stored = installation.schedules.list(id)
+      if (stored.length === 0) lines.push(texts.noSchedules)
+      else if (config.provider.primary === null) lines.push(texts.schedulesNoProvider)
+      for (const { id: scheduleId, schedule } of stored) {
+        const next = nextRunOf(scheduleToCron(schedule), config.timezone, new Date(now))
         lines.push(
-          texts.schedule(schedule, next === null ? null : formatInstant(next.getTime(), catalog, config.timezone)),
+          texts.schedule(
+            scheduleId,
+            describeDays(catalog.cli.schedule, schedule.days),
+            formatTime(schedule),
+            next === null ? null : formatInstant(next.getTime(), catalog, config.timezone),
+          ),
         )
       }
     }

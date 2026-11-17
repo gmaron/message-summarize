@@ -6,6 +6,7 @@ import { digestCommand } from './commands/digest.js'
 import { doctorCommand } from './commands/doctor.js'
 import { initCommand } from './commands/init.js'
 import { linkCommand } from './commands/link.js'
+import { scheduleCommand } from './commands/schedule.js'
 import { statusCommand } from './commands/status.js'
 import { unlinkCommand } from './commands/unlink.js'
 import { languageHint } from './config.js'
@@ -22,6 +23,7 @@ export function createHandlers(ctx: CommandContext): CliHandlers {
     status: (args) => statusCommand(ctx, args),
     doctor: (args) => doctorCommand(ctx, args),
     accounts: () => accountsCommand(ctx),
+    schedule: (command) => scheduleCommand(ctx, command),
   }
 }
 

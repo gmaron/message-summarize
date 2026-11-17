@@ -248,7 +248,8 @@ describe('Daemon: schedules (RF-60, RF-62)', () => {
       return ok(SUMMARY)
     })
     const { harness, runtime } = await start({
-      config: { schedules: ['0 7 * * *', '0 7 * * *'] },
+      // two different expressions for the same instant (the same expression twice is one job)
+      config: { schedules: ['0 7 * * *', '0 7 * * 0-6'] },
       now: '2026-11-17T09:58:00Z',
       summarizer,
     })

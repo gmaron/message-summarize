@@ -195,6 +195,7 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           const marker = await readBlocked(account.blockedFile)
           if (marker !== null && FIXED_BY_LINKING.includes(marker.reason)) await clearBlocked(account.blockedFile)
           io.out(texts.link.done(maskAccount(runtime.identity.get() ?? '')))
+          if (installation.schedules.list(account.id).length === 0) io.out(texts.link.scheduleHint)
           return EXIT_OK
         } finally {
           clearTimeout(timer)

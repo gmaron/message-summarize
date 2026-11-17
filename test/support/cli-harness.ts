@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { vi } from 'vitest'
 import type { CaptureMessages } from '../../src/application/capture-messages.js'
 import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
 import { ok, type Result } from '../../src/domain/result.js'
@@ -305,3 +306,27 @@ export async function seedMessages(runtime: Runtime, messages: readonly SeedMess
 
 /** Lets pending promises and zero-delay timers run. */
 export const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+/** How long a test waits for something that really happens in another task or on disk. Generous: a slow machine is not a failure. */
+export const WAIT_DEADLINE_MS = 5_000
+
+/**
+ * Waits until `predicate` holds, polling, and fails with a clear message after the deadline. Use it instead of a fixed
+ * sleep: a sleep is either too short on a loaded machine or wastes time on a fast one.
+ */
+export async function until(
+  predicate: () => boolean | Promise<boolean>,
+  what = 'a condition',
+  deadlineMs = WAIT_DEADLINE_MS,
+): Promise<void> {
+  const deadline = Date.now() + deadlineMs
+  for (;;) {
+    if (await predicate()) return
+    if (Date.now() >= deadline) throw new Error(`timed out after ${deadlineMs} ms waiting for ${what}`)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
+/** `vi.waitFor` with the generous deadline (its default is one second). */
+export const waitFor = <T>(assertion: () => T | Promise<T>): Promise<T> =>
+  vi.waitFor(assertion, { timeout: WAIT_DEADLINE_MS, interval: 10 })

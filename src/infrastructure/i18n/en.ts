@@ -109,6 +109,8 @@ Commands:
     --hours N            Summarizes the last N hours
     --from "YYYY-MM-DD HH:MM"   Start of the window (in the time zone of the configuration)
     --to "YYYY-MM-DD HH:MM"     End of the window (default: now)
+  schedule [ls|add|rm] [--account <id>]  When the digests run: ls lists them with the next run,
+                                      add --time HH:MM [--days daily|weekdays|weekends|mon,wed|mon-fri], rm <id>
   status [--account <id>]             Shows the state: accounts, last digest, pending deliveries and next schedules
   doctor [--account <id>]             Checks that everything is in order and explains how to fix it
   accounts                            Lists the accounts of this installation and their state
@@ -128,6 +130,11 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidNumber: (option) => `The value of ${option} must be a number.`,
       invalidAccountId: (value) =>
         `The account id ${JSON.stringify(value)} is not valid: use lowercase letters, digits and dashes, starting with a letter or a digit, up to 32 characters.`,
+      unknownSubcommand: (value) => `Unknown schedule command: "${value}". Use: ls, add or rm.`,
+      invalidTime: (value) =>
+        `The time ${JSON.stringify(value)} must look like HH:MM (24-hour clock), for example 07:30.`,
+      invalidDays: (value) =>
+        `The days ${JSON.stringify(value)} are not valid: use daily, weekdays, weekends, or day names like mon,wed or mon-fri (also in Spanish: lun, mar, mie, jue, vie, sab, dom).`,
       invalidDate: (option) => `The value of ${option} must look like "YYYY-MM-DD HH:MM" (a valid date and time).`,
     },
     config: {
@@ -139,8 +146,6 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       required: (option) => `The option "${option}" is missing.`,
       invalidTimezone: (option) =>
         `The option "${option}" is not a valid time zone (for example "America/Argentina/Buenos_Aires").`,
-      invalidCron: (option) =>
-        `The option "${option}" is not a valid cron expression (for example "0 9 * * *" for every day at 9:00).`,
       noProvider:
         'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli" or "ollama") in the configuration.',
       promptFile: (path) => `The prompt file (promptFile) could not be read: ${path}`,
@@ -154,7 +159,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       next: `Next steps:
   1. Review the configuration and choose the LLM provider ("provider").
   2. msum link      (scan the QR code)
-  3. msum daemon    (leave it running)
+  3. msum schedule add --time 09:00    (when the digests run; repeat for more times, --days to choose days)
+  4. msum daemon    (leave it running)
   To try it without saving or sending anything: msum digest --dry-run`,
     },
     daemonRunning: (pid) => `A daemon is running (pid ${pid}). Stop it first.`,
@@ -185,6 +191,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       connected: 'Connected.',
       receivingHistory: 'Receiving the initial history, please wait...',
       done: (account) => `Done: account ${account} linked. Next step: msum daemon`,
+      scheduleHint:
+        'This account has no schedules yet, so no digest will run on its own: add one with "msum schedule add --time HH:MM".',
       mismatch: (id) =>
         `This WhatsApp session belongs to a different account than the one "${id}" was linked with. Run "msum unlink --account ${id}" and link again.`,
       loggedOut: (id) =>
@@ -202,7 +210,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
     daemon: {
       running: (dataDir) => `Daemon running (data in ${dataDir}). Press Ctrl+C to stop it.`,
       notLinked: 'No account is linked: run "msum link" first.',
-      noSchedules: 'There are no schedules ("schedules"): the daemon only captures messages and sends what is pending.',
+      noSchedules:
+        'There are no schedules yet: the daemon only captures messages and sends what is pending. Add one with "msum schedule add --time HH:MM"; a schedule added later is picked up without restarting the daemon.',
       stopped: 'Daemon stopped.',
       blocked: (reason) => `The daemon is paused, not connecting and not generating digests: ${reason}`,
     },
@@ -236,6 +245,18 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         startNotBeforeEnd: 'Check --from and --to.',
       },
     },
+    schedule: {
+      dayName: (day) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day] ?? '?',
+      everyDay: 'every day',
+      workdays: 'weekdays',
+      weekend: 'weekends',
+      row: (id, days, time, next) => `#${id}  ${days} at ${time}  next: ${next ?? 'none'}`,
+      empty: 'There are no schedules. Add one with "msum schedule add --time 09:00".',
+      added: (id, days, time, next) =>
+        `Schedule #${id} added: ${days} at ${time}. Next run: ${next ?? 'none'}. A running daemon picks it up within seconds.`,
+      removed: (id) => `Schedule #${id} removed. A running daemon picks it up within seconds.`,
+      notFound: (id) => `This account has no schedule #${id}. See "msum schedule ls".`,
+    },
     status: {
       dataDir: (path) => `${'Data:'.padEnd(LABEL)}${path}`,
       account: (id, masked) => `${'Account:'.padEnd(LABEL)}${id} (${masked ?? 'not linked'})`,
@@ -245,12 +266,15 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       pending: (count) => `${'Pending deliveries:'.padEnd(LABEL)}${count}`,
       daemon: (pid) => `${'Daemon:'.padEnd(LABEL)}${pid === null ? 'stopped' : `running (pid ${pid})`}`,
       blocked: (reason, when) => `${'Blocked:'.padEnd(LABEL)}${reason} (${when})`,
-      noSchedules: `${'Schedules:'.padEnd(LABEL)}none`,
-      schedule: (expression, next) => `${'Schedule:'.padEnd(LABEL)}${expression}  next: ${next ?? 'none'}`,
+      noSchedules: `${'Schedules:'.padEnd(LABEL)}none (add one with "msum schedule add --time HH:MM")`,
+      schedulesNoProvider: `${'Problem:'.padEnd(LABEL)}there are schedules but no LLM provider to run them`,
+      schedule: (id, days, time, next) =>
+        `${'Schedule:'.padEnd(LABEL)}#${id} ${days} at ${time}  next: ${next ?? 'none'}`,
     },
     doctor: {
       title: 'message-summarize diagnostics',
       ok: (name, detail) => `[ok]   ${name}: ${detail}`,
+      warn: (name, detail, fix) => `[warn] ${name}: ${detail}\n       What to do: ${fix}`,
       fail: (name, detail, fix) => `[fail] ${name}: ${detail}\n       How to fix it: ${fix}`,
       names: {
         node: 'Node',
@@ -259,7 +283,21 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         provider: 'LLM provider',
         whatsapp: 'WhatsApp',
         accounts: 'Accounts',
+        schedules: 'Schedules',
       },
+      schedulesOk: (count) => `${count} configured`,
+      schedulesNone: 'no schedules: the daemon captures messages but never generates a digest on its own',
+      schedulesNoneFix:
+        'add the times you want with "msum schedule add --time HH:MM" (every day unless you pass --days).',
+      schedulesNoProvider: 'there are schedules but no LLM provider to run them: no digest will be generated',
+      schedulesNotImported: (expressions) =>
+        `these "schedules" of the configuration cannot be turned into a schedule and were not imported: ${expressions}`,
+      schedulesNotImportedFix:
+        'add the times you want with "msum schedule add --time HH:MM --days ..." (a schedule is days of the week plus one time) and delete the "schedules" key from config.json.',
+      schedulesIgnored:
+        'the "schedules" option of the configuration no longer applies: they were imported once and are managed in the database now',
+      schedulesIgnoredFix:
+        'use "msum schedule ls", "add" and "rm"; you can delete "schedules" from the configuration file.',
       accountName: (name, id) => `${name} [${id}]`,
       accountsOk: (count) => `${count} registered, and their directories match`,
       accountsMissingDir: (id) => `the account "${id}" is registered but its directory is missing`,

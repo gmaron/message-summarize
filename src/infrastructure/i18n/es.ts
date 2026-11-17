@@ -110,6 +110,8 @@ Comandos:
     --hours N            Resume las últimas N horas
     --from "AAAA-MM-DD HH:MM"   Inicio de la ventana (en la zona horaria de la configuración)
     --to "AAAA-MM-DD HH:MM"     Fin de la ventana (por defecto, ahora)
+  schedule [ls|add|rm] [--account <id>]  Cuándo corren los digests: ls los lista con la próxima ejecución,
+                                      add --time HH:MM [--days daily|weekdays|weekends|lun,mie|lun-vie], rm <id>
   status [--account <id>]             Muestra el estado: cuentas, último digest, envíos pendientes y próximos horarios
   doctor [--account <id>]             Revisa que todo esté en orden y explica cómo arreglarlo
   accounts                            Lista las cuentas de esta instalación y su estado
@@ -129,6 +131,10 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       invalidNumber: (option) => `El valor de ${option} tiene que ser un número.`,
       invalidAccountId: (value) =>
         `El id de cuenta ${JSON.stringify(value)} no es válido: usá letras minúsculas, dígitos y guiones, empezando con letra o dígito, hasta 32 caracteres.`,
+      unknownSubcommand: (value) => `Comando de horarios desconocido: "${value}". Usá: ls, add o rm.`,
+      invalidTime: (value) => `La hora ${JSON.stringify(value)} tiene que ser HH:MM (24 horas), por ejemplo 07:30.`,
+      invalidDays: (value) =>
+        `Los días ${JSON.stringify(value)} no son válidos: usá daily, weekdays, weekends, o nombres de días como lun,mie o lun-vie (también en inglés: mon, tue, wed, thu, fri, sat, sun).`,
       invalidDate: (option) =>
         `El valor de ${option} tiene que tener la forma "AAAA-MM-DD HH:MM" (fecha y hora válidas).`,
     },
@@ -141,8 +147,6 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       required: (option) => `Falta la opción "${option}".`,
       invalidTimezone: (option) =>
         `La opción "${option}" no es una zona horaria válida (por ejemplo "America/Argentina/Buenos_Aires").`,
-      invalidCron: (option) =>
-        `La opción "${option}" no es una expresión cron válida (por ejemplo "0 9 * * *" para todos los días a las 9:00).`,
       noProvider:
         'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli" u "ollama") en la configuración.',
       promptFile: (path) => `No se pudo leer el archivo del prompt (promptFile): ${path}`,
@@ -156,7 +160,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       next: `Siguientes pasos:
   1. Revisá la configuración y elegí el proveedor de LLM ("provider").
   2. msum link      (escaneá el QR)
-  3. msum daemon    (dejalo corriendo)
+  3. msum schedule add --time 09:00    (cuándo corren los digests; repetilo para más horas, --days para elegir días)
+  4. msum daemon    (dejalo corriendo)
   Para probar sin guardar ni enviar nada: msum digest --dry-run`,
     },
     daemonRunning: (pid) => `Hay un daemon corriendo (pid ${pid}). Detenelo primero.`,
@@ -187,6 +192,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       connected: 'Conectado.',
       receivingHistory: 'Recibiendo el historial inicial, esperá un momento...',
       done: (account) => `Listo: cuenta ${account} vinculada. Siguiente paso: msum daemon`,
+      scheduleHint:
+        'Esta cuenta todavía no tiene horarios, así que no se generará ningún digest por su cuenta: agregá uno con "msum schedule add --time HH:MM".',
       mismatch: (id) =>
         `Esta sesión de WhatsApp es de una cuenta distinta de la que quedó vinculada a "${id}". Corré "msum unlink --account ${id}" y vinculá de nuevo.`,
       loggedOut: (id) =>
@@ -204,7 +211,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
     daemon: {
       running: (dataDir) => `Daemon corriendo (datos en ${dataDir}). Ctrl+C para detenerlo.`,
       notLinked: 'No hay una cuenta vinculada: primero corré "msum link".',
-      noSchedules: 'No hay horarios ("schedules"): el daemon solo captura mensajes y envía lo pendiente.',
+      noSchedules:
+        'Todavía no hay horarios: el daemon solo captura mensajes y envía lo pendiente. Agregá uno con "msum schedule add --time HH:MM"; un horario agregado después se toma sin reiniciar el daemon.',
       stopped: 'Daemon detenido.',
       blocked: (reason) => `El daemon quedó en pausa, sin conectarse ni generar digests: ${reason}`,
     },
@@ -238,6 +246,18 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         startNotBeforeEnd: 'Revisá --from y --to.',
       },
     },
+    schedule: {
+      dayName: (day) => ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][day] ?? '?',
+      everyDay: 'todos los días',
+      workdays: 'de lunes a viernes',
+      weekend: 'fines de semana',
+      row: (id, days, time, next) => `#${id}  ${days} a las ${time}  próxima: ${next ?? 'ninguna'}`,
+      empty: 'No hay horarios. Agregá uno con "msum schedule add --time 09:00".',
+      added: (id, days, time, next) =>
+        `Horario #${id} agregado: ${days} a las ${time}. Próxima ejecución: ${next ?? 'ninguna'}. Un daemon en marcha lo toma en pocos segundos.`,
+      removed: (id) => `Horario #${id} borrado. Un daemon en marcha lo toma en pocos segundos.`,
+      notFound: (id) => `Esta cuenta no tiene el horario #${id}. Mirá "msum schedule ls".`,
+    },
     status: {
       dataDir: (path) => `${'Datos:'.padEnd(LABEL)}${path}`,
       account: (id, masked) => `${'Cuenta:'.padEnd(LABEL)}${id} (${masked ?? 'sin vincular'})`,
@@ -247,12 +267,15 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       pending: (count) => `${'Envíos pendientes:'.padEnd(LABEL)}${count}`,
       daemon: (pid) => `${'Daemon:'.padEnd(LABEL)}${pid === null ? 'detenido' : `corriendo (pid ${pid})`}`,
       blocked: (reason, when) => `${'Bloqueada:'.padEnd(LABEL)}${reason} (${when})`,
-      noSchedules: `${'Horarios:'.padEnd(LABEL)}ninguno`,
-      schedule: (expression, next) => `${'Horario:'.padEnd(LABEL)}${expression}  próxima: ${next ?? 'ninguna'}`,
+      noSchedules: `${'Horarios:'.padEnd(LABEL)}ninguno (agregá uno con "msum schedule add --time HH:MM")`,
+      schedulesNoProvider: `${'Problema:'.padEnd(LABEL)}hay horarios pero ningún proveedor de LLM que los ejecute`,
+      schedule: (id, days, time, next) =>
+        `${'Horario:'.padEnd(LABEL)}#${id} ${days} a las ${time}  próxima: ${next ?? 'ninguna'}`,
     },
     doctor: {
       title: 'Diagnóstico de message-summarize',
       ok: (name, detail) => `[ok]    ${name}: ${detail}`,
+      warn: (name, detail, fix) => `[aviso] ${name}: ${detail}\n        Qué hacer: ${fix}`,
       fail: (name, detail, fix) => `[falla] ${name}: ${detail}\n        Cómo arreglarlo: ${fix}`,
       names: {
         node: 'Node',
@@ -261,7 +284,21 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         provider: 'Proveedor de LLM',
         whatsapp: 'WhatsApp',
         accounts: 'Cuentas',
+        schedules: 'Horarios',
       },
+      schedulesOk: (count) => `${count} configurados`,
+      schedulesNone: 'no hay horarios: el daemon captura mensajes pero nunca genera un digest por su cuenta',
+      schedulesNoneFix:
+        'agregá las horas que quieras con "msum schedule add --time HH:MM" (todos los días salvo que pases --days).',
+      schedulesNoProvider: 'hay horarios pero ningún proveedor de LLM que los ejecute: no se generará ningún digest',
+      schedulesNotImported: (expressions) =>
+        `estos "schedules" de la configuración no se pueden convertir en un horario y no se importaron: ${expressions}`,
+      schedulesNotImportedFix:
+        'agregá las horas que quieras con "msum schedule add --time HH:MM --days ..." (un horario son días de la semana más una hora) y borrá la clave "schedules" de config.json.',
+      schedulesIgnored:
+        'la opción "schedules" de la configuración ya no se aplica: se importaron una sola vez y ahora se manejan en la base de datos',
+      schedulesIgnoredFix:
+        'usá "msum schedule ls", "add" y "rm"; podés borrar "schedules" del archivo de configuración.',
       accountName: (name, id) => `${name} [${id}]`,
       accountsOk: (count) => `${count} registradas, y sus directorios coinciden`,
       accountsMissingDir: (id) => `la cuenta "${id}" está registrada pero falta su directorio`,
