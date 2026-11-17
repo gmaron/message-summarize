@@ -6,6 +6,11 @@ coverage/
 !.env.example
 *.db
 *.db-*
+*.sqlite
+*.sqlite-*
+qr.png
+# Sandbox output: the account's messages, WhatsApp session and logs live here.
+.sandbox/out/
 data/
 auth/
 models/
