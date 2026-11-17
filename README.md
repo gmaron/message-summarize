@@ -8,7 +8,7 @@ The first supported platform is **WhatsApp**. The core does not depend on it, so
 
 ## Status
 
-**Early development.** There is no installer and no web interface yet. A command-line version can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
+**Early development.** There is no installer yet. A command-line version with a first local web page can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
 
 ## Try it (early version)
 
@@ -40,6 +40,8 @@ A running daemon picks the changes up within about five seconds, with no restart
 4. **`msum digest --dry-run`** generates a digest now and prints it, without saving or sending anything. Without `--dry-run` the digest is queued and the running daemon delivers it. It does not open a WhatsApp connection (the daemon owns the session). Options: `--hours N`, `--from "YYYY-MM-DD HH:MM"`, `--to "YYYY-MM-DD HH:MM"`.
 
 Other commands: `msum status` (account, last digest, pending deliveries, next runs), `msum doctor` (checks Node, permissions, configuration, provider and link) and `msum unlink`, which **deletes all the data of the account** (its messages, the digest history, pending deliveries and the WhatsApp session; the configuration stays) and asks for confirmation. Afterwards, also remove the device on the phone (WhatsApp, Settings > Linked devices).
+
+**Web page.** While the daemon runs it also serves a local page, by default at `http://127.0.0.1:8787` (option `web` in the installation's `config.json`: `port`, `host`, `enabled`). `msum open` opens it already signed in: the address carries an access token, generated once in the data directory (`web-token`), so do not share it. From the page you can add an account and link it by scanning the QR code, follow the sync of the history, see the state of each account and fix a block (link again, or retry: after a refused or replaced connection the page makes you wait 30 minutes), edit the schedules, run "summarize now" and see a preview that sends nothing and does not move the pointer. It listens only on this machine; another `host` (for example `0.0.0.0` inside Docker, publishing the port only on `127.0.0.1`) is an explicit choice. The setup wizard, the settings, the history and the logs come later in phase 4.
 
 Everything stays on your machine, in the data directory (permissions restricted to your user), except what the LLM provider you chose receives. The command-line texts are in Spanish or English (`language` in `config.json`).
 

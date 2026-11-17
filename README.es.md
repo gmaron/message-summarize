@@ -8,7 +8,7 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella, 
 
 ## Estado
 
-**Desarrollo temprano.** Todavía no hay instalador ni interfaz web. Se puede probar una versión de línea de comandos desde el código fuente (ver [Probarlo](#probarlo-versión-temprana)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
+**Desarrollo temprano.** Todavía no hay instalador. Se puede probar desde el código fuente una versión de línea de comandos con una primera página web local (ver [Probarlo](#probarlo-versión-temprana)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
 
 ## Probarlo (versión temprana)
 
@@ -40,6 +40,8 @@ Un daemon en marcha toma los cambios en unos cinco segundos, sin reiniciar. Esto
 4. **`msum digest --dry-run`** genera un resumen ahora y lo muestra, sin guardar ni enviar nada. Sin `--dry-run` el resumen queda en cola y lo entrega el daemon que esté corriendo. No abre una conexión a WhatsApp (la sesión es del daemon). Opciones: `--hours N`, `--from "AAAA-MM-DD HH:MM"`, `--to "AAAA-MM-DD HH:MM"`.
 
 Otros comandos: `msum status` (cuenta, último resumen, envíos pendientes, próximas ejecuciones), `msum doctor` (revisa Node, permisos, configuración, proveedor y vinculación) y `msum unlink`, que **borra todos los datos de la cuenta** (sus mensajes, el historial de resúmenes, los envíos pendientes y la sesión de WhatsApp; la configuración queda) y pide confirmación. Después, quitá también el dispositivo en el celular (WhatsApp, Ajustes > Dispositivos vinculados).
+
+**Página web.** Mientras corre, el daemon también sirve una página local, por defecto en `http://127.0.0.1:8787` (opción `web` del `config.json` de la instalación: `port`, `host`, `enabled`). `msum open` la abre con la sesión ya iniciada: la dirección lleva un token de acceso, generado una sola vez en el directorio de datos (`web-token`), así que no la compartas. Desde la página podés agregar una cuenta y vincularla escaneando el QR, seguir la sincronización del historial, ver el estado de cada cuenta y destrabar un bloqueo (vincular de nuevo o reintentar: después de una conexión rechazada o reemplazada, la página hace esperar 30 minutos), editar los horarios, usar "resumir ahora" y ver una vista previa que no envía nada ni mueve el puntero. Escucha solo en esta máquina; otro `host` (por ejemplo `0.0.0.0` dentro de Docker, publicando el puerto solo en `127.0.0.1`) es una elección explícita. El asistente de primer uso, la configuración, el historial y los logs llegan más adelante en la fase 4.
 
 Todo queda en tu máquina, en el directorio de datos (con permisos solo para tu usuario), salvo lo que recibe el proveedor de LLM que elegiste. Los textos de la línea de comandos están en español o inglés (`language` en `config.json`).
 
