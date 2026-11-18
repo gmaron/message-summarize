@@ -164,3 +164,43 @@ export interface PromptView {
   /** The prompt file is set and cannot be read. */
   readonly error?: 'promptFile'
 }
+
+export type RunTrigger = 'schedule' | 'missed' | 'manual' | 'cli'
+export type RunOutcome = 'committed' | 'empty' | 'failed'
+export type FailureReason = 'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed'
+
+/** A run of `GET /api/accounts/:id/history`. Counts and codes only. `outcome` is null while the run is open. */
+export interface HistoryRun {
+  readonly id: number
+  readonly trigger: RunTrigger
+  readonly startedAt: number
+  readonly finishedAt: number | null
+  readonly durationMs: number | null
+  readonly outcome: RunOutcome | null
+  /** A code (`noProvider`, `interrupted`...): translated by the page. */
+  readonly error: string | null
+  readonly summarized: number
+  readonly failed: number
+  readonly providers: Readonly<Record<string, number>>
+  readonly digestId: number | null
+}
+
+export interface HistoryView {
+  readonly total: number
+  readonly items: readonly HistoryRun[]
+}
+
+/**
+ * `GET /api/accounts/:id/history/:runId`. `digest.text` and the names of `failedConversations` come from chats of third
+ * parties: render them as text only.
+ */
+export interface HistoryDetail extends HistoryRun {
+  readonly since: number | null
+  readonly until: number | null
+  readonly digest: { readonly text: string; readonly since: number; readonly until: number } | null
+  readonly failedConversations: readonly {
+    readonly id: string
+    readonly name: string
+    readonly reason: FailureReason
+  }[]
+}

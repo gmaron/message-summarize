@@ -6,6 +6,7 @@ import type {
 } from '../../../application/ports/digest-store.js'
 import { err, ok, type Result } from '../../../domain/result.js'
 import type { Database } from './database.js'
+import { closeCommittedRun } from './runs.js'
 import { inTransaction } from './transaction.js'
 
 /** A part waiting for delivery, or delivered (RF-52). */
@@ -58,6 +59,8 @@ export class SqliteDigestStore implements DigestStore {
       }
       const enqueue = this.db.prepare('INSERT INTO outbox (digest_id, text, created_at) VALUES (?, ?, ?)')
       for (const part of commit.parts) enqueue.run(digestId, part, createdAt)
+      // Same transaction: a committed digest always has its run, and a rolled-back commit leaves the run open.
+      if (commit.run !== undefined) closeCommittedRun(this.db, commit.run, digestId)
       return ok(undefined)
     })
   }

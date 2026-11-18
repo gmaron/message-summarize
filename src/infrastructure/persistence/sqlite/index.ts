@@ -20,6 +20,13 @@ export {
 export { type Database, type OpenDatabaseOptions, openDatabase } from './database.js'
 export { currentVersion, MIGRATIONS, type Migration, migrate } from './migrations.js'
 export { SqliteOutboxRepository } from './outbox.js'
+export {
+  type DigestRun,
+  type RunOutcome,
+  type RunPage,
+  type RunTrigger,
+  SqliteDigestRuns,
+} from './runs.js'
 export { SqliteScheduleRepository, type StoredSchedule } from './schedule-repository.js'
 export { SqliteDigestSource } from './source.js'
 export { type OutboxEntry, SqliteDigestStore } from './store.js'

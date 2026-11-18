@@ -3,6 +3,7 @@
   import AccountCard from './components/AccountCard.svelte'
   import AddAccount from './components/AddAccount.svelte'
   import ConversationsDialog from './components/ConversationsDialog.svelte'
+  import HistoryDialog from './components/HistoryDialog.svelte'
   import LinkDialog from './components/LinkDialog.svelte'
   import PreviewDialog from './components/PreviewDialog.svelte'
   import PromptDialog from './components/PromptDialog.svelte'
@@ -27,7 +28,7 @@
     document.title = ui.title
   })
 
-  type Dialog = { kind: 'link' | 'schedules' | 'conversations' | 'settings' | 'prompt' | 'preview'; id: string }
+  type Dialog = { kind: 'link' | 'schedules' | 'conversations' | 'history' | 'settings' | 'prompt' | 'preview'; id: string }
   let dialog: Dialog | null = $state.raw(null)
   const accountOf = (id: string) => app.accounts?.find((account) => account.id === id) ?? null
 
@@ -91,6 +92,7 @@
                 onpreview={() => openPreview(account.id)}
                 onschedules={() => (dialog = { kind: 'schedules', id: account.id })}
                 onconversations={() => (dialog = { kind: 'conversations', id: account.id })}
+                onhistory={() => (dialog = { kind: 'history', id: account.id })}
                 onsettings={() => (dialog = { kind: 'settings', id: account.id })}
                 onprompt={() => (dialog = { kind: 'prompt', id: account.id })}
                 onlink={() => openLink(account.id)}
@@ -113,6 +115,8 @@
       <SchedulesDialog {api} {texts} {account} onclose={close} />
     {:else if dialog.kind === 'conversations'}
       <ConversationsDialog {api} {texts} {account} onclose={close} />
+    {:else if dialog.kind === 'history'}
+      <HistoryDialog {api} {controller} {texts} {account} onclose={close} />
     {:else if dialog.kind === 'settings'}
       <SettingsDialog {api} {texts} {account} onclose={close} />
     {:else if dialog.kind === 'prompt'}

@@ -12,6 +12,7 @@ import {
   SqliteAccountIdentity,
   SqliteCaptureRepository,
   SqliteCaptureWriter,
+  SqliteDigestRuns,
   SqliteDigestSource,
   SqliteDigestStore,
   SqliteOutboxRepository,
@@ -48,6 +49,8 @@ export interface Runtime {
   readonly renderers: Renderers
   readonly db: Database
   readonly store: SqliteDigestStore
+  /** The history of digest runs (RF-74). */
+  readonly runs: SqliteDigestRuns
   readonly outbox: OutboxRepository
   readonly identity: AccountIdentity
   readonly repository: CaptureRepository
@@ -75,6 +78,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
   const db = openDatabase(layout.dbFile)
   try {
     const store = new SqliteDigestStore(db, now)
+    const runs = new SqliteDigestRuns(db)
     const identity = new SqliteAccountIdentity(db, now)
     const repository = new SqliteCaptureRepository(new SqliteCaptureWriter(db, now))
     const source = new SqliteDigestSource(db)
@@ -126,6 +130,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       },
       db,
       store,
+      runs,
       outbox: new SqliteOutboxRepository(store),
       identity,
       repository,

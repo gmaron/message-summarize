@@ -35,6 +35,7 @@ export function createController(options: ControllerOptions) {
   const { api } = options
   let state: AppState = initialState(pickLanguage(undefined, options.browserLanguage))
   const listeners = new Set<(state: AppState) => void>()
+  const historyListeners = new Set<(account: string) => void>()
   let stream: { close(): void } | null = null
 
   const set = (next: AppState): void => {
@@ -98,6 +99,12 @@ export function createController(options: ControllerOptions) {
       return () => listeners.delete(listener)
     },
 
+    /** Calls `listener` with the account whenever its history gets a new run. Returns the way to stop listening. */
+    onHistory(listener: (account: string) => void): () => void {
+      historyListeners.add(listener)
+      return () => historyListeners.delete(listener)
+    },
+
     /** Asks for the language and the accounts and starts listening. */
     async start(): Promise<void> {
       try {
@@ -115,6 +122,10 @@ export function createController(options: ControllerOptions) {
             // the event says how the preview ended, not what it holds: that is asked for
             const account = (data as { account?: unknown } | null)?.account
             if (name === 'preview' && typeof account === 'string') void loadPreview(account)
+            // the event says that the history has a new run, not what it holds: an open history asks for it
+            if (name === 'history' && typeof account === 'string') {
+              for (const listener of [...historyListeners]) listener(account)
+            }
           },
           open: (again) => {
             update((s) => ({ ...s, connection: 'online' }))

@@ -17,6 +17,7 @@
     onpreview,
     onschedules,
     onconversations,
+    onhistory,
     onsettings,
     onprompt,
     onlink,
@@ -30,6 +31,7 @@
     onpreview: () => void
     onschedules: () => void
     onconversations: () => void
+    onhistory: () => void
     onsettings: () => void
     onprompt: () => void
     onlink: () => void
@@ -136,6 +138,7 @@
       <button type="button" disabled={!actions.conversations} onclick={onconversations}>
         {ui.actions.conversations}
       </button>
+      <button type="button" disabled={!actions.history} onclick={onhistory}>{ui.actions.history}</button>
       <button type="button" disabled={!actions.settings} onclick={onsettings}>{ui.actions.settings}</button>
       <button type="button" disabled={!actions.prompt} onclick={onprompt}>{ui.actions.prompt}</button>
       {#if actions.link}

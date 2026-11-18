@@ -1,5 +1,5 @@
-import type { SummarizeRequest, Summarizer } from '../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../application/ports/summarizer.js'
+import { err } from '../../domain/result.js'
 import { parseSummaryResponse } from '../../domain/summary.js'
 
 /**
@@ -14,12 +14,12 @@ export class FallbackSummarizer implements Summarizer {
     private readonly fallback: Summarizer,
   ) {}
 
-  async summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const first = await this.primary.summarize(request)
     let reason: string
     if (first.ok) {
       const valid = parseSummaryResponse(first.value)
-      if (valid.ok) return ok(first.value)
+      if (valid.ok) return first
       reason = `invalid summary: ${valid.error.join(', ')}`
     } else {
       reason = first.error

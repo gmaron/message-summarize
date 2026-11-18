@@ -190,6 +190,20 @@ describe('actions', () => {
     expect(controller.state.previews.alpha).toEqual({ kind: 'running' })
   })
 
+  it('history: the event reaches whoever listens, for its account, and carries no content', async () => {
+    const { controller } = setup()
+    await controller.start()
+    const seen: string[] = []
+    const stop = controller.onHistory((id) => seen.push(id))
+    FakeEventSource.last().emit('history', { account: 'alpha' })
+    FakeEventSource.last().emit('history', {})
+    FakeEventSource.last().emit('history', { account: 5 })
+    expect(seen).toEqual(['alpha'])
+    stop()
+    FakeEventSource.last().emit('history', { account: 'alpha' })
+    expect(seen).toEqual(['alpha'])
+  })
+
   it('add account: validates the id before asking, then creates it', async () => {
     const { controller, calls } = setup({ 'POST /api/accounts': { status: 201, body: { id: 'work' } } })
     await controller.start()

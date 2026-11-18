@@ -1,6 +1,8 @@
 import type {
   AccountView,
   ConversationsView,
+  HistoryDetail,
+  HistoryView,
   LinkSnapshot,
   MarksResult,
   PreviewView,
@@ -126,6 +128,14 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       conversationId: string,
       marks: { excluded?: boolean; localOnly?: boolean; confirmDelete?: boolean },
     ) => request<MarksResult>('PUT', `${account(id)}/conversations/${enc(conversationId)}/marks`, marks),
+    history: (id: string, query: { limit?: number; offset?: number }) => {
+      const params = new URLSearchParams()
+      if (query.limit !== undefined) params.set('limit', String(query.limit))
+      if (query.offset !== undefined) params.set('offset', String(query.offset))
+      const suffix = params.size === 0 ? '' : `?${params}`
+      return request<HistoryView>('GET', `${account(id)}/history${suffix}`)
+    },
+    historyRun: (id: string, runId: number) => request<HistoryDetail>('GET', `${account(id)}/history/${runId}`),
     /** Where the image of the current QR is. `version` changes on every `qr` event so the browser asks again. */
     qrUrl: (id: string, version: number) => `${account(id)}/link/qr.svg?v=${version}`,
   }

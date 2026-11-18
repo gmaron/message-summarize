@@ -133,7 +133,7 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
   it('runs with exactly the approved arguments, including an empty --tools', async () => {
     const f = installFake([ok()])
     const result = await make().summarize(request)
-    expect(result).toEqual({ ok: true, value: VALID })
+    expect(result).toEqual({ ok: true, value: VALID, provider: 'claude-cli' })
     const [call] = f.calls()
     expect(call?.argv).toEqual([
       '-p',
@@ -352,7 +352,7 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
   it('retries once asking to correct when there is no structured output (RF-48)', async () => {
     const f = installFake([{ kind: 'json', body: { is_error: false, result: 'Claro, aquí va' } }, ok()])
     const result = await make().summarize(request)
-    expect(result).toEqual({ ok: true, value: VALID })
+    expect(result).toEqual({ ok: true, value: VALID, provider: 'claude-cli' })
     const [first, second] = f.calls()
     expect(first?.stdin).toBe(request.transcript)
     expect(second?.stdin.startsWith(request.transcript)).toBe(true)
@@ -370,7 +370,7 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
 
   it('accepts a JSON answer in result (fenced) when there is no structured output', async () => {
     installFake([{ kind: 'json', body: { is_error: false, result: `\`\`\`json\n${JSON.stringify(VALID)}\n\`\`\`` } }])
-    expect(await make().summarize(request)).toEqual({ ok: true, value: VALID })
+    expect(await make().summarize(request)).toEqual({ ok: true, value: VALID, provider: 'claude-cli' })
   })
 
   it('treats an output that is not an object as no structured output', async () => {

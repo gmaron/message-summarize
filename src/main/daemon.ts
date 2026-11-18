@@ -11,7 +11,7 @@ import { type SelfChatSource, WhatsAppSelfChatDelivery } from '../infrastructure
 import { type BlockedReason, readBlocked, writeBlocked } from './blocked.js'
 import type { AppConfig } from './config.js'
 import { errorCode, type Logger } from './logger.js'
-import { runDigest } from './run-digest.js'
+import { runDigest, STALE_RUN_MS } from './run-digest.js'
 import type { Runtime } from './runtime.js'
 import type { UnitState } from './unit-state.js'
 
@@ -103,6 +103,8 @@ export const DEFAULT_MISSED_RUN_DELAY_MS = 60_000
  * pointer only moves on commit, so the window is summarized again next time.
  */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 7_000
+/** An open run of `msum digest` is called interrupted only after this long: that command may be running in another process. */
+export const INTERRUPTED_CLI_GRACE_MS = STALE_RUN_MS
 
 const ERROR_REASONS: Readonly<Record<string, BlockedReason>> = {
   forbidden: 'forbidden',
@@ -222,6 +224,13 @@ export class Daemon {
   }
 
   async start(): Promise<void> {
+    // A run that never ended (the process died during it, RNF-08) is closed as failed `interrupted` (RF-74).
+    try {
+      const interrupted = this.runtime.runs.markInterrupted(this.runtime.clock.now(), INTERRUPTED_CLI_GRACE_MS)
+      if (interrupted > 0) this.logger.warn('digest.interrupted', { count: interrupted })
+    } catch (error) {
+      this.logger.error('history.failed', { code: errorCode(error) })
+    }
     const marker = await readBlocked(this.runtime.layout.blockedFile)
     if (marker !== null) {
       // Restarted while blocked: say why, once, and do nothing else.
@@ -363,7 +372,7 @@ export class Daemon {
       return event
     }
     try {
-      const result = await runDigest(this.runtime, { preview: false })
+      const result = await runDigest(this.runtime, { preview: false, trigger })
       if (!result.ok) {
         this.logger.error('digest.failed', { trigger, reason: result.error.kind })
         return finish({ state: 'failed', error: result.error.kind })

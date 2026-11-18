@@ -24,6 +24,7 @@ import { errorCode, scopedLogger } from './logger.js'
 import { accountLayoutOf, ensureAccountDirs, unsafeAccountPath } from './paths.js'
 import { type AliasHost, coverAlias, purgeNow } from './privacy-aliases.js'
 import { retryBlock } from './retry.js'
+import { STALE_RUN_MS } from './run-digest.js'
 import { createRuntime, type Runtime } from './runtime.js'
 import { importConfigSchedules } from './schedules.js'
 import { type UnitState, writeUnitState } from './unit-state.js'
@@ -256,6 +257,9 @@ export class DaemonHost {
   private readonly linkSnapshots = new Map<string, LinkSnapshot>()
   private readonly linkListeners = new Set<(event: LinkEvent) => void>()
   private readonly digestListeners = new Set<(event: HostDigestEvent) => void>()
+  private readonly historyListeners = new Map<(account: string) => void, () => boolean>()
+  /** What each unit's history looked like at the last look (see `watchHistory`). */
+  private readonly historySigns = new Map<string, string>()
   private readonly linkLockPid: number
   private readonly linkHeartbeatMs: number
   private readonly writeMarker: (file: string, reason: BlockedReason, at: number) => Promise<void>
@@ -454,6 +458,47 @@ export class DaemonHost {
     this.digestListeners.add(listener)
     return () => {
       this.digestListeners.delete(listener)
+    }
+  }
+
+  /**
+   * Calls `listener` with the account whenever the run history of a unit's account changes without its own digest saying
+   * so: a run closed as interrupted, or one recorded by another process (`msum digest`). Looked at on every look of the
+   * host with one cheap query per unit, and only while some listener says it is `watched()` (a client is connected).
+   */
+  onHistory(listener: (account: string) => void, watched: () => boolean = () => true): () => void {
+    this.historyListeners.set(listener, watched)
+    return () => {
+      this.historyListeners.delete(listener)
+    }
+  }
+
+  /** Closes the runs that were cut off, and tells the listeners when the history of the unit changed. */
+  private watchHistory(id: string): void {
+    const unit = this.units.get(id)
+    if (unit === undefined) return
+    try {
+      const { runs, clock } = unit.runtime
+      runs.markStale(clock.now(), STALE_RUN_MS)
+      if (![...this.historyListeners.values()].some((watched) => watched())) {
+        // nobody is looking: the next look compares against what it saw then
+        this.historySigns.delete(id)
+        return
+      }
+      const sign = runs.signature()
+      const before = this.historySigns.get(id)
+      this.historySigns.set(id, sign)
+      if (before === undefined || before === sign) return
+      for (const [listener, watched] of [...this.historyListeners]) {
+        if (!watched()) continue
+        try {
+          listener(id)
+        } catch (error) {
+          this.ctx.logger.error('daemon.listenerFailed', { code: errorCode(error) })
+        }
+      }
+    } catch (error) {
+      this.ctx.logger.error('history.failed', { code: errorCode(error) })
     }
   }
 
@@ -707,6 +752,7 @@ export class DaemonHost {
     for (const id of [...this.units.keys()]) {
       await this.refreshConfig(id)
       await this.housekeepMarks(id)
+      this.watchHistory(id)
     }
     const starts: Promise<void>[] = []
     for (const id of ids) {
@@ -923,6 +969,7 @@ export class DaemonHost {
           onWarning: (code) => logger.warn('adapter.warning', { code }),
         }))
       const guarded = this.guard(id, connection, adopted !== undefined)
+      const unitRuntime = runtime
       const daemon = new Daemon({
         runtime,
         connection: guarded,
@@ -944,8 +991,11 @@ export class DaemonHost {
         onDigest: (event) => {
           this.emitDigest({ ...event, account: id })
           // Deletions that waited for the digest to end.
-          if (event.state === 'done' || event.state === 'empty' || event.state === 'failed')
+          if (event.state === 'done' || event.state === 'empty' || event.state === 'failed') {
+            // The web hears about this run from the event itself: the next look must not announce it a second time.
+            if (this.historySigns.has(id)) this.historySigns.set(id, unitRuntime.runs.signature())
             void this.housekeepMarks(id)
+          }
         },
         // Another process (`msum schedule`) changed them: the next run the web shows is another.
         onSchedulesChanged: () => this.notifyChange(),

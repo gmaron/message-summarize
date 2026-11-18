@@ -13,6 +13,8 @@ export interface AccountActions {
   readonly schedules: boolean
   /** The conversations are in the database of the account: the configuration must be valid to read it as the daemon does. */
   readonly conversations: boolean
+  /** The history is read from the database as it is: it does not depend on the configuration. */
+  readonly history: boolean
   /** Always: with an invalid configuration the dialog says what is wrong. */
   readonly settings: boolean
   /** The prompt is read through the configuration of the account: it must be valid. */
@@ -35,6 +37,7 @@ export function accountActions(account: AccountView): AccountActions {
     preview: account.configValid && account.maskedNumber !== null && account.state !== 'linking',
     schedules: account.configValid,
     conversations: account.configValid,
+    history: true,
     settings: true,
     prompt: account.configValid,
     link:

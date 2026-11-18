@@ -14,6 +14,7 @@ import { type AccountView, describeAccounts } from './web-accounts.js'
 import { removeWebAddress, writeWebAddress } from './web-address.js'
 import { conversationRoutes } from './web-conversations.js'
 import { digestRoutes } from './web-digest.js'
+import { historyRoutes } from './web-history.js'
 import { promptRoutes } from './web-prompt.js'
 import { accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
@@ -45,6 +46,8 @@ export interface WebEvents extends Record<string, unknown> {
     readonly parts?: number
     readonly error?: DigestErrorCode
   }
+  /** The history of an account has a new entry (RF-74). Says nothing of what it holds: the page asks for it. */
+  readonly history: { readonly account: string }
   /** A preview ended (RF-64). Without its content: that is private, and the page asks for it. */
   readonly preview: {
     readonly account: string
@@ -126,6 +129,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ...promptRoutes(source, () => void publishAccounts()),
     ...digestRoutes({ ...source, previews }),
     ...conversationRoutes(source),
+    ...historyRoutes(source),
   ]
 
   const qrCount = new Map<string, number>()
@@ -157,8 +161,20 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       })
     }
   })
-  const unsubscribeDigest = host.onDigest(({ account, ...event }) => bus.publish('digest', { account, ...event }))
+  const unsubscribeDigest = host.onDigest(({ account, ...event }) => {
+    bus.publish('digest', { account, ...event })
+    // Every run that ends (even a failed or empty one) added a row to the history.
+    if (event.state === 'done' || event.state === 'empty' || event.state === 'failed')
+      bus.publish('history', { account })
+  })
+  // Runs closed as interrupted, or recorded by another process (`msum digest`): found on the look of the host, only while
+  // a page is connected.
+  const unsubscribeHistory = host.onHistory(
+    (account) => bus.publish('history', { account }),
+    () => bus.size > 0,
+  )
   const unsubscribe = (): void => {
+    unsubscribeHistory()
     unsubscribeChange()
     unsubscribeLink()
     unsubscribeDigest()

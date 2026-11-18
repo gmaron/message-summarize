@@ -11,6 +11,32 @@ export interface DigestRecord {
   readonly failed: number
 }
 
+/** Why a conversation was not summarized, as a code that is safe to keep (never the provider's text). */
+export type FailureCode = 'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed'
+
+export interface RunFailedConversation {
+  readonly id: string
+  readonly name: string
+  readonly reason: FailureCode
+}
+
+/**
+ * How a run that ends in a commit went (RF-74). The row was opened by the caller before the run (`runId`), so a crash
+ * leaves it open; the commit closes it in the same transaction that saves the digest.
+ */
+export interface RunCompletion {
+  readonly runId: number
+  readonly finishedAt: number
+  /** The window the run covered. */
+  readonly since: number
+  readonly until: number
+  readonly summarized: number
+  readonly failed: number
+  /** Conversations summarized by each provider, by the name the adapter gave it (`unknown` when it gave none). */
+  readonly providers: Readonly<Record<string, number>>
+  readonly failedConversations: readonly RunFailedConversation[]
+}
+
 export interface DigestCommit {
   /** The pointer the use case read when it started. The commit is refused if the stored one is different. */
   readonly previousPointer: number | null
@@ -20,6 +46,8 @@ export interface DigestCommit {
   readonly digest: DigestRecord | null
   /** Parts to deliver, in order. Empty when there is no digest. */
   readonly parts: readonly string[]
+  /** The run being closed, when the caller records runs. Saved with the digest, or alone for an empty window. */
+  readonly run?: RunCompletion
 }
 
 /** The stored pointer is not `previousPointer`: another run finished first. Nothing was saved. */

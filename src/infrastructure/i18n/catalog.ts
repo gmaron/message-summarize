@@ -527,6 +527,7 @@ export interface WebTexts {
       readonly preview: string
       readonly schedules: string
       readonly conversations: string
+      readonly history: string
       readonly settings: string
       readonly prompt: string
       readonly link: string
@@ -687,6 +688,46 @@ export interface WebTexts {
       readonly shown: string
       readonly loadMore: string
       readonly saving: string
+    }
+    readonly history: {
+      /** `{account}`. */
+      readonly title: string
+      readonly empty: string
+      /** `{shown}`, `{total}`. */
+      readonly shown: string
+      readonly loadMore: string
+      readonly trigger: Readonly<Record<'schedule' | 'missed' | 'manual' | 'cli', string>>
+      readonly outcome: Readonly<Record<'committed' | 'empty' | 'failed' | 'running', string>>
+      /** `{n}`. */
+      readonly seconds: string
+      /** `{m}`, `{s}`. */
+      readonly minutes: string
+      readonly underSecond: string
+      readonly durationLabel: string
+      readonly providersLabel: string
+      readonly noProviders: string
+      /** `{provider}`, `{count}`. */
+      readonly providerCount: string
+      /** The label of a provider the adapter reported as `unknown`. */
+      readonly unknownProvider: string
+      /** `{summarized}`, `{failed}`. */
+      readonly counts: string
+      /** A run that was cut off by a restart. */
+      readonly interrupted: string
+      readonly open: string
+      readonly back: string
+      readonly loadingDetail: string
+      /** `{since}`, `{until}`. */
+      readonly window: string
+      /** `{when}`. */
+      readonly startedAt: string
+      readonly digestHeading: string
+      readonly noDigest: string
+      readonly failedHeading: string
+      readonly failedNone: string
+      readonly reason: Readonly<Record<'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed', string>>
+      /** Said once on top: what the history keeps and where. */
+      readonly privateNote: string
     }
     readonly preview: {
       /** `{account}`. */

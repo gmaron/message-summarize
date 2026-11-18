@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { vi } from 'vitest'
 import type { CaptureMessages } from '../../src/application/capture-messages.js'
-import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
-import { ok, type Result } from '../../src/domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../src/application/ports/summarizer.js'
+import { ok } from '../../src/domain/result.js'
 import type {
   HistorySyncListener,
   HistorySyncProgress,
@@ -150,10 +150,8 @@ export const SUMMARY = {
 /** A summarizer that records its requests and answers with a valid summary. */
 export class FakeSummarizer implements Summarizer {
   readonly requests: SummarizeRequest[] = []
-  constructor(
-    private readonly answer: () => Promise<Result<unknown, string>> | Result<unknown, string> = () => ok(SUMMARY),
-  ) {}
-  async summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  constructor(private readonly answer: () => Promise<SummarizeResult> | SummarizeResult = () => ok(SUMMARY)) {}
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     this.requests.push(request)
     return this.answer()
   }

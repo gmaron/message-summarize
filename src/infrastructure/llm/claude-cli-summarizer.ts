@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { SummarizeRequest, Summarizer } from '../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../application/ports/summarizer.js'
+import { err } from '../../domain/result.js'
 import { parseSummaryResponse } from '../../domain/summary.js'
 import { excerpt, SUMMARY_JSON_SCHEMA_TEXT } from './summary-schema.js'
 
@@ -72,6 +72,9 @@ const CORRECTION =
   '\n\n---\nYour previous answer was not valid. Answer again with only the JSON object that matches the schema: ' +
   'resumen (string), pendientes (list of strings), necesita_respuesta (true or false), prioridad (alta, media or baja).'
 
+/** The name this adapter reports as the provider of a summary. */
+export const CLAUDE_CLI_PROVIDER = 'claude-cli'
+
 /** Summarizes with Claude Code in headless mode, with no tools, in an empty temporary directory (RF-47..49). */
 export class ClaudeCliSummarizer implements Summarizer {
   private readonly command: string
@@ -84,12 +87,15 @@ export class ClaudeCliSummarizer implements Summarizer {
     this.killGraceMs = options.killGraceMs ?? 5_000
   }
 
-  async summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const first = await this.attempt(request, request.transcript)
-    if (first.ok || !first.retryable) return first.ok ? ok(first.value) : err(first.error)
+    if (first.ok || !first.retryable)
+      return first.ok ? { ok: true, value: first.value, provider: CLAUDE_CLI_PROVIDER } : err(first.error)
     // RF-48: the answer was unusable. Ask once to correct it.
     const second = await this.attempt(request, request.transcript + CORRECTION)
-    return second.ok ? ok(second.value) : err(`${first.error}; retry: ${second.error}`)
+    return second.ok
+      ? { ok: true, value: second.value, provider: CLAUDE_CLI_PROVIDER }
+      : err(`${first.error}; retry: ${second.error}`)
   }
 
   private async attempt(

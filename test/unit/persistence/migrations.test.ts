@@ -31,11 +31,12 @@ describe('openDatabase and migrations', () => {
     const t = fresh()
     const db = t.open()
     expect(currentVersion(db)).toBe(MIGRATIONS.length)
-    expect(currentVersion(db)).toBe(2)
+    expect(currentVersion(db)).toBe(3)
     expect(tables(db)).toEqual([
       'account',
       'conversations',
       'digest_pointer',
+      'digest_runs',
       'digests',
       'messages',
       'outbox',
@@ -51,7 +52,35 @@ describe('openDatabase and migrations', () => {
     first.close()
     const second = t.open()
     expect(second.prepare('SELECT version, applied_at FROM schema_version').all()).toEqual(applied)
-    expect(currentVersion(second)).toBe(2)
+    expect(currentVersion(second)).toBe(3)
+  })
+
+  it('upgrades a database at version 2 to 3 keeping its data and adding the runs table (RF-74, RNF-16)', () => {
+    const t = fresh()
+    const first = openDatabase(t.path, { migrations: MIGRATIONS.slice(0, 2) })
+    first.exec('INSERT INTO digest_pointer (id, pointer) VALUES (1, 500)')
+    first.exec(
+      "INSERT INTO digests (since, until, created_at, text, summarized, failed) VALUES (1, 2, 3, 'old digest', 4, 5)",
+    )
+    first.exec("INSERT INTO outbox (digest_id, text, created_at) VALUES (1, 'part', 3)")
+    first.exec("INSERT INTO account (id, jid, linked_at) VALUES (1, '5491100000000@s.whatsapp.net', 9)")
+    expect(currentVersion(first)).toBe(2)
+    first.close()
+    const upgraded = t.open()
+    expect(currentVersion(upgraded)).toBe(3)
+    expect(upgraded.prepare('SELECT pointer FROM digest_pointer').all()).toEqual([{ pointer: 500 }])
+    expect(upgraded.prepare('SELECT text, summarized, failed FROM digests').all()).toEqual([
+      { text: 'old digest', summarized: 4, failed: 5 },
+    ])
+    expect(upgraded.prepare('SELECT digest_id, text FROM outbox').all()).toEqual([{ digest_id: 1, text: 'part' }])
+    expect(upgraded.prepare('SELECT jid FROM account').all()).toEqual([{ jid: '5491100000000@s.whatsapp.net' }])
+    expect(upgraded.prepare('SELECT COUNT(*) AS n FROM digest_runs').get()).toEqual({ n: 0 })
+    // The new table works on the migrated database, and an old digest can be referenced by a run.
+    upgraded.exec("INSERT INTO digest_runs (trigger_kind, started_at, digest_id) VALUES ('manual', 10, 1)")
+    expect(() => upgraded.exec("INSERT INTO digest_runs (trigger_kind, started_at) VALUES ('bogus', 10)")).toThrow()
+    expect(() =>
+      upgraded.exec("INSERT INTO digest_runs (trigger_kind, started_at, outcome) VALUES ('cli', 10, 'failed')"),
+    ).toThrow()
   })
 
   it('upgrades a database at version 1 to 2 without touching its data', () => {
@@ -61,7 +90,7 @@ describe('openDatabase and migrations', () => {
     expect(currentVersion(first)).toBe(1)
     first.close()
     const upgraded = t.open()
-    expect(currentVersion(upgraded)).toBe(2)
+    expect(currentVersion(upgraded)).toBe(3)
     expect(upgraded.prepare('SELECT pointer FROM digest_pointer').all()).toEqual([{ pointer: 77 }])
     expect(upgraded.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 0 })
   })

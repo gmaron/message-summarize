@@ -13,11 +13,13 @@ import { nextPointer, resolveWindow, type SummaryWindow, type WindowError } from
 import { assertConcurrency, mapWithConcurrency } from './concurrency.js'
 import type { Clock } from './ports/clock.js'
 import type { DigestSource } from './ports/digest-source.js'
-import type { DigestStore } from './ports/digest-store.js'
+import type { DigestStore, FailureCode, RunFailedConversation } from './ports/digest-store.js'
 import type { RenderedDigest, Renderers, TranscriptEntry } from './ports/rendering.js'
 import type { Summarizer } from './ports/summarizer.js'
 
 export const DEFAULT_CONCURRENCY = 4
+/** The provider name counted when the summarizer did not say who answered. */
+export const UNKNOWN_PROVIDER = 'unknown'
 
 export interface GenerateDigestDeps {
   readonly source: DigestSource
@@ -46,6 +48,8 @@ export interface GenerateDigestRequest {
   readonly platformName: string
   /** Conversations summarized at once (RNF-10). Default 4. */
   readonly concurrency?: number | undefined
+  /** The run record opened by the caller (RF-74). When set, the commit closes it. Ignored in a preview. */
+  readonly runId?: number | undefined
 }
 
 export interface FailedConversation {
@@ -55,11 +59,31 @@ export interface FailedConversation {
   readonly reason: string
 }
 
+/** The markers the adapters and the use case put at the start of a reason (see `FallbackSummarizer`, the CLIs, Ollama). */
+export const LOCAL_ONLY_REASON = 'localOnlyUnavailable'
+const INVALID_SUMMARY_PREFIX = 'invalid summary:'
+const TIMEOUT_MARKER = /^(?:claude|ollama) timed out after /
+
+/**
+ * The code kept for a failure reason: the free text of an adapter never goes to the history. A chained reason
+ * ("<first>; fallback: <second>") is decided by the FIRST failure, the one that made the conversation leave its provider.
+ * Only the markers the code itself produces are matched, anchored at the start, never words inside a provider's text.
+ */
+export function failureCode(reason: string): FailureCode {
+  const first = (reason.split('; fallback:')[0] ?? reason).trim()
+  if (first === LOCAL_ONLY_REASON) return 'localOnlyUnavailable'
+  if (TIMEOUT_MARKER.test(first)) return 'timeout'
+  if (first.startsWith(INVALID_SUMMARY_PREFIX)) return 'invalidSummary'
+  return 'failed'
+}
+
 export interface DigestReport {
   readonly window: SummaryWindow
   readonly preview: boolean
   readonly summarized: number
   readonly failed: readonly FailedConversation[]
+  /** How many conversations each provider summarized (`unknown` when the summarizer did not say). Empty in an empty window. */
+  readonly providers: Readonly<Record<string, number>>
   /** Null when the window had nothing to summarize: there is no digest and nothing is delivered. */
   readonly digest: RenderedDigest | null
   /** What is to be delivered, split into parts. Empty without a digest. In a preview, it is what would be delivered. */
@@ -116,6 +140,8 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
       deliveryParts: readonly string[],
       summarized: number,
       failedCount: number,
+      providers: Readonly<Record<string, number>>,
+      failedConversations: readonly RunFailedConversation[],
     ): Promise<Result<number | null, GenerateDigestError>> => {
       if (preview) return ok(null)
       const newPointer = nextPointer(window.until, pointer)
@@ -134,6 +160,20 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
                 failed: failedCount,
               },
         parts: deliveryParts,
+        ...(request.runId === undefined
+          ? {}
+          : {
+              run: {
+                runId: request.runId,
+                finishedAt: clock.now(),
+                since: window.since,
+                until: window.until,
+                summarized,
+                failed: failedCount,
+                providers,
+                failedConversations,
+              },
+            }),
       })
       return committed.ok ? ok(newPointer) : err({ kind: 'concurrentRun' })
     }
@@ -142,13 +182,14 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
 
     if (prepared.length === 0) {
       // An empty window still advances the pointer (inherited behavior).
-      const saved = await finish(null, [], 0, 0)
+      const saved = await finish(null, [], 0, 0, {}, [])
       if (!saved.ok) return err(saved.error)
       return ok({
         window,
         preview,
         summarized: 0,
         failed: [],
+        providers: {},
         digest: null,
         parts: [],
         pointer: saved.value,
@@ -162,9 +203,12 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
 
     const results: ChatResult[] = []
     const failed: FailedConversation[] = []
+    const providers: Record<string, number> = {}
     for (const outcome of outcomes) {
-      if (outcome.ok) results.push(outcome.value)
-      else failed.push(outcome.error)
+      if (outcome.ok) {
+        results.push(outcome.value.chat)
+        providers[outcome.value.provider] = (providers[outcome.value.provider] ?? 0) + 1
+      } else failed.push(outcome.error)
     }
 
     const digest = renderers.digest.render({
@@ -177,13 +221,21 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
       platformName: request.platformName,
     })
     const parts = splitIntoParts(digest.deliveryLines)
-    const saved = await finish(digest, parts, results.length, failed.length)
+    const saved = await finish(
+      digest,
+      parts,
+      results.length,
+      failed.length,
+      providers,
+      failed.map((f) => ({ id: f.conversationId, name: f.name, reason: failureCode(f.reason) })),
+    )
     if (!saved.ok) return err(saved.error)
     return ok({
       window,
       preview,
       summarized: results.length,
       failed,
+      providers,
       digest,
       parts,
       pointer: saved.value,
@@ -256,7 +308,7 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
     item: Prepared,
     systemPrompt: string,
     settings: DigestSettings,
-  ): Promise<Result<ChatResult, FailedConversation>> {
+  ): Promise<Result<{ chat: ChatResult; provider: string }, FailedConversation>> {
     const fail = (reason: string) => err({ conversationId: item.conversation.id, name: item.name, reason })
     // Any throw (rendering, the port, a malformed outcome) is the failure of this conversation, not of the digest.
     try {
@@ -278,12 +330,15 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
       }
       if (!raw.ok) return fail(String(raw.error))
       const parsed = parseSummaryResponse(raw.value)
-      if (!parsed.ok) return fail(parsed.error.join('; '))
+      if (!parsed.ok) return fail(`${INVALID_SUMMARY_PREFIX} ${parsed.error.join('; ')}`)
       return ok({
-        name: item.name,
-        messageCount: item.entries.length,
-        unsaved: !item.saved,
-        summary: parsed.value,
+        chat: {
+          name: item.name,
+          messageCount: item.entries.length,
+          unsaved: !item.saved,
+          summary: parsed.value,
+        },
+        provider: typeof raw.provider === 'string' && raw.provider !== '' ? raw.provider : UNKNOWN_PROVIDER,
       })
     } catch (e) {
       return fail(e instanceof Error ? e.message : String(e))

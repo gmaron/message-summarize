@@ -40,7 +40,7 @@ describe('OllamaSummarizer (RF-40)', () => {
       res.end(JSON.stringify({ message: { role: 'assistant', content: JSON.stringify(VALID) } }))
     })
     const result = await new OllamaSummarizer({ model: 'qwen3:4b', baseUrl: `${baseUrl}/` }).summarize(request)
-    expect(result).toEqual({ ok: true, value: VALID })
+    expect(result).toEqual({ ok: true, value: VALID, provider: 'ollama' })
     expect(seen?.method).toBe('POST')
     expect(seen?.url).toBe('/api/chat')
     expect(seen?.body).toEqual({
