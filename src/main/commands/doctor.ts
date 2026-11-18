@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { type Catalog, getCatalog } from '../../infrastructure/i18n/index.js'
-import { PROMPT_PLACEHOLDER, resolveExecutable } from '../../infrastructure/llm/index.js'
+import { isOnMachine, PROMPT_PLACEHOLDER, resolveExecutable } from '../../infrastructure/llm/index.js'
 import { envNames, type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/index.js'
 import { findModelByFile, resolveModelPath, sha256File } from '../../infrastructure/transcription/index.js'
 import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
@@ -15,6 +15,7 @@ import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.
 import { openAiKeyProvider } from '../providers.js'
 import { createRuntime } from '../runtime.js'
 import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
+import { consentHosts, hostsText, kindOfProvider, needsConsent, originOf } from './provider.js'
 
 /** Oldest Node this project supports (package.json "engines"). */
 export const MINIMUM_NODE = '22.16.0'
@@ -239,6 +240,40 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
             }
           }
         }
+
+        // RNF-02: a provider that sends the chats out, with no recorded consent for what it would receive. A WARNING:
+        // writing config.json by hand is the expert path and keeps working; the guided one (`msum provider use`)
+        // records the consent, and this makes the gap visible without blocking any digest.
+        // An Ollama that is not on this machine is a server of the user's, but the chats go out to it (the "local only"
+        // ones too: RF-43 means "your Ollama server").
+        const usesOllama =
+          provider.primary === 'ollama' || provider.backup === 'ollama' || loaded.value.localOnlyPatterns.length > 0
+        if (usesOllama && !isOnMachine(provider.ollama.baseUrl)) {
+          io.out(
+            accountTexts.warn(
+              label(accountTexts.names.provider),
+              accountTexts.ollamaRemote(originOf(provider.ollama.baseUrl)),
+              accountTexts.ollamaRemoteFix,
+            ),
+          )
+        }
+        if (account !== null) {
+          for (const chosen of [provider.primary, provider.backup]) {
+            const infoKind = kindOfProvider(loaded.value, chosen)
+            if (infoKind === null || !needsConsent(infoKind, loaded.value)) continue
+            const hosts = consentHosts(infoKind, loaded.value)
+            if (installation.consents.find(account.id, infoKind, hosts) === null) {
+              io.out(
+                accountTexts.warn(
+                  label(accountTexts.names.provider),
+                  accountTexts.consentMissing(infoKind, hostsText(accountCatalog.cli.provider, loaded.value, infoKind)),
+                  accountTexts.consentMissingFix(infoKind),
+                ),
+              )
+            }
+          }
+        }
+        if (kinds.length > 0) io.out(`       ${accountTexts.providerTestHint}`)
 
         // Transcription (RF-81, RF-21): off is fine. On, the program, ffmpeg and the model must be there, or audios stay
         // untranscribed (the product works either way, but the user asked for transcripts).

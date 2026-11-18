@@ -1,6 +1,7 @@
 import type { MessageKind } from '../../domain/model.js'
 import type { SettingsIssueCode } from '../../domain/settings.js'
 import type { WindowError } from '../../domain/window.js'
+import type { ProviderCharge, ProviderInfoKind } from '../llm/provider-info.js'
 
 export type Language = 'es' | 'en'
 
@@ -145,6 +146,8 @@ export interface Catalog {
       invalidDays(value: string): string
       /** `msum secret set|rm <provider>` with a provider that has no key; `allowed` is the list of the ones that do. */
       unknownProvider(allowed: string): string
+      /** `msum provider use|test` with a kind that does not exist; `allowed` lists the ones that do. */
+      unknownProviderKind(value: string, allowed: string): string
     }
     /** Problems of config.json that the digest settings do not cover (RF-73). */
     readonly config: {
@@ -169,6 +172,102 @@ export interface Catalog {
        * by third parties. `acknowledged` says whether the user accepted that, which is what lets it run.
        */
       genericCliWarning(acknowledged: boolean): string
+    }
+    /** `msum provider ls|use|test` (RF-41, RNF-02): choosing a provider and trying it. */
+    readonly provider: {
+      readonly descriptions: Readonly<Record<ProviderInfoKind, string>>
+      readonly charge: Readonly<Record<ProviderCharge, string>>
+      readonly dataLeaves: string
+      readonly dataStays: string
+      /** No host to list: Ollama, which stays on the machine. */
+      readonly hostsNone: string
+      /** `openai-compatible`: the host of `provider.openai.baseUrl`. */
+      readonly hostsYourServer: string
+      readonly hostsYourCommand: string
+      /** A preset that is disabled and contacts nothing. */
+      readonly hostsDisabled: string
+      readonly policyNone: string
+      readonly roles: { readonly primary: string; readonly backup: string; readonly none: string }
+      readonly ls: {
+        title(account: string): string
+        kind(kind: string, description: string): string
+        info(charge: string, data: string, hosts: string, policy: string): string
+        state(role: string, key: string, usable: string): string
+        /** `source` is already translated (`secret.source*`); the key itself is never shown. */
+        keyFrom(name: string, source: string): string
+        keyMissing(name: string): string
+        readonly keyNotNeeded: string
+        keyOptional(name: string): string
+        readonly usableYes: string
+        readonly usableNoModel: string
+        usableNoKey(name: string): string
+        readonly usableDisabled: string
+        readonly usableNoCommand: string
+        readonly usableNotAcknowledged: string
+        readonly usableNotChecked: string
+        /** `detail` is the reason `doctor` gives for a CLI that failed `verify`. */
+        usableVerifyFailed(detail: string): string
+        /** RNF-02, for a configured provider that sends the chats out: when it was accepted (`date` is YYYY-MM-DD). */
+        consent(date: string): string
+        readonly consentNone: string
+        /** Ollama at an address that is not this machine: the chats go to that server (a line under its data). */
+        ollamaRemote(origin: string): string
+        readonly footer: string
+      }
+      readonly use: {
+        readonly baseUrlRequired: string
+        readonly baseUrlIsOpenAi: string
+        readonly baseUrlOnlyCompatible: string
+        readonly modelNotForGeneric: string
+        readonly noModelHint: string
+        /** `file` was not touched. */
+        notWritten(file: string): string
+        fileNotJson(file: string): string
+        disclosureTitle(provider: string): string
+        readonly disclosureSends: string
+        disclosureHosts(hosts: string): string
+        /** The generic CLI: the command that receives the chats, as a JSON list, `{{prompt}}` shown literally. */
+        disclosureCommand(command: string): string
+        /** The config file was modified while the user was being asked: nothing was written. */
+        changedWhileEditing(file: string): string
+        disclosurePolicy(url: string): string
+        readonly disclosureNoPolicy: string
+        readonly disclosureLocalOnly: string
+        /** The generic CLI: what `acknowledgeRisk` is, before anything is activated. */
+        readonly genericExplain: string
+        confirm(provider: string): string
+        readonly noTerminal: string
+        readonly cancelled: string
+        wrote(file: string, role: string, provider: string): string
+        keyReminder(name: string): string
+        readonly genericNotAcknowledged: string
+        readonly testReminder: string
+      }
+      readonly test: {
+        noneConfigured(role: string): string
+        noModel(kind: string): string
+        noticeExternal(hosts: string): string
+        noticeLocal(url: string): string
+        running(kind: string): string
+        ok(kind: string, ms: number, needsReply: string, priority: string): string
+        failed(kind: string, reason: string): string
+        readonly yes: string
+        readonly no: string
+        readonly priorities: { readonly high: string; readonly medium: string; readonly low: string }
+        readonly hints: {
+          missingKey(name: string): string
+          readonly authFailed: string
+          readonly unknownModel: string
+          readonly rateLimit: string
+          readonly timeout: string
+          readonly disabled: string
+          readonly verifyFailed: string
+          readonly unreachable: string
+          readonly redirect: string
+          readonly geminiSchemaShape: string
+          readonly generic: string
+        }
+      }
     }
     /** `msum secret set|rm|ls`: the API keys (RNF-04). A key is never printed, not even partly. */
     readonly secret: {
@@ -466,6 +565,14 @@ export interface Catalog {
       /** The command has `{{prompt}}`: the chat is in the arguments, which other local users can read with `ps`. */
       readonly genericPromptInArgv: string
       readonly genericPromptInArgvFix: string
+      /** RNF-02: a provider that sends the chats out with no recorded consent. A warning, never a block. */
+      consentMissing(provider: string, hosts: string): string
+      consentMissingFix(provider: string): string
+      /** Ollama at an address that is not this machine: the chats go to a server of the user's, but out of this computer. */
+      ollamaRemote(origin: string): string
+      readonly ollamaRemoteFix: string
+      /** After the providers: the way to try them for real, which `doctor` never does (RNF-01). */
+      readonly providerTestHint: string
       readonly providerNone: string
       readonly whatsappOk: string
       readonly whatsappNone: string

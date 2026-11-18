@@ -2,6 +2,11 @@ import { parseArgs as nodeParseArgs } from 'node:util'
 import { isValidAccountId } from '../../domain/account-id.js'
 import { err, ok, type Result } from '../../domain/result.js'
 import { formatTime, parseTime, type Weekday } from '../../domain/schedule.js'
+import {
+  isProviderInfoKind,
+  PROVIDER_INFO_KINDS,
+  type ProviderInfoKind,
+} from '../../infrastructure/llm/provider-info.js'
 import { isKeyProvider, type KeyProvider } from '../../infrastructure/secrets/index.js'
 import { parseDaysSpec } from './days.js'
 import { type LocalDateTime, parseLocalDateTime } from './local-time.js'
@@ -57,6 +62,26 @@ export type Command =
   /** `msum secret set|rm <provider>` and `msum secret ls`: the API keys (the key itself is never an argument). */
   | ({ readonly name: 'secret'; readonly action: 'set' | 'rm'; readonly provider: KeyProvider } & AccountArg)
   | ({ readonly name: 'secret'; readonly action: 'ls' } & AccountArg)
+  /** `msum provider ls`: what each provider is and whether it is usable here. */
+  | ({ readonly name: 'provider'; readonly action: 'ls' } & AccountArg)
+  /** `msum provider use <kind>`: choose it (RF-41), after telling what it receives (RNF-02). */
+  | ({
+      readonly name: 'provider'
+      readonly action: 'use'
+      readonly kind: ProviderInfoKind
+      readonly model: string | null
+      readonly backup: boolean
+      readonly yes: boolean
+      /** Only for `openai-compatible`. */
+      readonly baseUrl: string | null
+    } & AccountArg)
+  /** `msum provider test`: one real call with a made-up conversation (RF-41, "test the connection"). */
+  | ({
+      readonly name: 'provider'
+      readonly action: 'test'
+      readonly backup: boolean
+      readonly kind: ProviderInfoKind | null
+    } & AccountArg)
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
       readonly name: 'schedule'
@@ -81,6 +106,7 @@ export type ArgError =
   | { readonly kind: 'invalidDays'; readonly value: string }
   | { readonly kind: 'conflictingOptions'; readonly value: string }
   | { readonly kind: 'unknownProvider' }
+  | { readonly kind: 'unknownProviderKind'; readonly value: string }
 
 const COMMANDS = [
   'init',
@@ -96,6 +122,7 @@ const COMMANDS = [
   'import',
   'whisper',
   'secret',
+  'provider',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -107,6 +134,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   doctor: ['account'],
   retry: ['account'],
   secret: ['account'],
+  provider: ['account', 'model', 'backup', 'yes', 'kind', 'base-url'],
   schedule: ['account', 'time', 'days'],
   import: ['from', 'account', 'instance', 'all', 'yes', 'schedule', 'data', 'session-only', 'force'],
 }
@@ -128,6 +156,10 @@ const OPTIONS = {
   data: { type: 'string' },
   'session-only': { type: 'boolean' },
   force: { type: 'boolean' },
+  model: { type: 'string' },
+  backup: { type: 'boolean' },
+  kind: { type: 'string' },
+  'base-url': { type: 'string' },
 } as const
 
 /** The "--name" a node:util error message talks about. */
@@ -154,7 +186,13 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
   if (values.help || command === undefined || command === 'help') return ok({ name: 'help' })
   if (!(COMMANDS as readonly string[]).includes(command)) return err({ kind: 'unknownCommand', value: command })
   // `schedule` and `whisper` have a subcommand (and `rm` an id, `download` a name); the other commands take no positional arguments.
-  if (command !== 'schedule' && command !== 'whisper' && command !== 'secret' && rest.length > 0) {
+  if (
+    command !== 'schedule' &&
+    command !== 'whisper' &&
+    command !== 'secret' &&
+    command !== 'provider' &&
+    rest.length > 0
+  ) {
     return err({ kind: 'unexpectedArgument', value: rest[0] as string })
   }
 
@@ -163,7 +201,14 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       ? (FLAGS.schedule ?? []).filter(
           (flag) => flag === 'account' || (rest[0] === 'add' && ['time', 'days'].includes(flag)),
         )
-      : (FLAGS[command] ?? [])
+      : command === 'provider'
+        ? (FLAGS.provider ?? []).filter(
+            (flag) =>
+              flag === 'account' ||
+              (rest[0] === 'use' && ['model', 'backup', 'yes', 'base-url'].includes(flag)) ||
+              (rest[0] === 'test' && ['backup', 'kind'].includes(flag)),
+          )
+        : (FLAGS[command] ?? [])
   for (const flag of Object.keys(values)) {
     if (flag !== 'help' && !accepted.includes(flag)) return err({ kind: 'unknownOption', value: `--${flag}` })
   }
@@ -210,6 +255,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       return parseWhisper(rest)
     case 'secret':
       return parseSecret(rest, account)
+    case 'provider':
+      return parseProvider(rest, values, account)
     case 'import':
       return parseImport(values, account)
     case 'link':
@@ -235,6 +282,54 @@ function parseWhisper(rest: readonly string[]): Result<Command, ArgError> {
   if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: extra[0] as string })
   return ok({ name: 'whisper', action: 'download', model })
 }
+
+/** `msum provider ls`, `msum provider use <kind> [--model m] [--backup] [--yes] [--base-url u]`, `msum provider test [--backup] [--kind k]`. */
+function parseProvider(
+  rest: readonly string[],
+  values: {
+    readonly model?: string | undefined
+    readonly backup?: boolean | undefined
+    readonly yes?: boolean | undefined
+    readonly kind?: string | undefined
+    readonly 'base-url'?: string | undefined
+  },
+  account: string | null,
+): Result<Command, ArgError> {
+  const [action = 'ls', ...more] = rest
+  if (action !== 'ls' && action !== 'use' && action !== 'test') return err({ kind: 'unknownSubcommand', value: action })
+  if (action === 'ls' || action === 'test') {
+    if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
+    if (action === 'ls') return ok({ name: 'provider', action: 'ls', account })
+    let kind: ProviderInfoKind | null = null
+    if (values.kind !== undefined) {
+      if (!isProviderInfoKind(values.kind)) return err({ kind: 'unknownProviderKind', value: values.kind })
+      kind = values.kind
+    }
+    if (kind !== null && values.backup === true) return err({ kind: 'conflictingOptions', value: '--kind' })
+    return ok({ name: 'provider', action: 'test', backup: values.backup === true, kind, account })
+  }
+  const [kind, ...extra] = more
+  if (kind === undefined || kind.trim() === '') return err({ kind: 'missingValue', value: '<provider>' })
+  if (!isProviderInfoKind(kind)) return err({ kind: 'unknownProviderKind', value: kind })
+  if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: extra[0] as string })
+  for (const flag of ['model', 'base-url'] as const) {
+    if (values[flag] !== undefined && values[flag].trim() === '')
+      return err({ kind: 'missingValue', value: `--${flag}` })
+  }
+  return ok({
+    name: 'provider',
+    action: 'use',
+    kind,
+    model: values.model ?? null,
+    backup: values.backup === true,
+    yes: values.yes === true,
+    baseUrl: values['base-url'] ?? null,
+    account,
+  })
+}
+
+/** All the kinds `msum provider` knows, for the message that lists them. */
+export const PROVIDER_KIND_NAMES = PROVIDER_INFO_KINDS.join(', ')
 
 /** `msum secret set|rm <provider>` and `msum secret ls`. The key is not an argument: it is read from the input. */
 function parseSecret(rest: readonly string[], account: string | null): Result<Command, ArgError> {

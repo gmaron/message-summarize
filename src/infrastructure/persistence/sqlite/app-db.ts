@@ -51,6 +51,22 @@ CREATE INDEX schedules_by_account ON schedules (account_id, id);
 ALTER TABLE accounts ADD COLUMN schedules_imported INTEGER NOT NULL DEFAULT 0 CHECK (schedules_imported IN (0, 1));
 `,
   },
+  {
+    version: 3,
+    description: 'Consent to send chats to a provider',
+    sql: `
+-- RNF-02: the user accepted that the chats of this account go to this provider. \`hosts\` is the sorted, comma-joined
+-- list that was disclosed (for an OpenAI-compatible server, the origin of its base URL), so a different server needs a
+-- new consent. Deleting an account deletes its consents (the connection has foreign keys on).
+CREATE TABLE provider_consents (
+  account_id  TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,
+  hosts       TEXT NOT NULL,
+  accepted_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, kind, hosts)
+);
+`,
+  },
 ]
 
 /** Opens (creating it when missing) the installation database: 0600, WAL, migrated. */

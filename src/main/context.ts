@@ -85,6 +85,11 @@ export interface CommandContext {
   readonly transcriber?: Transcriber | null
   /** How long `msum digest` waits for pending audios and how often it looks while observing a daemon. For tests. */
   readonly transcriptionTiming?: { readonly waitMs?: number; readonly pollMs?: number }
+  /**
+   * Other hosts for the providers that have a fixed one, for `msum provider test`. For tests, which point them at fake
+   * servers: the product only ever contacts the real hosts (RNF-01).
+   */
+  readonly providerBaseUrls?: { readonly anthropic?: string; readonly gemini?: string }
   /** Replaces `fetch` for the download of whisper models, so tests never reach the network. */
   readonly fetch?: typeof fetch
   /** Replaces the table of pinned whisper models (sizes and checksums). For tests, which cannot produce a 77 MB file. */

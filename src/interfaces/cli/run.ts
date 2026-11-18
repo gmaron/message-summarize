@@ -6,6 +6,7 @@ import {
   type Command,
   type DigestArgs,
   type ImportArgs,
+  PROVIDER_KIND_NAMES,
   parseCommandLine,
 } from './args.js'
 
@@ -17,6 +18,9 @@ export type WhisperCommand = Extract<Command, { name: 'whisper' }>
 
 /** The `secret` command with its subcommand. */
 export type SecretCommand = Extract<Command, { name: 'secret' }>
+
+/** The `provider` command with its subcommand. */
+export type ProviderCommand = Extract<Command, { name: 'provider' }>
 
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
@@ -39,6 +43,7 @@ export interface CliHandlers {
   schedule(command: ScheduleCommand): Promise<number>
   whisper(command: WhisperCommand): Promise<number>
   secret(command: SecretCommand): Promise<number>
+  provider(command: ProviderCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -71,6 +76,8 @@ export function describeArgError(texts: Catalog['cli'], error: ArgError): string
       return messages.invalidDays(error.value)
     case 'unknownProvider':
       return messages.unknownProvider(KEY_PROVIDERS.join(', '))
+    case 'unknownProviderKind':
+      return messages.unknownProviderKind(error.value, PROVIDER_KIND_NAMES)
     case 'conflictingOptions':
       return messages.conflictingOptions(error.value)
   }
@@ -104,6 +111,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.whisper(command)
     case 'secret':
       return handlers.secret(command)
+    case 'provider':
+      return handlers.provider(command)
   }
 }
 

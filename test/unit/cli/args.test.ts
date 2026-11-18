@@ -189,6 +189,7 @@ describe('runCli', () => {
     import: handler('import'),
     whisper: handler('whisper'),
     secret: handler('secret'),
+    provider: handler('provider'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {
