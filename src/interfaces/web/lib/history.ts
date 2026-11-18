@@ -12,8 +12,19 @@ export type OutcomeKey = RunOutcome | 'running'
 /** The label of a run's outcome: a run with no outcome is still running (or was cut off, which the error says). */
 export const outcomeKey = (run: Pick<HistoryRun, 'outcome'>): OutcomeKey => run.outcome ?? 'running'
 
-export const outcomeTone = (key: OutcomeKey): 'ok' | 'warn' | 'error' | 'working' =>
-  key === 'committed' ? 'ok' : key === 'empty' ? 'warn' : key === 'failed' ? 'error' : 'working'
+/** What the pill of a run says: a run that sent its digest but left chats unsummarized is "partial". */
+export type RunPillKey = OutcomeKey | 'partial'
+
+export function runPill(run: Pick<HistoryRun, 'outcome' | 'failed'>): {
+  tone: 'ok' | 'bad' | 'busy' | 'idle'
+  key: RunPillKey
+} {
+  if (run.outcome === 'committed')
+    return run.failed > 0 ? { tone: 'busy', key: 'partial' } : { tone: 'ok', key: 'committed' }
+  if (run.outcome === 'empty') return { tone: 'idle', key: 'empty' }
+  if (run.outcome === 'failed') return { tone: 'bad', key: 'failed' }
+  return { tone: 'busy', key: 'running' }
+}
 
 /** A duration the way a person reads it: "under 1 s", "12 s", "2 min 5 s". Null while the run is open. */
 export function durationText(durationMs: number | null, texts: WebTexts): string | null {
@@ -25,14 +36,21 @@ export function durationText(durationMs: number | null, texts: WebTexts): string
   return fmt(t.minutes, { m: Math.floor(total / 60), s: total % 60 })
 }
 
-/** The providers of a run, biggest first: "Claude Code: 12, Ollama: 2". Empty when none summarized anything. */
+/** The name of a provider as the settings say it ("Claude (command line)"); a name the page does not know is shown as it is. */
+export function providerLabel(name: string, texts: WebTexts): string {
+  if (name === 'unknown') return texts.ui.history.unknownProvider
+  const names = texts.ui.settings.providerNames as Readonly<Record<string, string>>
+  return Object.hasOwn(names, name) ? (names[name] as string) : name
+}
+
+/** The providers of a run, biggest first: "Claude: 12, Ollama: 2". Empty when none summarized anything. */
 export function providersText(providers: Readonly<Record<string, number>>, texts: WebTexts): string {
   const t = texts.ui.history
   const entries = Object.entries(providers).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   if (entries.length === 0) return t.noProviders
   return entries
-    .map(([name, count]) => fmt(t.providerCount, { provider: name === 'unknown' ? t.unknownProvider : name, count }))
-    .join(', ')
+    .map(([name, count]) => fmt(t.providerCount, { provider: providerLabel(name, texts), count }))
+    .join(texts.ui.text.listSeparator)
 }
 
 /** Why a run failed: `interrupted` is the history's own code, the others are the ones of a digest. Null when it did not fail. */

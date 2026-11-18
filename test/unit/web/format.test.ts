@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateTime, percentOf, weekdayName } from '../../../src/interfaces/web/lib/format.js'
+import {
+  dayChip,
+  formatDateTime,
+  formatTime,
+  percentOf,
+  weekdayName,
+  whenText,
+} from '../../../src/interfaces/web/lib/format.js'
 import { fmt, pickLanguage, textsFor } from '../../../src/interfaces/web/lib/i18n.js'
 
 describe('formatDateTime', () => {
@@ -62,5 +69,35 @@ describe('the percent text', () => {
   it('exists in both languages with the {percent} slot', () => {
     expect(fmt(textsFor('en').ui.link.percent, { percent: 42 })).toBe('42%')
     expect(fmt(textsFor('es').ui.link.percent, { percent: 42 })).toBe('42 %')
+  })
+})
+
+describe('the day and the time of a moment in the zone of the account', () => {
+  const zone = 'America/Argentina/Buenos_Aires'
+  // 2026-11-18, noon in Buenos Aires (UTC-3)
+  const now = Date.UTC(2026, 10, 18, 15, 0)
+
+  it('names today, yesterday and tomorrow by the day of the zone, not of the browser', () => {
+    expect(dayChip(Date.UTC(2026, 10, 18, 12, 0), zone, 'es-AR', now)).toBe('Hoy')
+    // 02:00 UTC of the 19th is still the 18th, 23:00 here
+    expect(dayChip(Date.UTC(2026, 10, 19, 2, 0), zone, 'es-AR', now)).toBe('Hoy')
+    expect(dayChip(Date.UTC(2026, 10, 17, 15, 0), zone, 'es-AR', now)).toBe('Ayer')
+    expect(dayChip(Date.UTC(2026, 10, 19, 15, 0), 'UTC', 'en', Date.UTC(2026, 10, 18, 15, 0))).toBe('Tomorrow')
+  })
+
+  it('shows a weekday for the nearby days and a date for the far ones', () => {
+    expect(dayChip(Date.UTC(2026, 10, 21, 15, 0), zone, 'es-AR', now)).toMatch(/sáb/i)
+    expect(dayChip(Date.UTC(2026, 11, 20, 15, 0), zone, 'es-AR', now)).toMatch(/dic/i)
+  })
+
+  it('says the time in 24 hours and puts the day before it', () => {
+    expect(formatTime(Date.UTC(2026, 10, 18, 12, 0), zone, 'es-AR')).toBe('9:00')
+    expect(formatTime(Date.UTC(2026, 10, 18, 22, 30), zone, 'en')).toBe('19:30')
+    expect(whenText(Date.UTC(2026, 10, 18, 22, 0), zone, 'es-AR', now)).toBe('hoy 19:00')
+  })
+
+  it('survives a zone the browser does not know', () => {
+    expect(() => dayChip(now, 'Not/AZone', 'en', now)).not.toThrow()
+    expect(() => formatTime(now, 'Not/AZone', 'en')).not.toThrow()
   })
 })

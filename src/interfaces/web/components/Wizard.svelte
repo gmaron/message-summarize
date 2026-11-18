@@ -7,7 +7,7 @@
   import type { Controller } from '../lib/controller.js'
   import { errorText } from '../lib/digest.js'
   import { fmt } from '../lib/i18n.js'
-  import { dayLabel } from '../lib/schedules.js'
+  import { dayLabel, newDraft, scheduleIssueOf, shortTime, validateDraft } from '../lib/schedules.js'
   import { issueReason, issuesOf, optionLabel } from '../lib/settings.js'
   import {
     DEFAULT_OLLAMA_URL,
@@ -29,9 +29,11 @@
   import type { AppState } from '../lib/state.js'
   import type { AccountView, Language, SchedulesView, SetupStep, SetupView } from '../lib/types.js'
   import Disclosure from './Disclosure.svelte'
+  import Icon from './Icon.svelte'
   import LinkView from './LinkView.svelte'
   import ProviderTest from './ProviderTest.svelte'
-  import SchedulesDialog from './SchedulesDialog.svelte'
+  import ConfirmDialog from './ConfirmDialog.svelte'
+  import ScheduleForm from './ScheduleForm.svelte'
 
   let {
     controller,
@@ -55,7 +57,10 @@
   let problem: string | null = $state(null)
   let issueLines: string[] = $state.raw([])
   let confirmSkip = $state(false)
-  let showSchedules = $state(false)
+  /** The schedule form (outside the wizard's own form: forms are never nested): null hidden, id null for a new schedule. */
+  let editor: { id: number | null; initial: { days: readonly number[]; time: string } } | null = $state.raw(null)
+  let scheduleProblem: string | null = $state(null)
+  let removing: { id: number; time: string; days: readonly number[] } | null = $state.raw(null)
   let schedules: SchedulesView | null = $state.raw(null)
 
   const patch = (change: Partial<WizardDraft>): void => {
@@ -130,6 +135,43 @@
   $effect(() => {
     if ((step === 'schedule' || step === 'done') && account !== null) untrack(loadSchedules)
   })
+
+  async function saveSchedule(next: { days: readonly number[]; time: string }) {
+    if (account === null || editor === null) return
+    const issue = validateDraft({ days: next.days, time: next.time })
+    if (issue !== null) {
+      scheduleProblem = texts.scheduleIssues[issue]
+      return
+    }
+    saving = true
+    scheduleProblem = null
+    try {
+      const input = { days: [...next.days], time: next.time }
+      if (editor.id === null) await api.addSchedule(account, input)
+      else await api.updateSchedule(account, editor.id, input)
+      editor = null
+      await loadSchedules()
+    } catch (error) {
+      const found = scheduleIssueOf(error)
+      scheduleProblem =
+        found !== null ? texts.scheduleIssues[found] : errorText(error instanceof ApiError ? error.code : 'internal', texts)
+    } finally {
+      saving = false
+    }
+  }
+
+  async function removeSchedule() {
+    const target = removing
+    removing = null
+    if (account === null || target === null) return
+    try {
+      await api.deleteSchedule(account, target.id)
+      if (editor?.id === target.id) editor = null
+      await loadSchedules()
+    } catch (error) {
+      problem = errorText(error instanceof ApiError ? error.code : 'internal', texts)
+    }
+  }
 
   async function suggest() {
     if (account === null) return
@@ -210,28 +252,28 @@
   )
 </script>
 
-<section class="wizard" aria-labelledby="wizard-title">
+<div class="wizard-page">
   <div class="head">
-    <h2 id="wizard-title">{w.title}</h2>
-    <p class="muted">{fmt(w.stepOf, { n: SETUP_STEPS.indexOf(step) + 1, total })}</p>
+    <h1>{w.title}</h1>
+    <span class="muted small">{fmt(w.stepOf, { n: SETUP_STEPS.indexOf(step) + 1, total })}</span>
   </div>
 
-  <ol class="steps" aria-label={w.stepsLabel}>
+  <ol class="stepper" aria-label={w.stepsLabel}>
     {#each stepIndicator(step) as item (item.step)}
-      <li class={item.state} aria-current={item.state === 'current' ? 'step' : undefined}>
-        <span class="num">{item.number}</span>
-        <span class="name">{w.steps[item.step]}</span>
+      <li class:done={item.state === 'done'} aria-current={item.state === 'current' ? 'step' : undefined}>
+        <span class="n">{#if item.state === 'done'}<Icon name="check" size={14} />{:else}{item.number}{/if}</span>{w.steps[item.step]}
       </li>
     {/each}
   </ol>
 
-  <form class="card" onsubmit={next}>
+  <form class="form-section" onsubmit={next}>
     {#if step === 'language'}
-      <h3>{w.language.heading}</h3>
+      <h2>{w.language.heading}</h2>
       <p>{w.language.intro}</p>
-      <label class="field">
-        <span>{w.language.label}</span>
+      <div class="field w-200">
+        <label for="wizard-language">{w.language.label}</label>
         <select
+          id="wizard-language"
           value={draft.language}
           onchange={(event) => {
             const language = event.currentTarget.value as Language
@@ -243,13 +285,14 @@
             <option value={language}>{texts.ui.settings.languageNames[language]}</option>
           {/each}
         </select>
-      </label>
+      </div>
     {:else if step === 'name'}
-      <h3>{w.name.heading}</h3>
+      <h2>{w.name.heading}</h2>
       <p>{w.name.intro}</p>
-      <label class="field">
-        <span>{w.name.ownerLabel}</span>
+      <div class="field">
+        <label for="wizard-owner">{w.name.ownerLabel}</label>
         <input
+          id="wizard-owner"
           type="text"
           value={draft.ownerName}
           oninput={(event) => patch({ ownerName: event.currentTarget.value })}
@@ -257,11 +300,12 @@
           maxlength="80"
           aria-describedby="owner-hint"
         />
-        <span class="hint muted" id="owner-hint">{w.name.ownerHint}</span>
-      </label>
-      <label class="field">
-        <span>{w.name.accountLabel}</span>
+        <span class="hint" id="owner-hint">{w.name.ownerHint}</span>
+      </div>
+      <div class="field">
+        <label for="wizard-account">{w.name.accountLabel}</label>
         <input
+          id="wizard-account"
           type="text"
           value={draft.accountId}
           oninput={(event) => patch({ accountId: event.currentTarget.value })}
@@ -272,18 +316,18 @@
           maxlength="32"
           aria-describedby="account-hint"
         />
-        <span class="hint muted" id="account-hint">{account !== null ? w.name.accountLocked : w.name.accountHint}</span>
-      </label>
+        <span class="hint" id="account-hint">{account !== null ? w.name.accountLocked : w.name.accountHint}</span>
+      </div>
       {#if draft.ownerName !== '' && nameProblem !== null}
-        <p class="problem" role="alert">{nameProblemText(nameProblem)}</p>
+        <p class="err small bad-text" role="alert">{nameProblemText(nameProblem)}</p>
       {:else if account === null && draft.accountId !== '' && !isAccountIdValid(draft.accountId.trim())}
-        <p class="problem" role="alert">{texts.errors.invalidAccountId}</p>
+        <p class="err small bad-text" role="alert">{texts.errors.invalidAccountId}</p>
       {/if}
     {:else if step === 'provider'}
-      <h3>{w.provider.heading}</h3>
+      <h2>{w.provider.heading}</h2>
       <p>{w.provider.intro}</p>
-      <p class="muted">{w.provider.laterNote}</p>
-      <fieldset class="providers">
+      <p class="muted small">{w.provider.laterNote}</p>
+      <fieldset class="plain">
         <legend class="sr">{w.provider.heading}</legend>
         {#each WIZARD_PROVIDERS as provider (provider)}
           <div class="choice" class:chosen={draft.provider === provider}>
@@ -300,9 +344,10 @@
             {#if draft.provider === provider}
               <Disclosure {texts} {provider} host={remoteHost ?? undefined} />
               {#if provider === 'claude-cli'}
-                <label class="field">
-                  <span>{w.provider.modelLabel}</span>
+                <div class="field">
+                  <label for="wizard-claude-model">{w.provider.modelLabel}</label>
                   <input
+                    id="wizard-claude-model"
                     type="text"
                     value={draft.claudeModel}
                     oninput={(event) => patch({ claudeModel: event.currentTarget.value })}
@@ -310,11 +355,12 @@
                     spellcheck="false"
                     placeholder="sonnet"
                   />
-                </label>
+                </div>
               {:else}
-                <label class="field">
-                  <span>{w.provider.baseUrlLabel}</span>
+                <div class="field">
+                  <label for="wizard-ollama-url">{w.provider.baseUrlLabel}</label>
                   <input
+                    id="wizard-ollama-url"
                     type="text"
                     value={draft.ollamaBaseUrl}
                     oninput={(event) => {
@@ -325,10 +371,11 @@
                     autocomplete="off"
                     spellcheck="false"
                   />
-                </label>
-                <label class="field">
-                  <span>{w.provider.ollamaModelLabel}</span>
+                </div>
+                <div class="field">
+                  <label for="wizard-ollama-model">{w.provider.ollamaModelLabel}</label>
                   <input
+                    id="wizard-ollama-model"
                     type="text"
                     value={draft.ollamaModel}
                     oninput={(event) => patch({ ollamaModel: event.currentTarget.value })}
@@ -336,8 +383,8 @@
                     spellcheck="false"
                     aria-describedby="ollama-model-hint"
                   />
-                  <span class="hint muted" id="ollama-model-hint">{w.provider.ollamaModelHint}</span>
-                </label>
+                  <span class="hint" id="ollama-model-hint">{w.provider.ollamaModelHint}</span>
+                </div>
               {/if}
               {#if consentKey !== null}
                 <label class="check">
@@ -351,273 +398,149 @@
               {/if}
               <ProviderTest {api} {texts} body={testBody(draft)} blocked={providerProblem !== null} />
               {#if providerProblem === 'consent'}
-                <p class="muted">{texts.ui.disclosure.test.needsConsent}</p>
+                <p class="muted small">{texts.ui.disclosure.test.needsConsent}</p>
               {/if}
             {/if}
           </div>
         {/each}
       </fieldset>
     {:else if step === 'transcription'}
-      <h3>{w.transcription.heading}</h3>
+      <h2>{w.transcription.heading}</h2>
       <p>{w.transcription.text}</p>
     {:else if step === 'link'}
-      <h3>{w.link.heading}</h3>
+      <h2>{w.link.heading}</h2>
       <p>{w.link.intro}</p>
       {#if account !== null}
         {#if linkView === 'linked'}
-          <p class="note ok">{texts.ui.link.done}</p>
+          <p class="notice ok">{texts.ui.link.done}</p>
         {:else if linkView === 'start'}
-          <div><button type="button" class="primary" onclick={startLink}>{w.link.start}</button></div>
+          <div><button type="button" class="btn primary" onclick={startLink}>{w.link.start}</button></div>
         {:else}
           <LinkView {controller} {api} {texts} id={account} link={app.links[account]} oncancel={() => undefined} />
         {/if}
         {#if !setup.linked}
-          <p class="muted">{w.link.needsLink}</p>
+          <p class="muted small">{w.link.needsLink}</p>
         {/if}
       {/if}
     {:else if step === 'schedule'}
-      <h3>{w.schedule.heading}</h3>
+      <h2>{w.schedule.heading}</h2>
       <p>{w.schedule.intro}</p>
       {#if schedules !== null}
-        <p class="muted">{fmt(w.schedule.timezone, { timezone: schedules.timezone })}</p>
-        <h4>{w.schedule.current}</h4>
+        <p class="muted small">{fmt(w.schedule.timezone, { timezone: schedules.timezone })}</p>
+        <h3>{w.schedule.current}</h3>
         {#if schedules.schedules.length === 0}
           <p>{w.schedule.none}</p>
         {:else}
           <ul class="list">
             {#each schedules.schedules as one (one.id)}
-              <li><strong>{one.time}</strong> <span>{dayLabel(one.days, texts)}</span></li>
+              <li class="sched">
+                <div>
+                  <div class="t num">{shortTime(one.time)}</div>
+                  <div class="small muted">{dayLabel(one.days, texts)}</div>
+                </div>
+                <div class="cluster">
+                  <button
+                    type="button"
+                    class="btn quiet sm"
+                    onclick={() => ((editor = { id: one.id, initial: { days: one.days, time: one.time } }), (scheduleProblem = null))}
+                  >
+                    {texts.ui.schedules.edit}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn quiet sm danger"
+                    aria-label={fmt(texts.ui.schedules.deleteLabel, { time: shortTime(one.time) })}
+                    onclick={() => (removing = { id: one.id, time: one.time, days: one.days })}
+                  >
+                    {texts.ui.schedules.delete}
+                  </button>
+                </div>
+              </li>
             {/each}
           </ul>
         {/if}
       {/if}
-      <div class="buttons">
+      <div class="cluster">
         {#if schedules !== null && schedules.schedules.length === 0}
-          <button type="button" class="primary" onclick={suggest} disabled={saving}>{w.schedule.suggest}</button>
+          <button type="button" class="btn primary" onclick={suggest} disabled={saving}>{w.schedule.suggest}</button>
         {/if}
-        <button type="button" onclick={() => (showSchedules = true)}>{w.schedule.edit}</button>
+        <button
+          type="button"
+          class="btn"
+          onclick={() => ((editor = { id: null, initial: newDraft() }), (scheduleProblem = null))}
+        >
+          {texts.ui.schedules.addTitle}
+        </button>
       </div>
-      <p class="muted">{w.schedule.skipNote}</p>
+      <p class="muted small">{w.schedule.skipNote}</p>
     {:else}
-      <h3>{w.done.heading}</h3>
+      <h2>{w.done.heading}</h2>
       <p>{w.done.text}</p>
       {#if schedules !== null && schedules.schedules.length === 0}
-        <p class="note warn" role="status">{w.done.noSchedule}</p>
+        <p class="notice warn" role="status">{w.done.noSchedule}</p>
       {/if}
     {/if}
 
     {#if issueLines.length > 0}
-      <ul class="note error issues" role="alert">
+      <ul class="notice bad" role="alert">
         {#each issueLines as line (line)}
           <li>{line}</li>
         {/each}
       </ul>
     {/if}
     {#if problem !== null}
-      <p class="note error" role="alert">{problem}</p>
+      <p class="notice bad" role="alert">{problem}</p>
     {/if}
 
-    <div class="buttons">
+    <div class="cluster">
       {#if previousStep(step) !== null}
-        <button type="button" onclick={back} disabled={saving}>{w.back}</button>
+        <button type="button" class="btn" onclick={back} disabled={saving}>{w.back}</button>
       {/if}
-      <button type="submit" class="primary" disabled={saving || !canContinue}>
+      <button type="submit" class="btn primary" disabled={saving || !canContinue}>
         {saving ? w.saving : step === 'done' ? w.done.finish : w.next}
       </button>
     </div>
   </form>
 
-  <div class="skip">
+  {#if step === 'schedule' && editor !== null}
+    {#key `${editor.id}`}
+      <section class="form-section" aria-labelledby="wizard-schedule-form">
+        <h2 id="wizard-schedule-form">{editor.id === null ? texts.ui.schedules.addTitle : texts.ui.schedules.editTitle}</h2>
+        <ScheduleForm
+          {texts}
+          initial={editor.initial}
+          submitLabel={editor.id === null ? texts.ui.schedules.add : texts.ui.schedules.save}
+          busy={saving}
+          problem={scheduleProblem}
+          onsubmit={(next) => void saveSchedule(next)}
+          oncancel={() => ((editor = null), (scheduleProblem = null))}
+        />
+      </section>
+    {/key}
+  {/if}
+
+  <div class="stack-sm">
     {#if confirmSkip}
-      <p class="note warn" role="alert">{w.skipConfirm}</p>
-      <div class="buttons">
-        <button type="button" class="danger" onclick={skip} disabled={saving}>{w.skipYes}</button>
-        <button type="button" onclick={() => (confirmSkip = false)}>{w.skipNo}</button>
+      <p class="notice warn" role="alert">{w.skipConfirm}</p>
+      <div class="cluster">
+        <button type="button" class="btn danger" onclick={skip} disabled={saving}>{w.skipYes}</button>
+        <button type="button" class="btn" onclick={() => (confirmSkip = false)}>{w.skipNo}</button>
       </div>
     {:else}
-      <button type="button" class="link" onclick={() => (confirmSkip = true)}>{w.skip}</button>
+      <div><button type="button" class="linklike" onclick={() => (confirmSkip = true)}>{w.skip}</button></div>
     {/if}
   </div>
-</section>
+</div>
 
-{#if showSchedules && accountView !== null}
-  <SchedulesDialog
-    {api}
-    {texts}
-    account={accountView}
-    onclose={() => {
-      showSchedules = false
-      void loadSchedules()
-    }}
-  />
+{#if removing !== null}
+  <ConfirmDialog
+    title={texts.ui.schedules.deleteTitle}
+    confirmLabel={texts.ui.schedules.delete}
+    cancelLabel={texts.ui.cancel}
+    tone="danger"
+    onconfirm={removeSchedule}
+    oncancel={() => (removing = null)}
+  >
+    <p>{fmt(texts.ui.schedules.deleteText, { time: shortTime(removing.time), days: dayLabel(removing.days, texts) })}</p>
+  </ConfirmDialog>
 {/if}
-
-<style>
-  .wizard {
-    max-width: 44rem;
-    margin: 1rem auto 2rem;
-    display: grid;
-    gap: 1rem;
-  }
-
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  p,
-  h3,
-  h4 {
-    margin: 0;
-  }
-
-  .steps {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-
-  .steps li {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.2rem 0.65rem 0.2rem 0.25rem;
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-
-  .steps li.current {
-    border-color: var(--accent);
-    color: var(--text);
-    font-weight: 600;
-  }
-
-  .steps li.done {
-    color: var(--ok);
-  }
-
-  .num {
-    display: inline-grid;
-    place-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 50%;
-    background: var(--neutral-bg);
-    font-size: 0.8rem;
-  }
-
-  .steps li.current .num {
-    background: var(--accent);
-    color: var(--accent-text);
-  }
-
-  .card {
-    display: grid;
-    gap: 0.9rem;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--surface);
-    padding: 1.1rem;
-  }
-
-  .field {
-    display: grid;
-    gap: 0.25rem;
-  }
-
-  .field > span:first-child {
-    font-weight: 600;
-  }
-
-  .hint {
-    font-size: 0.85rem;
-    font-weight: 400;
-  }
-
-  .providers {
-    border: 0;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .choice {
-    display: grid;
-    gap: 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 0.9rem;
-  }
-
-  .choice.chosen {
-    border-color: var(--accent);
-  }
-
-  .radio,
-  .check {
-    display: inline-flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    cursor: pointer;
-  }
-
-  .radio {
-    font-weight: 600;
-  }
-
-  .sr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .problem {
-    color: var(--error);
-    font-size: 0.9rem;
-  }
-
-  .list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.35rem;
-  }
-
-  .issues {
-    padding-left: 1.75rem;
-  }
-
-  .buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .skip {
-    display: grid;
-    gap: 0.5rem;
-    justify-items: start;
-  }
-
-  button.link {
-    border: 0;
-    background: none;
-    padding: 0.25rem 0;
-    color: var(--accent);
-    text-decoration: underline;
-    min-height: 0;
-  }
-</style>

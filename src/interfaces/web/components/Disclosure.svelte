@@ -37,30 +37,8 @@
   <dd>{info.what}</dd>
 </dl>
 {#if info.tools !== undefined}
-  <p class="note">{info.tools}</p>
+  <p class="notice info small">{info.tools}</p>
 {/if}
 {#if remote}
-  <p class="note warn">{d.ollamaRemote.localOnly}</p>
+  <p class="notice warn small">{d.ollamaRemote.localOnly}</p>
 {/if}
-
-<style>
-  .disclosure {
-    margin: 0;
-    display: grid;
-    gap: 0.15rem;
-  }
-
-  dt {
-    font-weight: 600;
-    margin-top: 0.5rem;
-  }
-
-  dd {
-    margin: 0;
-    color: var(--muted);
-  }
-
-  p {
-    margin: 0.5rem 0 0;
-  }
-</style>

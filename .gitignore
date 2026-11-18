@@ -18,3 +18,5 @@ models/
 .DS_Store
 CLAUDE.local.md
 .claude/settings.local.json
+# Browser automation logs
+.playwright-mcp/

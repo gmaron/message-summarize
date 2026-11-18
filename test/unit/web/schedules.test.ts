@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { webEn } from '../../../src/infrastructure/i18n/web-en.js'
+import { webEs } from '../../../src/infrastructure/i18n/web-es.js'
 import { ApiError } from '../../../src/interfaces/web/lib/api.js'
 import {
   EVERY_DAY,
@@ -8,6 +10,8 @@ import {
   type ScheduleDraft,
   sameDays,
   scheduleIssueOf,
+  scheduleSummary,
+  shortTime,
   toggleDay,
   UI_DAY_ORDER,
   validateDraft,
@@ -57,5 +61,28 @@ describe('scheduleIssueOf', () => {
     expect(scheduleIssueOf(new ApiError(422, 'invalidSchedule', 'weird'))).toBeNull()
     expect(scheduleIssueOf(new ApiError(404, 'notFound'))).toBeNull()
     expect(scheduleIssueOf(new Error('x'))).toBeNull()
+  })
+})
+
+describe('the one-line summary of the schedules', () => {
+  const at = (time: string, days: readonly number[] = EVERY_DAY) => ({ days, time })
+
+  it('names the days once when they are shared, and the times in order', () => {
+    expect(scheduleSummary([at('19:00'), at('09:00')], webEs)).toBe('Todos los días · 9:00 y 19:00')
+    expect(scheduleSummary([at('08:30', WEEKDAYS), at('12:30', WEEKDAYS), at('18:00', WEEKDAYS)], webEn)).toBe(
+      'Weekdays · 8:30, 12:30 and 18:00',
+    )
+    expect(scheduleSummary([at('09:00')], webEs)).toBe('Todos los días · 9:00')
+  })
+
+  it('lists them one by one when the days differ, and says nothing when there are none', () => {
+    expect(scheduleSummary([at('09:00'), at('12:30', WEEKDAYS)], webEn)).toBe('9:00 Every day; 12:30 Weekdays')
+    expect(scheduleSummary([], webEn)).toBe('')
+  })
+
+  it('drops the zero of the hour only', () => {
+    expect(shortTime('09:05')).toBe('9:05')
+    expect(shortTime('10:00')).toBe('10:00')
+    expect(shortTime('00:30')).toBe('0:30')
   })
 })

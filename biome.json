@@ -8,6 +8,7 @@
       "!**/coverage",
       "!**/node_modules",
       "!**/.claude",
+      "!.impeccable",
       "!**/*.svelte",
       "!test/golden/scenarios",
       "!test/fixtures/architecture",
