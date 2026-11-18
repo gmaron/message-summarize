@@ -14,6 +14,7 @@ import { type AccountView, describeAccounts } from './web-accounts.js'
 import { removeWebAddress, writeWebAddress } from './web-address.js'
 import { conversationRoutes } from './web-conversations.js'
 import { digestRoutes } from './web-digest.js'
+import { promptRoutes } from './web-prompt.js'
 import { accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
 import { settingsRoutes } from './web-settings.js'
@@ -122,6 +123,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ...accountRoutes(source),
     ...scheduleRoutes(source, () => void publishAccounts()),
     ...settingsRoutes(source, () => void publishAccounts()),
+    ...promptRoutes(source, () => void publishAccounts()),
     ...digestRoutes({ ...source, previews }),
     ...conversationRoutes(source),
   ]

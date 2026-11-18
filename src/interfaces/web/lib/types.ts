@@ -152,3 +152,15 @@ export interface MarksResult extends MarkState {
   readonly id: string
   readonly deletedMessages: number
 }
+
+/** `GET /api/accounts/:id/prompt`. The text is the user's own content: shown in a text box, never as markup. */
+export interface PromptView {
+  readonly source: 'account' | 'installation' | 'default'
+  readonly text: string
+  readonly defaultText: string
+  readonly variables: readonly string[]
+  readonly maxLength: number
+  readonly ownerName: string | null
+  /** The prompt file is set and cannot be read. */
+  readonly error?: 'promptFile'
+}

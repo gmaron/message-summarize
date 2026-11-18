@@ -41,6 +41,9 @@ export const webEs: WebTexts = {
     notApplied:
       'El cambio se guardó pero todavía no se pudo aplicar a la cuenta que está corriendo: no se borró nada. Probá de nuevo en un momento.',
     confirmRequired: 'Falta confirmar que se borran los mensajes guardados de esta conversación.',
+    blankPrompt: 'El prompt está vacío: escribí las instrucciones para el resumen.',
+    promptTooLong: 'El prompt es demasiado largo.',
+    unknownVariable: 'El prompt usa una variable que no existe: la única es {{name}}.',
   },
   linkErrors: {
     timeout: 'Pasó el tiempo sin que se escaneara el QR. Volvé a intentar.',
@@ -147,6 +150,7 @@ export const webEs: WebTexts = {
       schedules: 'Horarios',
       conversations: 'Conversaciones',
       settings: 'Ajustes',
+      prompt: 'Prompt',
       link: 'Vincular',
       relink: 'Vincular de nuevo',
       retry: 'Reintentar conexión',
@@ -241,6 +245,43 @@ export const webEs: WebTexts = {
       noChanges: 'No hay nada para guardar.',
       issue: '{option}: {reason}',
       issuesHeading: 'No se guardaron los ajustes:',
+    },
+    prompt: {
+      title: 'Prompt de {account}',
+      intro:
+        'Estas son las instrucciones que recibe el modelo con cada conversación. El texto nuevo se aplica desde el próximo digest o vista previa.',
+      nameNote: '{variable} se reemplaza por tu nombre en el digest: {name}.',
+      nameUnset: '{variable} se reemplaza por una palabra genérica: no hay un nombre en los Ajustes.',
+      formatNote: 'El formato de la respuesta es fijo y se agrega solo: no es parte de este texto y no se edita acá.',
+      label: 'Prompt',
+      sources: {
+        account: 'Editado para esta cuenta.',
+        installation: 'Viene de la instalación: al guardar se hace una copia para esta cuenta.',
+        default: 'Este es el prompt original.',
+      },
+      differs: 'Distinto del original',
+      sameAsOriginal: 'Igual al original',
+      counter: '{count} de {max} caracteres',
+      fileMissing:
+        'No se puede leer el archivo del prompt de esta cuenta, así que los digests fallan. Guardá un prompt o restaurá el original.',
+      unknownVariable: 'Variable desconocida: {variables}. La única es {{name}}.',
+      tooLong: 'El prompt tiene más de {max} caracteres.',
+      blank: 'El prompt está vacío.',
+      save: 'Guardar',
+      saving: 'Guardando…',
+      saved: 'Guardado. Se aplica desde el próximo digest o vista previa.',
+      noChanges: 'No hay nada para guardar.',
+      restore: 'Restaurar original',
+      restoreConfirm:
+        'Se vuelve a usar el original. El prompt que escribiste queda guardado en prompt.previous.md, en la carpeta de esta cuenta. ¿Restaurarlo?',
+      restoreInherits:
+        'Si la instalación define su propio archivo de prompt, la cuenta va a usar ese en lugar del original.',
+      restoreYes: 'Sí, restaurar',
+      restoreNo: 'Cancelar',
+      restoring: 'Restaurando…',
+      restored: 'Volvió el prompt original.',
+      restoredInherited: 'La cuenta vuelve a usar el prompt de la instalación.',
+      preview: 'Guardar y ver vista previa',
     },
     conversations: {
       title: 'Conversaciones de {account}',

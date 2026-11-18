@@ -18,6 +18,7 @@
     onschedules,
     onconversations,
     onsettings,
+    onprompt,
     onlink,
     onretry,
   }: {
@@ -30,6 +31,7 @@
     onschedules: () => void
     onconversations: () => void
     onsettings: () => void
+    onprompt: () => void
     onlink: () => void
     onretry: () => void
   } = $props()
@@ -135,6 +137,7 @@
         {ui.actions.conversations}
       </button>
       <button type="button" disabled={!actions.settings} onclick={onsettings}>{ui.actions.settings}</button>
+      <button type="button" disabled={!actions.prompt} onclick={onprompt}>{ui.actions.prompt}</button>
       {#if actions.link}
         <button type="button" onclick={onlink}>{ui.actions.link}</button>
       {/if}

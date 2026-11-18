@@ -5,6 +5,7 @@
   import ConversationsDialog from './components/ConversationsDialog.svelte'
   import LinkDialog from './components/LinkDialog.svelte'
   import PreviewDialog from './components/PreviewDialog.svelte'
+  import PromptDialog from './components/PromptDialog.svelte'
   import SchedulesDialog from './components/SchedulesDialog.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
   import type { Api } from './lib/api.js'
@@ -26,7 +27,7 @@
     document.title = ui.title
   })
 
-  type Dialog = { kind: 'link' | 'schedules' | 'conversations' | 'settings' | 'preview'; id: string }
+  type Dialog = { kind: 'link' | 'schedules' | 'conversations' | 'settings' | 'prompt' | 'preview'; id: string }
   let dialog: Dialog | null = $state.raw(null)
   const accountOf = (id: string) => app.accounts?.find((account) => account.id === id) ?? null
 
@@ -91,6 +92,7 @@
                 onschedules={() => (dialog = { kind: 'schedules', id: account.id })}
                 onconversations={() => (dialog = { kind: 'conversations', id: account.id })}
                 onsettings={() => (dialog = { kind: 'settings', id: account.id })}
+                onprompt={() => (dialog = { kind: 'prompt', id: account.id })}
                 onlink={() => openLink(account.id)}
                 onretry={() => retry(account.id)}
               />
@@ -113,6 +115,8 @@
       <ConversationsDialog {api} {texts} {account} onclose={close} />
     {:else if dialog.kind === 'settings'}
       <SettingsDialog {api} {texts} {account} onclose={close} />
+    {:else if dialog.kind === 'prompt'}
+      <PromptDialog {api} {texts} {account} onclose={close} onpreview={() => openPreview(account.id)} />
     {:else}
       <PreviewDialog {controller} {texts} {account} preview={app.previews[account.id]} onclose={close} />
     {/if}

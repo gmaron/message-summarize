@@ -48,6 +48,9 @@ export type WebErrorCode =
   | 'matchedByPattern'
   | 'confirmRequired'
   | 'notApplied'
+  | 'blankPrompt'
+  | 'promptTooLong'
+  | 'unknownVariable'
 
 /** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
 export type WebConfigIssueCode =
@@ -525,6 +528,7 @@ export interface WebTexts {
       readonly schedules: string
       readonly conversations: string
       readonly settings: string
+      readonly prompt: string
       readonly link: string
       readonly relink: string
       readonly retry: string
@@ -604,6 +608,47 @@ export interface WebTexts {
       /** `{option}`, `{reason}`: a problem that belongs to no field of the form. */
       readonly issue: string
       readonly issuesHeading: string
+    }
+    readonly prompt: {
+      /** `{account}`. */
+      readonly title: string
+      /** What the text is: the instructions the model receives for each conversation. */
+      readonly intro: string
+      /** `{variable}` (the placeholder as it is written), `{name}`: what it is replaced with. */
+      readonly nameNote: string
+      /** `{variable}`: the owner has no name set, so a generic word is used. */
+      readonly nameUnset: string
+      /** The response format is fixed and added by the program. */
+      readonly formatNote: string
+      readonly label: string
+      readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
+      readonly differs: string
+      readonly sameAsOriginal: string
+      /** `{count}`, `{max}`. */
+      readonly counter: string
+      /** The prompt file of the account is set and cannot be read. */
+      readonly fileMissing: string
+      /** `{variables}`: placeholders that are not variables (checked while typing). */
+      readonly unknownVariable: string
+      /** `{max}`. */
+      readonly tooLong: string
+      readonly blank: string
+      readonly save: string
+      readonly saving: string
+      readonly saved: string
+      readonly noChanges: string
+      readonly restore: string
+      readonly restoreConfirm: string
+      /** Said under the confirmation: an installation prompt file, when there is one, takes the place of the original. */
+      readonly restoreInherits: string
+      readonly restoreYes: string
+      readonly restoreNo: string
+      readonly restoring: string
+      readonly restored: string
+      /** Said after a restore when the account inherits the installation's prompt. */
+      readonly restoredInherited: string
+      /** The button that closes this dialog and runs a preview. */
+      readonly preview: string
     }
     readonly conversations: {
       /** `{account}`. */

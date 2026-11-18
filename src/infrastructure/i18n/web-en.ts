@@ -42,6 +42,9 @@ export const webEn: WebTexts = {
     notApplied:
       'The change was saved but could not be applied to the running account yet: nothing was deleted. Try again in a moment.',
     confirmRequired: 'You must confirm that the stored messages of this conversation are deleted.',
+    blankPrompt: 'The prompt is empty: write the instructions for the summary.',
+    promptTooLong: 'The prompt is too long.',
+    unknownVariable: 'The prompt uses a variable that does not exist: the only one is {{name}}.',
   },
   linkErrors: {
     timeout: 'Time ran out before the QR was scanned. Try again.',
@@ -149,6 +152,7 @@ export const webEn: WebTexts = {
       schedules: 'Schedules',
       conversations: 'Conversations',
       settings: 'Settings',
+      prompt: 'Prompt',
       link: 'Link',
       relink: 'Link again',
       retry: 'Retry connection',
@@ -243,6 +247,44 @@ export const webEn: WebTexts = {
       noChanges: 'There is nothing to save.',
       issue: '{option}: {reason}',
       issuesHeading: 'The settings were not saved:',
+    },
+    prompt: {
+      title: 'Prompt of {account}',
+      intro:
+        'These are the instructions the model receives with every conversation. The new text applies from the next digest or preview.',
+      nameNote: '{variable} is replaced by your name in the digest: {name}.',
+      nameUnset: '{variable} is replaced by a generic word: no name is set in Settings.',
+      formatNote:
+        'The format of the response is fixed and is added automatically: it is not part of this text and cannot be edited here.',
+      label: 'Prompt',
+      sources: {
+        account: 'Edited for this account.',
+        installation: 'It comes from the installation: saving makes a copy for this account.',
+        default: 'This is the original prompt.',
+      },
+      differs: 'Differs from the original',
+      sameAsOriginal: 'Same as the original',
+      counter: '{count} of {max} characters',
+      fileMissing:
+        'The prompt file of this account cannot be read, so digests fail. Save a prompt or restore the original.',
+      unknownVariable: 'Unknown variable: {variables}. The only one is {{name}}.',
+      tooLong: 'The prompt is longer than {max} characters.',
+      blank: 'The prompt is empty.',
+      save: 'Save',
+      saving: 'Saving…',
+      saved: 'Saved. It applies from the next digest or preview.',
+      noChanges: 'There is nothing to save.',
+      restore: 'Restore original',
+      restoreConfirm:
+        'The original is used again. The prompt you wrote is kept in prompt.previous.md, in the folder of this account. Restore it?',
+      restoreInherits:
+        'If the installation sets its own prompt file, the account will use that one instead of the original.',
+      restoreYes: 'Yes, restore',
+      restoreNo: 'Cancel',
+      restoring: 'Restoring…',
+      restored: 'The original prompt is back.',
+      restoredInherited: 'The account uses the prompt of the installation again.',
+      preview: 'Save and preview',
     },
     conversations: {
       title: 'Conversations of {account}',

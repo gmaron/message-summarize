@@ -4,6 +4,7 @@ import type {
   LinkSnapshot,
   MarksResult,
   PreviewView,
+  PromptView,
   SchedulesView,
   ScheduleView,
   SettingsIssue,
@@ -35,6 +36,10 @@ export class ApiError extends Error {
     readonly issues?: readonly SettingsIssue[],
     /** For a 409 `confirmRequired`: how many stored messages the exclusion would delete. */
     readonly messages?: number,
+    /** For a 422 `unknownVariable`: the placeholders that are not variables. */
+    readonly variables?: readonly string[],
+    /** For a 422 `promptTooLong`: the limit. */
+    readonly maxLength?: number,
   ) {
     super(code)
     this.name = 'ApiError'
@@ -64,6 +69,8 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       issue?: unknown
       issues?: unknown
       messages?: unknown
+      variables?: unknown
+      maxLength?: unknown
     }
     if (!reply.ok) {
       if (reply.status === 401) onUnauthorized()
@@ -73,6 +80,8 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
         typeof data.issue === 'string' ? data.issue : undefined,
         Array.isArray(data.issues) ? (data.issues as SettingsIssue[]) : undefined,
         typeof data.messages === 'number' ? data.messages : undefined,
+        Array.isArray(data.variables) ? data.variables.filter((v): v is string => typeof v === 'string') : undefined,
+        typeof data.maxLength === 'number' ? data.maxLength : undefined,
       )
     }
     return data as T
@@ -100,6 +109,10 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     /** `patch` has only the options to change, nested as in config.json; `null` removes the account's own value. */
     saveSettings: (id: string, patch: Record<string, unknown>) =>
       request<SettingsView>('PUT', `${account(id)}/settings`, patch),
+    prompt: (id: string) => request<PromptView>('GET', `${account(id)}/prompt`),
+    savePrompt: (id: string, text: string) => request<PromptView>('PUT', `${account(id)}/prompt`, { text }),
+    /** Back to the original: the account's own prompt goes away. */
+    restorePrompt: (id: string) => request<PromptView>('DELETE', `${account(id)}/prompt`),
     conversations: (id: string, query: { q?: string; limit?: number; offset?: number }) => {
       const params = new URLSearchParams()
       if (query.q !== undefined && query.q.trim() !== '') params.set('q', query.q)

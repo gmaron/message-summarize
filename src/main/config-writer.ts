@@ -21,6 +21,8 @@ export interface UpdateAccountConfigOptions {
   readonly patch: ConfigPatch | ((current: Obj, root: Obj) => ConfigPatch)
   /** The default of `timezone` (the system's). */
   readonly fallbackTimezone?: string
+  /** Validate the change exactly as a write would and return the result, without writing anything. */
+  readonly dryRun?: boolean
   /** Runs after the account file was read and patched, right before the final check. For tests: they edit the file there. */
   readonly beforeCommit?: (attempt: number) => void | Promise<void>
 }
@@ -31,7 +33,7 @@ export type UpdateAccountConfigResult = Result<AppConfig, ConfigIssue[]>
 const queues = new Map<string, Promise<unknown>>()
 
 /** Runs `work` after every earlier job of `key` is over (whether it went well or not). */
-function serialized<T>(key: string, work: () => Promise<T>): Promise<T> {
+export function serialized<T>(key: string, work: () => Promise<T>): Promise<T> {
   const previous = queues.get(key) ?? Promise.resolve()
   const run = previous.then(work, work)
   const tail = run.catch(() => undefined)
@@ -158,7 +160,7 @@ async function fingerprint(file: string): Promise<string> {
 }
 
 /** Writes `text` to `file` and forces it to disk (data, then the directory entry, best effort). */
-async function writeDurably(file: string, text: string): Promise<void> {
+export async function writeDurably(file: string, text: string): Promise<void> {
   const handle = await open(file, 'w', 0o600)
   try {
     await handle.writeFile(text)
@@ -168,7 +170,7 @@ async function writeDurably(file: string, text: string): Promise<void> {
   }
 }
 
-async function syncDirectory(dir: string): Promise<void> {
+export async function syncDirectory(dir: string): Promise<void> {
   try {
     const handle = await open(dir, 'r')
     try {
@@ -198,6 +200,7 @@ async function write(options: UpdateAccountConfigOptions): Promise<UpdateAccount
     for (const [path, value] of Object.entries(changes)) applyOne(next, path, value)
     const effective = validateEffective(root.value, next, rootFile, accountFile, fallbackTimezone)
     if (!effective.ok) return effective
+    if (options.dryRun === true) return ok(effective.value)
     const temporary = join(dirname(accountFile), `.config.json.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)
     try {
       await writeDurably(temporary, `${JSON.stringify(next, null, 2)}\n`)

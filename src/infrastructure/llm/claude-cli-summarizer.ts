@@ -33,7 +33,8 @@ const MAX_OUTPUT_CHARS = 1_000_000
 
 /**
  * Exact arguments of every call (RF-47, RF-49). `--tools ''` is one empty-string argument. The transcript is never an
- * argument: it goes through stdin. The system prompt is ours, not third-party text.
+ * argument: it goes through stdin. The system prompt is the program's or the user's own (it can be edited from the web, RF-38), never third-party
+ * text; the CLI runs without tools either way.
  *
  * `--safe-mode` disables the user's customizations (CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands
  * and agents, output styles), so no hook receives the chat text. `--disable-slash-commands` is added on top. We do NOT
