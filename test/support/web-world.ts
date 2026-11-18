@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { type Installation, openInstallation } from '../../src/main/accounts.js'
 import { type BlockedReason, writeBlocked } from '../../src/main/blocked.js'
 import { DaemonHost, type DaemonHostTiming } from '../../src/main/daemon-host.js'
+import type { LogStore } from '../../src/main/log-store.js'
 import { startWeb, type WebHandle } from '../../src/main/web.js'
 import { type Harness, type HarnessOptions, ME, makeHarness, until } from './cli-harness.js'
 
@@ -77,6 +78,10 @@ export async function world(
     realProviders?: boolean
     /** Where the daemon looks for the built web. */
     staticDir?: string
+    /** The recent log lines the web serves (RF-75). */
+    logs?: LogStore
+    /** The least time between two `log` events. */
+    logEventMs?: number
   } = {},
 ): Promise<World> {
   const h = await makeHarness({
@@ -142,6 +147,8 @@ export async function world(
     web: { enabled: true, host: '127.0.0.1', port: 0 },
     language: 'en',
     ...(options.previewTtlMs === undefined ? {} : { previewTtlMs: options.previewTtlMs }),
+    ...(options.logs === undefined ? {} : { logs: options.logs }),
+    ...(options.logEventMs === undefined ? {} : { logEventMs: options.logEventMs }),
   })) as WebHandle
   const listening = h.logs
     .map((l) => JSON.parse(l) as { event: string; port?: number })

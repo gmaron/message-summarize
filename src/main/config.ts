@@ -44,6 +44,15 @@ export interface WebConfig {
 
 export const DEFAULT_WEB: WebConfig = { enabled: true, host: '127.0.0.1', port: 8787 }
 
+/** The daemon's log files (RNF-12). Only the installation's config.json sets it: an account cannot. */
+export interface LogsConfig {
+  /** The most the log files may take together, in bytes (two files of half of it each, see `log-file.ts`). */
+  readonly maxBytes: number
+}
+
+export const MIN_LOG_BYTES = 1_048_576
+export const DEFAULT_LOGS: LogsConfig = { maxBytes: 52_428_800 }
+
 /** The validated contents of config.json. A missing option has its default (RF-73). */
 export interface AppConfig {
   readonly language: Language
@@ -58,6 +67,7 @@ export interface AppConfig {
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
   readonly web: WebConfig
+  readonly logs: LogsConfig
 }
 
 export type ConfigIssueCode =
@@ -68,6 +78,8 @@ export type ConfigIssueCode =
   | 'required'
   | 'invalidTimezone'
   | 'invalidPort'
+  /** A number under the smallest accepted (`logs.maxBytes`). */
+  | 'belowMinimum'
   /** Not an absolute http(s) URL. */
   | 'invalidUrl'
   /** The account file changed while it was being updated (the writer gave up). */
@@ -106,11 +118,16 @@ const TOP_LEVEL = new Set([
   'schedules',
   'provider',
   'web',
+  'logs',
 ])
 const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
 const WEB_KEYS = new Set(['enabled', 'host', 'port'])
+const LOGS_KEYS = new Set(['maxBytes'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
+
+/** Options of the installation's config.json that an account's file cannot set. */
+const INSTALLATION_ONLY = ['web', 'logs'] as const
 
 /** Lists an account can only add to (see `mergeConfigJson`). */
 const UNIONED_LISTS = ['localOnlyPatterns', 'excludePatterns'] as const
@@ -259,6 +276,16 @@ export function parseConfig(
     return v
   })()
 
+  const logsObj = section(input, 'logs', 'logs', LOGS_KEYS)
+  const logsMaxBytes = ((): number | undefined => {
+    const v = logsObj.maxBytes
+    if (v === undefined) return DEFAULT_LOGS.maxBytes
+    if (typeof v !== 'number') return add('logs.maxBytes', 'notNumber')
+    if (!Number.isInteger(v)) return add('logs.maxBytes', 'notInteger')
+    if (v < MIN_LOG_BYTES) return add('logs.maxBytes', 'belowMinimum')
+    return v
+  })()
+
   const usesOllama =
     primary === 'ollama' || backup === 'ollama' || (localOnlyPatterns !== undefined && localOnlyPatterns.length > 0)
   if (usesOllama && ollamaModel === null) add('provider.ollama.model', 'required')
@@ -284,7 +311,8 @@ export function parseConfig(
     ollamaTimeout === undefined ||
     webEnabled === undefined ||
     webHost === undefined ||
-    webPort === undefined
+    webPort === undefined ||
+    logsMaxBytes === undefined
   ) {
     return err(issues)
   }
@@ -309,6 +337,7 @@ export function parseConfig(
       },
     },
     web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort },
+    logs: { maxBytes: logsMaxBytes },
   })
 }
 
@@ -393,9 +422,11 @@ export function validateEffective(
   accountFile: string | null,
   fallbackTimezone?: string,
 ): Result<AppConfig, ConfigIssue[]> {
-  // The web belongs to the installation (one server for every account): an account file cannot configure it.
-  if (accountFile !== null && 'web' in account) {
-    return err([{ option: 'web', code: 'installationOnly', file: accountFile }])
+  // The web and the logs belong to the installation (one server and one daemon for every account): an account file
+  // cannot configure them.
+  if (accountFile !== null) {
+    const found = INSTALLATION_ONLY.filter((option) => option in account)
+    if (found.length > 0) return err(found.map((option) => ({ option, code: 'installationOnly', file: accountFile })))
   }
   const parsed = parseConfig(mergeConfigJson(root, account), fallbackTimezone)
   const fromAccount = (option: string): boolean => accountFile !== null && isSetIn(account, option)
@@ -502,6 +533,8 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.invalidTimezone(issue.option)
     case 'invalidPort':
       return texts.invalidPort(issue.option)
+    case 'belowMinimum':
+      return texts.belowMinimum(issue.option)
     case 'installationOnly':
       return texts.installationOnly(issue.option)
     case 'invalidUrl':

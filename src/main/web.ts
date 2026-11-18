@@ -8,6 +8,7 @@ import type { Installation } from './accounts.js'
 import type { WebConfig } from './config.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
+import type { LogStore } from './log-store.js'
 import { errorCode } from './logger.js'
 import { PreviewService } from './preview.js'
 import { type AccountView, describeAccounts } from './web-accounts.js'
@@ -15,6 +16,7 @@ import { removeWebAddress, writeWebAddress } from './web-address.js'
 import { conversationRoutes } from './web-conversations.js'
 import { digestRoutes } from './web-digest.js'
 import { historyRoutes } from './web-history.js'
+import { logRoutes } from './web-logs.js'
 import { promptRoutes } from './web-prompt.js'
 import { accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
@@ -48,6 +50,8 @@ export interface WebEvents extends Record<string, unknown> {
   }
   /** The history of an account has a new entry (RF-74). Says nothing of what it holds: the page asks for it. */
   readonly history: { readonly account: string }
+  /** The daemon logged lines (RF-75). `seq` is the newest; the page asks for the lines. At most once a second. */
+  readonly log: { readonly seq: number; readonly boot: string }
   /** A preview ended (RF-64). Without its content: that is private, and the page asks for it. */
   readonly preview: {
     readonly account: string
@@ -70,6 +74,10 @@ export interface StartWebOptions {
   readonly web: WebConfig
   /** The language of the installation, for what is printed here. */
   readonly language: Language
+  /** The daemon's recent log lines (RF-75). Without it `/api/logs` is not served. */
+  readonly logs?: LogStore
+  /** The least time between two `log` events. Default 1 s. For tests. */
+  readonly logEventMs?: number
   /** How long a finished preview is kept in memory. Default 30 minutes. For tests. */
   readonly previewTtlMs?: number
 }
@@ -130,6 +138,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ...digestRoutes({ ...source, previews }),
     ...conversationRoutes(source),
     ...historyRoutes(source),
+    ...(options.logs === undefined ? [] : logRoutes(options.logs)),
   ]
 
   const qrCount = new Map<string, number>()
@@ -173,7 +182,32 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     (account) => bus.publish('history', { account }),
     () => bus.size > 0,
   )
+  // New log lines: told to the pages at most once per `logEventMs` (the first at once, the last one after the pause), and
+  // only while a page is connected. Nothing of the lines goes in the event.
+  const logEventMs = options.logEventMs ?? ctx.web?.logEventMs ?? 1_000
+  let lastLogEvent = 0
+  let pendingLog: ReturnType<typeof setTimeout> | null = null
+  let newestLog = 0
+  const unsubscribeLogs =
+    options.logs?.subscribe((seq) => {
+      newestLog = seq
+      if (bus.size === 0 || pendingLog !== null) return
+      const wait = lastLogEvent + logEventMs - Date.now()
+      const send = (): void => {
+        pendingLog = null
+        lastLogEvent = Date.now()
+        bus.publish('log', { seq: newestLog, boot: options.logs?.boot ?? '' })
+      }
+      if (wait <= 0) send()
+      else {
+        pendingLog = setTimeout(send, wait)
+        pendingLog.unref()
+      }
+    }) ?? (() => undefined)
   const unsubscribe = (): void => {
+    unsubscribeLogs()
+    if (pendingLog !== null) clearTimeout(pendingLog)
+    pendingLog = null
     unsubscribeHistory()
     unsubscribeChange()
     unsubscribeLink()

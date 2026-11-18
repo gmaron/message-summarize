@@ -167,6 +167,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidTimezone: (option) =>
         `The option "${option}" is not a valid time zone (for example "America/Argentina/Buenos_Aires").`,
       invalidPort: (option) => `The option "${option}" must be a port number between 1 and 65535.`,
+      belowMinimum: (option) => `The option "${option}" is too small: the minimum is 1048576 (1 MB).`,
       invalidUrl: (option) =>
         `The option "${option}" must be an absolute http or https address (for example "http://127.0.0.1:11434").`,
       concurrentEdit: 'The configuration file changed while it was being saved: nothing was written. Try again.',

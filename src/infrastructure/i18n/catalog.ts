@@ -61,6 +61,7 @@ export type WebConfigIssueCode =
   | 'required'
   | 'invalidTimezone'
   | 'invalidPort'
+  | 'belowMinimum'
   | 'invalidUrl'
   | 'concurrentEdit'
   | 'installationOnly'
@@ -221,6 +222,7 @@ export interface Catalog {
       required(option: string): string
       invalidTimezone(option: string): string
       invalidPort(option: string): string
+      belowMinimum(option: string): string
       invalidUrl(option: string): string
       readonly concurrentEdit: string
       /** An option of the installation's config.json that an account's file cannot set. */
@@ -728,6 +730,28 @@ export interface WebTexts {
       readonly reason: Readonly<Record<'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed', string>>
       /** Said once on top: what the history keeps and where. */
       readonly privateNote: string
+    }
+    readonly logs: {
+      /** The button of the header that opens the view. */
+      readonly open: string
+      readonly title: string
+      /** Said once on top: what the log holds and does not. */
+      readonly note: string
+      readonly levelLabel: string
+      readonly level: Readonly<Record<'info' | 'warn' | 'error', string>>
+      readonly accountLabel: string
+      readonly allAccounts: string
+      /** The lines that belong to no account, and the account column of them. */
+      readonly installation: string
+      readonly empty: string
+      readonly loadOlder: string
+      /** Said while the view follows the daemon. */
+      readonly live: string
+      readonly timeColumn: string
+      readonly levelColumn: string
+      readonly eventColumn: string
+      readonly accountColumn: string
+      readonly detailsColumn: string
     }
     readonly preview: {
       /** `{account}`. */

@@ -2,7 +2,7 @@
 import { createInterface } from 'node:readline/promises'
 import { runMain } from './app.js'
 import { DEFAULT_LINK_TIMING } from './context.js'
-import { createLogger } from './logger.js'
+import { createTappableLogger } from './logger.js'
 import { openInBrowser } from './open-url.js'
 import { layoutOf, resolveDataDir } from './paths.js'
 import { realProbes } from './probes.js'
@@ -22,9 +22,12 @@ async function confirm(question: string): Promise<boolean> {
   }
 }
 
+// One logger for the whole process: the guards, the commands and the crash handler below. The daemon attaches its log
+// file to it (see `startDaemonLogs`), so a fatal error reaches the file and the web too.
+const logger = createTappableLogger(process.stdout, process.stderr)
+
 /** The composition root: the real process, file system and WhatsApp wired into the commands. */
 async function main(): Promise<void> {
-  const logger = createLogger(process.stdout, process.stderr)
   const shutdown = createShutdown()
   installProcessGuards({ proc: process as never, logger, shutdown })
   const code = await runMain(process.argv.slice(2), {
@@ -50,6 +53,10 @@ async function main(): Promise<void> {
 }
 
 main().catch(() => {
-  process.stderr.write('{"level":"error","event":"cli.crashed"}\n')
+  try {
+    logger.error('cli.crashed')
+  } catch {
+    process.stderr.write('{"level":"error","event":"cli.crashed"}\n')
+  }
   process.exit(1)
 })

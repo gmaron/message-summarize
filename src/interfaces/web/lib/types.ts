@@ -165,6 +165,27 @@ export interface PromptView {
   readonly error?: 'promptFile'
 }
 
+export type LogLevel = 'info' | 'warn' | 'error'
+
+/**
+ * A line of `GET /api/logs`. Codes, counts and times only (the daemon's allowlist): still drawn as text, never as markup.
+ * `seq` orders the lines since the daemon started and is the cursor of "older".
+ */
+export interface LogEntry {
+  readonly seq: number
+  readonly time: string
+  readonly level: LogLevel
+  readonly event: string
+  readonly account?: string
+  readonly fields: Readonly<Record<string, string | number | boolean | null>>
+}
+
+/** `GET /api/logs`: `boot` tells one run of the daemon from another (`seq` restarts from 1 on each). */
+export interface LogsPage {
+  readonly boot: string
+  readonly items: readonly LogEntry[]
+}
+
 export type RunTrigger = 'schedule' | 'missed' | 'manual' | 'cli'
 export type RunOutcome = 'committed' | 'empty' | 'failed'
 export type FailureReason = 'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed'

@@ -4,6 +4,8 @@ import type {
   HistoryDetail,
   HistoryView,
   LinkSnapshot,
+  LogLevel,
+  LogsPage,
   MarksResult,
   PreviewView,
   PromptView,
@@ -134,6 +136,16 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       if (query.offset !== undefined) params.set('offset', String(query.offset))
       const suffix = params.size === 0 ? '' : `?${params}`
       return request<HistoryView>('GET', `${account(id)}/history${suffix}`)
+    },
+    /** `account`: an id, or `-` for the lines of the installation itself. Newest first. */
+    logs: async (query: { level?: LogLevel; account?: string; limit?: number; before?: number }) => {
+      const params = new URLSearchParams()
+      if (query.level !== undefined) params.set('level', query.level)
+      if (query.account !== undefined && query.account !== '') params.set('account', query.account)
+      if (query.limit !== undefined) params.set('limit', String(query.limit))
+      if (query.before !== undefined) params.set('before', String(query.before))
+      const suffix = params.size === 0 ? '' : `?${params}`
+      return request<LogsPage>('GET', `/api/logs${suffix}`)
     },
     historyRun: (id: string, runId: number) => request<HistoryDetail>('GET', `${account(id)}/history/${runId}`),
     /** Where the image of the current QR is. `version` changes on every `qr` event so the browser asks again. */

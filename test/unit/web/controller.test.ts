@@ -204,6 +204,22 @@ describe('actions', () => {
     expect(seen).toEqual(['alpha'])
   })
 
+  it('logs: the event, and the stream coming back after a break, reach whoever listens, with no content', async () => {
+    const { controller } = setup()
+    await controller.start()
+    let told = 0
+    const stop = controller.onLog(() => told++)
+    FakeEventSource.last().emit('open')
+    expect(told).toBe(0)
+    FakeEventSource.last().emit('log', { seq: 7 })
+    expect(told).toBe(1)
+    FakeEventSource.last().emit('open')
+    expect(told).toBe(2)
+    stop()
+    FakeEventSource.last().emit('log', { seq: 8 })
+    expect(told).toBe(2)
+  })
+
   it('add account: validates the id before asking, then creates it', async () => {
     const { controller, calls } = setup({ 'POST /api/accounts': { status: 201, body: { id: 'work' } } })
     await controller.start()

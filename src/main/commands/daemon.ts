@@ -4,10 +4,11 @@ import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { installationCatalog } from '../account-command.js'
 import { type Installation, openInstallation } from '../accounts.js'
-import { describeConfigIssue, languageHint, loadEffectiveConfig } from '../config.js'
+import { DEFAULT_LOGS, describeConfigIssue, languageHint, loadEffectiveConfig } from '../config.js'
 import type { CommandContext } from '../context.js'
 import { DaemonHost, hasNoProvider } from '../daemon-host.js'
 import { acquireDaemonLock, HEARTBEAT_MS } from '../daemon-lock.js'
+import { type DaemonLogs, startDaemonLogs } from '../daemon-logs.js'
 import { removeStaleImportDirs } from '../import-workdirs.js'
 import { linkLockHolder } from '../link-lock.js'
 import { accountLayoutOf, ensureDataDirs } from '../paths.js'
@@ -41,14 +42,16 @@ import { removeWebAddress } from '../web-address.js'
  * names such an account, or when every account is like that.
  */
 export async function daemonCommand(
-  ctx: CommandContext,
+  baseCtx: CommandContext,
   args: { readonly retry: boolean } & AccountArg,
 ): Promise<number> {
-  const { io, layout } = ctx
+  const { io, layout } = baseCtx
+  // From the lock on, what the daemon logs also goes to the log file and the web (see `startDaemonLogs`).
+  let ctx = baseCtx
   await ensureDataDirs(layout)
   const lock = await acquireDaemonLock(layout.lockFile)
   if (!lock.ok) {
-    io.err((await installationCatalog(ctx)).cli.daemonRunning(lock.pid))
+    io.err((await installationCatalog(baseCtx)).cli.daemonRunning(lock.pid))
     return EXIT_FAILURE
   }
   // Whatever address a daemon that died left behind is not ours to trust: this one has the lock now.
@@ -58,7 +61,20 @@ export async function daemonCommand(
   heartbeat.unref()
   let installation: Installation | null = null
   let web: WebHandle | null = null
+  let logs: DaemonLogs | null = null
   try {
+    // Keeping a log is never a reason not to run: whatever goes wrong there leaves the daemon without a file.
+    try {
+      const rootForLogs = await loadEffectiveConfig(layout.configFile, null)
+      logs = await startDaemonLogs(
+        baseCtx.logger,
+        layout,
+        rootForLogs.ok ? rootForLogs.value.logs.maxBytes : DEFAULT_LOGS.maxBytes,
+      )
+      ctx = { ...baseCtx, logger: logs.logger }
+    } catch {
+      baseCtx.logger.warn('logs.fileDisabled', { reason: 'failed' })
+    }
     const rootCatalog = await installationCatalog(ctx)
     // The lock is held: the migration of the old layout may run, and nothing else can start on this installation.
     const opened = await openInstallation({ layout, clock: ctx.clock, lockHeld: true })
@@ -138,7 +154,14 @@ export async function daemonCommand(
     const root = await loadEffectiveConfig(layout.configFile, null)
     if (!root.ok) ctx.logger.warn('web.skipped', { reason: 'config' })
     else if (root.value.web.enabled && !stopRequested) {
-      web = await startWeb({ ctx, installation, host, web: root.value.web, language: root.value.language })
+      web = await startWeb({
+        ctx,
+        installation,
+        host,
+        web: root.value.web,
+        language: root.value.language,
+        ...(logs === null ? {} : { logs: logs.store }),
+      })
       if (stopRequested) await web?.stop()
     }
     io.out(rootCatalog.cli.daemon.running(layout.dataDir))
@@ -151,6 +174,7 @@ export async function daemonCommand(
     await web?.stop()
     await removeWebAddress(layout).catch(() => undefined)
     installation?.close()
+    await logs?.close()
     await lock.release()
   }
 }

@@ -4,6 +4,7 @@
   import AddAccount from './components/AddAccount.svelte'
   import ConversationsDialog from './components/ConversationsDialog.svelte'
   import HistoryDialog from './components/HistoryDialog.svelte'
+  import LogsDialog from './components/LogsDialog.svelte'
   import LinkDialog from './components/LinkDialog.svelte'
   import PreviewDialog from './components/PreviewDialog.svelte'
   import PromptDialog from './components/PromptDialog.svelte'
@@ -47,10 +48,14 @@
     retryErrors = { ...retryErrors, [id]: code }
   }
   const close = () => (dialog = null)
+  let showLogs = $state(false)
 </script>
 
 <header class="top">
   <h1>{ui.title}</h1>
+  {#if !app.unauthorized && app.accounts !== null}
+    <button type="button" class="logs-button" onclick={() => (showLogs = true)}>{ui.logs.open}</button>
+  {/if}
   {#if app.connection === 'offline'}
     <p class="note warn" role="status">{ui.offline}</p>
   {/if}
@@ -106,6 +111,10 @@
   {/if}
 </main>
 
+{#if showLogs && app.accounts !== null}
+  <LogsDialog {api} {controller} {texts} accounts={app.accounts} onclose={() => (showLogs = false)} />
+{/if}
+
 {#if dialog !== null && app.accounts !== null}
   {@const account = accountOf(dialog.id)}
   {#if account !== null}
@@ -136,6 +145,10 @@
     padding: 1rem;
     max-width: 72rem;
     margin: 0 auto;
+  }
+
+  .logs-button {
+    margin-left: auto;
   }
 
   main {

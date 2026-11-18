@@ -5,7 +5,7 @@ export interface EventSourceLike {
   close(): void
 }
 
-export const SSE_EVENTS = ['accounts', 'qr', 'sync', 'link', 'digest', 'preview', 'history'] as const
+export const SSE_EVENTS = ['accounts', 'qr', 'sync', 'link', 'digest', 'preview', 'history', 'log'] as const
 
 export interface SseHandlers {
   event(name: string, data: unknown): void

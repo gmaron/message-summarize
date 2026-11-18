@@ -49,6 +49,8 @@ export interface WebOverrides {
   /** Where the built web is. Default: `web/` next to the compiled code. */
   readonly staticDir?: string
   readonly heartbeatMs?: number
+  /** The least time between two `log` events of the web. For tests. */
+  readonly logEventMs?: number
 }
 
 /** Everything the commands need from the outside. The composition root builds it; tests build their own. */

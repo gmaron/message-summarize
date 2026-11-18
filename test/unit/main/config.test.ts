@@ -50,6 +50,7 @@ describe('parseConfig defaults', () => {
         ollama: { baseUrl: 'http://127.0.0.1:11434', model: null, numCtx: 16384, keepAlive: '1m', timeoutMs: 180_000 },
       },
       web: { enabled: true, host: '127.0.0.1', port: 8787 },
+      logs: { maxBytes: 52_428_800 },
     })
   })
 
@@ -222,6 +223,35 @@ describe('the web section (RNF-03)', () => {
       const catalog = getCatalog(language)
       expect(describeConfigIssue(catalog, { option: 'web.port', code: 'invalidPort' })).toContain('web.port')
       expect(describeConfigIssue(catalog, { option: 'web', code: 'installationOnly' })).toContain('web')
+    }
+  })
+})
+
+describe('the logs section (RNF-12)', () => {
+  it('is 50 MB by default and takes the number the file gives', () => {
+    const none = parse({})
+    expect(none.ok && none.value.logs).toEqual({ maxBytes: 52_428_800 })
+    expect(parse({ logs: {} }).ok).toBe(true)
+    const set = parse({ logs: { maxBytes: 10_485_760 } })
+    expect(set.ok && set.value.logs).toEqual({ maxBytes: 10_485_760 })
+    expect(parse({ logs: { maxBytes: 1_048_576 } }).ok).toBe(true)
+  })
+
+  it('refuses a maximum that is not an integer, or is under 1 MB', () => {
+    expect(issuesOf({ logs: { maxBytes: 1_048_575 } })).toEqual([{ option: 'logs.maxBytes', code: 'belowMinimum' }])
+    expect(issuesOf({ logs: { maxBytes: 0 } })).toEqual([{ option: 'logs.maxBytes', code: 'belowMinimum' }])
+    expect(issuesOf({ logs: { maxBytes: -5 } })).toEqual([{ option: 'logs.maxBytes', code: 'belowMinimum' }])
+    expect(issuesOf({ logs: { maxBytes: 2_000_000.5 } })).toEqual([{ option: 'logs.maxBytes', code: 'notInteger' }])
+    expect(issuesOf({ logs: { maxBytes: '50MB' } })).toEqual([{ option: 'logs.maxBytes', code: 'notNumber' }])
+    expect(issuesOf({ logs: { dir: '/tmp' } })).toEqual([{ option: 'logs.dir', code: 'unknownOption' }])
+    expect(issuesOf({ logs: 5 })).toEqual([{ option: 'logs', code: 'notObject' }])
+  })
+
+  it('describes the new issue in both languages, naming the option', () => {
+    for (const language of ['es', 'en'] as const) {
+      const text = describeConfigIssue(getCatalog(language), { option: 'logs.maxBytes', code: 'belowMinimum' })
+      expect(text).toContain('logs.maxBytes')
+      expect(text).toContain('1048576')
     }
   })
 })
@@ -459,6 +489,20 @@ describe('loadEffectiveConfig', () => {
     expect(result.ok && result.value.web.port).toBe(9000)
     // without an account file, the installation's own web section is the one read
     expect((await loadEffectiveConfig(fine.rootFile, null, BA)).ok).toBe(true)
+  })
+
+  it('rejects a logs section in an account file, naming that file, and accepts it in the installation one', async () => {
+    const found = setup('{"logs":{"maxBytes":2000000}}', '{"logs":{"maxBytes":3000000}}')
+    expect(await loadEffectiveConfig(found.rootFile, found.accountFile, BA)).toEqual({
+      ok: false,
+      error: [{ option: 'logs', code: 'installationOnly', file: found.accountFile }],
+    })
+    const both = setup('{}', '{"web":{},"logs":{}}')
+    const rejected = await loadEffectiveConfig(both.rootFile, both.accountFile, BA)
+    expect(rejected.ok ? [] : rejected.error.map((issue) => issue.option)).toEqual(['web', 'logs'])
+    const fine = setup('{"logs":{"maxBytes":2000000}}', '{"language":"en"}')
+    const result = await loadEffectiveConfig(fine.rootFile, fine.accountFile, BA)
+    expect(result.ok && result.value.logs.maxBytes).toBe(2_000_000)
   })
 
   it('reports a file that is not JSON, or not an object, with its name', async () => {

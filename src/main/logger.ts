@@ -50,15 +50,26 @@ export interface Logger {
   error(event: string, fields?: LogFields): void
 }
 
+export const LOG_LEVELS: readonly LogLevel[] = ['info', 'warn', 'error']
+
+/** One log line as an object: `time`, `level`, `event` and the allowed fields, in that order. */
+export type LogRecord = Record<string, unknown>
+
+/** Builds the line of a log call. The only place that applies the allowlist and the limits of values. */
+export function buildLogRecord(level: LogLevel, event: string, fields: LogFields, epochMs: number): LogRecord {
+  const line: LogRecord = { time: new Date(epochMs).toISOString(), level, event }
+  for (const [key, value] of Object.entries(fields)) {
+    if (!allowed.has(key)) continue
+    if (typeof value === 'string') line[key] = value.slice(0, MAX_VALUE_LENGTH)
+    else if (typeof value === 'number' || typeof value === 'boolean' || value === null) line[key] = value
+  }
+  return line
+}
+
 /** Info goes to `out`; warnings and errors to `err`. */
 export function createLogger(out: LogSink, err: LogSink, now: () => number = Date.now): Logger {
   const emit = (level: LogLevel, event: string, fields: LogFields = {}): void => {
-    const line: Record<string, unknown> = { time: new Date(now()).toISOString(), level, event }
-    for (const [key, value] of Object.entries(fields)) {
-      if (!allowed.has(key)) continue
-      if (typeof value === 'string') line[key] = value.slice(0, MAX_VALUE_LENGTH)
-      else if (typeof value === 'number' || typeof value === 'boolean' || value === null) line[key] = value
-    }
+    const line = buildLogRecord(level, event, fields, now())
     ;(level === 'info' ? out : err).write(`${JSON.stringify(line)}\n`)
   }
   return {
@@ -66,6 +77,81 @@ export function createLogger(out: LogSink, err: LogSink, now: () => number = Dat
     warn: (event, fields) => emit('warn', event, fields),
     error: (event, fields) => emit('error', event, fields),
   }
+}
+
+/** A logger whose lines can also be handed to one observer at a time (the daemon's log file and the web's view). */
+export interface TappableLogger extends Logger {
+  /** Sets (or, with null, removes) the observer. It gets every line that already went through the allowlist. */
+  setTap(tap: ((line: LogRecord) => void) | null): void
+}
+
+export const isTappable = (logger: Logger): logger is TappableLogger =>
+  typeof (logger as Partial<TappableLogger>).setTap === 'function'
+
+/**
+ * Like `createLogger`, with an observer that can be set and removed while the process runs. The process guards and the
+ * commands hold this one object, so what the daemon starts to keep (a file) also gets the fatal errors they log.
+ * An observer that throws never reaches the caller of the log.
+ */
+export function createTappableLogger(out: LogSink, err: LogSink, now: () => number = Date.now): TappableLogger {
+  let tap: ((line: LogRecord) => void) | null = null
+  const emit = (level: LogLevel, event: string, fields: LogFields = {}): void => {
+    const line = buildLogRecord(level, event, fields, now())
+    ;(level === 'info' ? out : err).write(`${JSON.stringify(line)}\n`)
+    try {
+      tap?.(line)
+    } catch {
+      // a log must never break what it reports on
+    }
+  }
+  return {
+    info: (event, fields) => emit('info', event, fields),
+    warn: (event, fields) => emit('warn', event, fields),
+    error: (event, fields) => emit('error', event, fields),
+    setTap: (next) => {
+      tap = next
+    },
+  }
+}
+
+/**
+ * A logger that does what `base` does and also hands every line (already through the allowlist) to `tap`: the daemon's
+ * log file and the web's view of it. A tap that throws never reaches the caller of the log.
+ */
+export function teeLogger(base: Logger, tap: (line: LogRecord) => void, now: () => number = Date.now): Logger {
+  const emit = (level: LogLevel, event: string, fields?: LogFields): void => {
+    base[level](event, fields)
+    try {
+      tap(buildLogRecord(level, event, fields ?? {}, now()))
+    } catch {
+      // a log must never break what it reports on
+    }
+  }
+  return {
+    info: (event, fields) => emit('info', event, fields),
+    warn: (event, fields) => emit('warn', event, fields),
+    error: (event, fields) => emit('error', event, fields),
+  }
+}
+
+/**
+ * A line of a log file read back. Null when it is not one of ours (not JSON, a line cut in half by a crash, missing
+ * its time, level or event). What is not in the allowlist is dropped again: the file is not trusted more than a log call.
+ */
+export function parseLogLine(text: string): LogRecord | null {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  const { time, level, event } = raw
+  if (typeof time !== 'string' || Number.isNaN(Date.parse(time))) return null
+  if (typeof level !== 'string' || !LOG_LEVELS.includes(level as LogLevel)) return null
+  if (typeof event !== 'string' || event === '' || event.length > 200) return null
+  return buildLogRecord(level as LogLevel, event, raw as LogFields, Date.parse(time))
 }
 
 /**

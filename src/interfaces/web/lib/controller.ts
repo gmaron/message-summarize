@@ -36,6 +36,7 @@ export function createController(options: ControllerOptions) {
   let state: AppState = initialState(pickLanguage(undefined, options.browserLanguage))
   const listeners = new Set<(state: AppState) => void>()
   const historyListeners = new Set<(account: string) => void>()
+  const logListeners = new Set<() => void>()
   let stream: { close(): void } | null = null
 
   const set = (next: AppState): void => {
@@ -105,6 +106,15 @@ export function createController(options: ControllerOptions) {
       return () => historyListeners.delete(listener)
     },
 
+    /**
+     * Calls `listener` when the daemon says it logged new lines (the event carries no lines: the open view asks for them)
+     * and when the stream comes back after a break. Returns the way to stop listening.
+     */
+    onLog(listener: () => void): () => void {
+      logListeners.add(listener)
+      return () => logListeners.delete(listener)
+    },
+
     /** Asks for the language and the accounts and starts listening. */
     async start(): Promise<void> {
       try {
@@ -126,12 +136,14 @@ export function createController(options: ControllerOptions) {
             if (name === 'history' && typeof account === 'string') {
               for (const listener of [...historyListeners]) listener(account)
             }
+            if (name === 'log') for (const listener of [...logListeners]) listener()
           },
           open: (again) => {
             update((s) => ({ ...s, connection: 'online' }))
             // Whatever changed between the first fetch and the stream, or while the stream was down, is asked for again.
             void refreshAccounts()
             if (!again) return
+            for (const listener of [...logListeners]) listener()
             for (const [id, link] of Object.entries(state.links)) {
               if (link.phase !== 'idle' && link.phase !== 'done' && link.phase !== 'failed') void restoreLink(id)
             }
