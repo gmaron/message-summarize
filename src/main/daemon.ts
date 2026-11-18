@@ -1,4 +1,5 @@
 import { DeliverPending } from '../application/deliver-pending.js'
+import { DOWNLOAD_MAX_AGE_MS } from '../application/download-audios.js'
 import type { DigestErrorCode } from '../infrastructure/i18n/index.js'
 import { CronerScheduler } from '../infrastructure/scheduling/croner-scheduler.js'
 import { reconcileAccount } from '../infrastructure/whatsapp/account-binding.js'
@@ -21,6 +22,8 @@ export interface DaemonConnection extends SelfChatSource {
   stop(): Promise<void>
   readonly status: WhatsAppStatus
   onStatus(listener: WhatsAppStatusListener): () => void
+  /** Wakes the audio download worker (RF-15): the daemon does it on every sweep. Absent: nothing is downloaded. */
+  kickDownloads?(): void
   /**
    * Progress of the initial history sync (RF-02), when the platform reports it. Optional: a connection that does not
    * have it is waited on with the quiet heuristic only.
@@ -247,7 +250,17 @@ export class Daemon {
     if (this.scheduleSource !== null) {
       this.reloadTimer = setInterval(() => this.reloadSchedules(), this.scheduleReloadMs)
     }
-    this.sweepTimer = setInterval(() => void this.deliver(), this.sweepMs)
+    // Stuck rows and old keys are cleaned up whether or not transcription is on, so a key never stays for good.
+    void this.sweepDownloads()
+    this.sweepTimer = setInterval(() => {
+      void this.deliver()
+      void this.sweepDownloads()
+      // Audios that wait (a program was missing, or the daemon was off): tried again now and then (RF-15, RF-21).
+      this.runtime.transcription.kick()
+      // And the audios that wait for their download: a transient failure is tried again here, one per sweep (RF-15).
+      this.connection.kickDownloads?.()
+    }, this.sweepMs)
+    this.runtime.transcription.kick()
     const next = this.scheduler
       .nextRuns(new Date(this.runtime.clock.now()))
       .flatMap(({ next }) => (next === null ? [] : [next.getTime()]))
@@ -284,6 +297,20 @@ export class Daemon {
       this.onConfigApplied()
     } catch (error) {
       this.logger.error('digest.reportFailed', { code: errorCode(error) })
+    }
+  }
+
+  /**
+   * Housekeeping of the download queue (RF-15): an audio with no path or key fails as `invalid-media`, and one waiting
+   * longer than `DOWNLOAD_MAX_AGE_MS` fails as `expired` with its descriptor (the key) cleared. A failure of the store
+   * is not fatal: it is tried again on the next sweep.
+   */
+  private async sweepDownloads(): Promise<void> {
+    if (this.shutdownPromise !== null) return
+    try {
+      await this.runtime.downloadQueue.sweepDownloads(this.runtime.clock.now(), DOWNLOAD_MAX_AGE_MS)
+    } catch {
+      // The database may be closing: nothing to do.
     }
   }
 
@@ -574,6 +601,8 @@ export class Daemon {
       Promise.all([
         this.blockPromise,
         this.stopConnection(),
+        // Kills a transcription that is running: its audio stays pending for the next start.
+        this.runtime.transcription.stop(),
         running === null ? undefined : running.catch(() => undefined),
       ]),
     )

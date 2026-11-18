@@ -31,7 +31,7 @@ describe('openDatabase and migrations', () => {
     const t = fresh()
     const db = t.open()
     expect(currentVersion(db)).toBe(MIGRATIONS.length)
-    expect(currentVersion(db)).toBe(3)
+    expect(currentVersion(db)).toBe(4)
     expect(tables(db)).toEqual([
       'account',
       'conversations',
@@ -52,7 +52,7 @@ describe('openDatabase and migrations', () => {
     first.close()
     const second = t.open()
     expect(second.prepare('SELECT version, applied_at FROM schema_version').all()).toEqual(applied)
-    expect(currentVersion(second)).toBe(3)
+    expect(currentVersion(second)).toBe(4)
   })
 
   it('upgrades a database at version 2 to 3 keeping its data and adding the runs table (RF-74, RNF-16)', () => {
@@ -66,7 +66,8 @@ describe('openDatabase and migrations', () => {
     first.exec("INSERT INTO account (id, jid, linked_at) VALUES (1, '5491100000000@s.whatsapp.net', 9)")
     expect(currentVersion(first)).toBe(2)
     first.close()
-    const upgraded = t.open()
+    // Only up to version 3: the runs table is what this test is about (migration 4 is covered below).
+    const upgraded = openDatabase(t.path, { migrations: MIGRATIONS.slice(0, 3) })
     expect(currentVersion(upgraded)).toBe(3)
     expect(upgraded.prepare('SELECT pointer FROM digest_pointer').all()).toEqual([{ pointer: 500 }])
     expect(upgraded.prepare('SELECT text, summarized, failed FROM digests').all()).toEqual([
@@ -83,16 +84,72 @@ describe('openDatabase and migrations', () => {
     ).toThrow()
   })
 
-  it('upgrades a database at version 1 to 2 without touching its data', () => {
+  it('upgrades a database at version 1 to the latest without touching its data', () => {
     const t = fresh()
     const first = openDatabase(t.path, { migrations: MIGRATIONS.slice(0, 1) })
     first.exec('INSERT INTO digest_pointer (id, pointer) VALUES (1, 77)')
     expect(currentVersion(first)).toBe(1)
     first.close()
     const upgraded = t.open()
-    expect(currentVersion(upgraded)).toBe(3)
+    expect(currentVersion(upgraded)).toBe(MIGRATIONS.length)
     expect(upgraded.prepare('SELECT pointer FROM digest_pointer').all()).toEqual([{ pointer: 77 }])
     expect(upgraded.prepare('SELECT COUNT(*) AS n FROM account').get()).toEqual({ n: 0 })
+  })
+
+  describe('migration 4 (audio transcription)', () => {
+    const columns = (db: ReturnType<TempDatabase['open']>): string[] =>
+      (db.prepare("SELECT name FROM pragma_table_info('messages') ORDER BY cid").all() as { name: string }[]).map(
+        (r) => r.name,
+      )
+
+    it('adds the media and transcription columns to a database that has messages, and keeps them untouched', () => {
+      const t = fresh()
+      // A database as the released version left it: version 3 (with the digest runs), a conversation, a text, an audio
+      // that has a transcript, and a run of the history.
+      const old = openDatabase(t.path, { migrations: MIGRATIONS.slice(0, 3) })
+      expect(currentVersion(old)).toBe(3)
+      expect(columns(old)).not.toContain('media_ref')
+      old.exec(`INSERT INTO conversations (id, address) VALUES ('c1', '+1')`)
+      old.exec(`INSERT INTO messages (conversation_id, id, from_me, timestamp, kind, text, transcript)
+                VALUES ('c1', 'm1', 0, 1000, 'text', 'hello', NULL),
+                       ('c1', 'm2', 0, 2000, 'audio', '[audio]', 'an old transcript')`)
+      old.exec("INSERT INTO digest_runs (trigger_kind, started_at) VALUES ('manual', 10)")
+      old.close()
+
+      const upgraded = t.open()
+      expect(currentVersion(upgraded)).toBe(4)
+      expect(upgraded.prepare('SELECT trigger_kind, started_at FROM digest_runs').all()).toEqual([
+        { trigger_kind: 'manual', started_at: 10 },
+      ])
+      expect(columns(upgraded)).toEqual(expect.arrayContaining(['media_ref', 'transcribe_status', 'transcribe_error']))
+      expect(
+        upgraded
+          .prepare(
+            'SELECT id, text, transcript, media_ref, transcribe_status, transcribe_error FROM messages ORDER BY id',
+          )
+          .all(),
+      ).toEqual([
+        { id: 'm1', text: 'hello', transcript: null, media_ref: null, transcribe_status: null, transcribe_error: null },
+        {
+          id: 'm2',
+          text: '[audio]',
+          transcript: 'an old transcript',
+          media_ref: null,
+          transcribe_status: null,
+          transcribe_error: null,
+        },
+      ])
+    })
+
+    it('only accepts the three statuses', () => {
+      const db = fresh().open()
+      db.exec(`INSERT INTO conversations (id, address) VALUES ('c1', '+1')`)
+      const insert = (status: string): void =>
+        db.exec(`INSERT INTO messages (conversation_id, id, from_me, timestamp, kind, transcribe_status)
+                 VALUES ('c1', 'm-${status}', 0, 1, 'audio', '${status}')`)
+      for (const status of ['pending', 'done', 'failed']) expect(() => insert(status)).not.toThrow()
+      expect(() => insert('lost')).toThrow()
+    })
   })
 
   it('uses WAL, foreign keys and a busy timeout', () => {

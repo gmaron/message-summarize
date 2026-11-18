@@ -1,7 +1,7 @@
 import { parseSummaryResponse } from '../domain/summary.js'
 import type { ProviderTestErrorCode } from '../infrastructure/i18n/index.js'
 import type { AppConfig, ProviderKind } from './config.js'
-import { buildSummarizer } from './providers.js'
+import { buildSummarizer, type SecretFiles } from './providers.js'
 
 /** Why a test of a provider failed: codes, never the text the provider answered with (it could echo what was sent). */
 export type ProviderTestError = ProviderTestErrorCode
@@ -11,7 +11,17 @@ export type ProviderTestResult =
   | { readonly ok: false; readonly error: ProviderTestError }
 
 /** The most a test may take (RF-41), by provider. The test never waits for the (longer) timeout of the configuration. */
-export const TEST_TIMEOUT_MS: Readonly<Record<ProviderKind, number>> = { 'claude-cli': 90_000, ollama: 60_000 }
+export const TEST_TIMEOUT_MS: Readonly<Record<ProviderKind, number>> = {
+  'claude-cli': 90_000,
+  ollama: 60_000,
+  openai: 60_000,
+  anthropic: 60_000,
+  gemini: 60_000,
+  'generic-cli': 90_000,
+  // Shipped disabled: they fail at once and run nothing.
+  'gemini-cli': 5_000,
+  'codex-cli': 5_000,
+}
 
 /**
  * What the test summarizes: a made-up chat, fixed in the program. No name, number or text of the user goes into the
@@ -34,7 +44,10 @@ export const TEST_TRANSCRIPT = [
  * and nothing else of the text: an unknown reason is `failed`.
  */
 export function classifyProviderError(reason: string): ProviderTestError {
-  if (/^could not run .*: (ENOENT|EACCES|ENOTDIR|EPERM)\b/.test(reason)) return 'notFound'
+  // `${label} was not found`: the CLI is checked with `--help` before it runs (RF-49), so a missing program says it so.
+  if (/^could not run .*: (ENOENT|EACCES|ENOTDIR|EPERM)\b/.test(reason) || /^\S+ was not found$/.test(reason)) {
+    return 'notFound'
+  }
   if (/timed out after/.test(reason)) return 'timeout'
   if (/^could not reach ollama/.test(reason)) return 'unreachable'
   if (
@@ -56,12 +69,15 @@ export async function testProvider(
   config: AppConfig,
   env: NodeJS.ProcessEnv,
   now: () => number = Date.now,
+  /** Where the stored API keys are looked up (see `msum secret`), for the providers that need one. */
+  secrets?: SecretFiles,
 ): Promise<ProviderTestResult> {
   // No backup, whatever the installation says: a backup would run without its consent and could make a failed test of this
   // provider report ok. Done here so no caller can forget it.
   const summarizer = buildSummarizer(
     { ...config, localOnlyPatterns: [], provider: { ...config.provider, backup: null } },
     env,
+    secrets,
     () => [],
   )
   if (summarizer === null) return { ok: false, error: 'failed' }

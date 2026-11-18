@@ -65,7 +65,7 @@ describe('buildSummarizer', () => {
       env,
     )
     expect(log.built).toEqual([
-      { kind: 'claude-cli', options: { command: '/opt/claude', model: 'opus', timeoutMs: 5000, env } },
+      { kind: 'claude-cli', options: { command: '/opt/claude', model: 'opus', timeoutMs: 5000, env, verify: true } },
     ])
   })
 

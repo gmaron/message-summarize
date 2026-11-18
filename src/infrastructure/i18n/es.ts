@@ -1,4 +1,5 @@
 import type { Catalog } from './catalog.js'
+import { DISCLOSURE_SENDS } from './disclosure.js'
 import { webEs } from './web-es.js'
 
 const chats = (n: number): string => (n === 1 ? 'chat' : 'chats')
@@ -129,8 +130,30 @@ Comandos:
   schedule [ls|add|rm] [--account <id>]  Cuándo corren los digests: ls los lista con la próxima ejecución,
                                       add --time HH:MM [--days daily|weekdays|weekends|lun,mie|lun-vie], rm <id>
   status [--account <id>]             Muestra el estado: cuentas, último digest, envíos pendientes y próximos horarios
-  doctor [--account <id>]             Revisa que todo esté en orden y explica cómo arreglarlo
+  doctor [--skip-model-check] [--account <id>]  Revisa que todo esté en orden y explica cómo arreglarlo
+                                      (con Ollama también le pregunta a tu servidor qué modelos tiene, salvo que lo saltees)
   accounts                            Lista las cuentas de esta instalación y su estado
+  whisper models                     Lista los modelos de whisper.cpp (para transcribir audios en tu máquina) con su tamaño
+  whisper download <nombre>           Descarga un modelo al directorio de datos y verifica su SHA-256, desde
+                                      huggingface.co. El programa descarga modelos solo cuando se lo pedís
+                                      (whisper download, ollama pull)
+  secret set <proveedor> [--account <id>]  Guarda la clave de API de openai, openai-compatible (cualquier otro
+                                      servidor en provider.openai.baseUrl), anthropic o gemini, leída de la entrada (oculta
+                                      en una terminal, o por pipe); nunca como argumento. No va en config.json
+  secret rm <proveedor> [--account <id>]   Quita una clave guardada
+  secret ls [--account <id>]          Muestra qué proveedores tienen clave y de dónde sale, nunca la clave
+  provider ls [--account <id>]        Lista los proveedores: cuánto cuesta cada uno, si tus chats salen de la máquina, adónde,
+                                      su política de datos, y si está configurado y usable acá (sin llamadas de red)
+  provider use <nombre> [--model <m>] [--backup] [--base-url <url>] [--yes] [--account <id>]
+                                      Elige el proveedor principal (o de respaldo) y su modelo en el config.json de la
+                                      cuenta. Antes de uno que envía tus chats afuera dice qué recibe y pregunta
+  provider test [--backup] [--kind <nombre>] [--account <id>]
+                                      Prueba el proveedor con UNA llamada real y una conversación inventada (nunca tus mensajes)
+  ollama recommend [--all]            Lista los modelos locales chicos que entran en la RAM de esta máquina, primero los mejor
+                                      evaluados, para que elijas (--all muestra también los que necesitan más RAM). No se elige ni se escribe nada
+  ollama pull <tag> [--allow-remote] [--account <id>]
+                                      Le pide al Ollama configurado que descargue un modelo (solo se envía el tag, con una
+                                      línea de progreso). Rechaza un Ollama que no está en esta máquina salvo con --allow-remote
   open [--print]                      Abre la web local en el navegador, ya con la sesión iniciada (la sirve el daemon).
                                       --print solo imprime la dirección
   help                                Muestra esta ayuda
@@ -157,6 +180,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         `Los días ${JSON.stringify(value)} no son válidos: usá daily, weekdays, weekends, o nombres de días como lun,mie o lun-vie (también en inglés: mon, tue, wed, thu, fri, sat, sun).`,
       invalidDate: (option) =>
         `El valor de ${option} tiene que tener la forma "AAAA-MM-DD HH:MM" (fecha y hora válidas).`,
+      unknownProviderKind: (value, allowed) => `"${value}" no es un proveedor. Usá uno de: ${allowed}.`,
+      unknownProvider: (allowed) => `Ese proveedor no usa clave de API. Usá uno de: ${allowed}.`,
     },
     config: {
       heading: 'La configuración tiene problemas:',
@@ -167,6 +192,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       required: (option) => `Falta la opción "${option}".`,
       invalidTimezone: (option) =>
         `La opción "${option}" no es una zona horaria válida (por ejemplo "America/Argentina/Buenos_Aires").`,
+      invalidLanguage: (option) =>
+        `La opción "${option}" tiene que ser "auto" (detectar el idioma) o un código de idioma como "es" o "en".`,
       invalidPort: (option) => `La opción "${option}" tiene que ser un número de puerto entre 1 y 65535.`,
       belowMinimum: (option) => `La opción "${option}" es demasiado chica: el mínimo es 1048576 (1 MB).`,
       invalidUrl: (option) =>
@@ -175,8 +202,199 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       installationOnly: (option) =>
         `La opción "${option}" solo se puede poner en el config.json del directorio de datos, no en el de una cuenta.`,
       noProvider:
-        'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli" u "ollama") en la configuración.',
+        'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" o "gemini") en la configuración.',
       promptFile: (path) => `No se pudo leer el archivo del prompt (promptFile): ${path}`,
+      invalidCommandTemplate: (option) =>
+        `"${option}" tiene que ser una lista de textos cuyo primer elemento es el programa; "{{prompt}}" puede ser un argumento por sí solo, nunca el programa ni parte de un texto más largo.`,
+      genericCliWarning: (acknowledged) =>
+        acknowledged
+          ? 'Aviso: el proveedor de CLI genérica ejecuta un comando que puede usar herramientas sobre texto de chats escrito por terceros (prompt injection). Aceptaste este riesgo (provider.genericCli.acknowledgeRisk).'
+          : 'Aviso: el proveedor de CLI genérica NO se ejecuta: su comando puede usar herramientas sobre texto de chats escrito por terceros (prompt injection). Para aceptar ese riesgo poné provider.genericCli.acknowledgeRisk en true.',
+      secretInConfig: (option) =>
+        `"${option}" parece una clave de API, y config.json no guarda secretos. Quitala y corré "msum secret set <proveedor>" (o definí la variable de entorno del proveedor).`,
+    },
+    provider: {
+      descriptions: {
+        'claude-cli': 'Claude Code, con el plan que ya tenés (sin clave de API)',
+        'gemini-cli': 'Gemini CLI (deshabilitado: no se puede verificar que corra sin herramientas)',
+        'codex-cli': 'Codex CLI (deshabilitado: no se puede verificar que corra sin herramientas)',
+        'generic-cli': 'Cualquier comando que reciba el prompt e imprima la respuesta (aceptás el riesgo)',
+        ollama: 'Ollama, un modelo en tu propia máquina',
+        openai: 'API de OpenAI (api.openai.com)',
+        'openai-compatible': 'Un servidor compatible con OpenAI, tuyo o de terceros (LM Studio, OpenRouter...)',
+        anthropic: 'API de Anthropic',
+        gemini: 'API de Gemini (Google)',
+      },
+      charge: {
+        'pay-per-use': 'cobra por uso (API)',
+        'your-plan': 'usa el plan que ya tenés',
+        'free-local': 'gratis, corre en tu máquina',
+        depends: 'depende del servidor o del comando',
+      },
+      dataLeaves: 'el texto de tus chats sale de tu máquina',
+      dataStays: 'tus chats se quedan en tu máquina',
+      hostsNone: 'ninguno',
+      hostsYourServer: 'el servidor de provider.openai.baseUrl',
+      hostsYourCommand: 'lo que contacte tu comando',
+      hostsDisabled: 'ninguno: está deshabilitado y no se ejecuta nada',
+      policyNone: 'ninguna: preguntale a quien lo ejecuta',
+      roles: { primary: 'principal', backup: 'respaldo', none: 'sin configurar' },
+      ls: {
+        title: (account) => `Proveedores de la cuenta "${account}" (no se hace ninguna llamada de red):`,
+        kind: (kind, description) => `\n${kind}: ${description}`,
+        info: (charge, data, hosts, policy) =>
+          `  Costo: ${charge}.\n  Datos: ${data}.\n  Se conecta a: ${hosts}.\n  Política de datos: ${policy}`,
+        state: (role, key, usable) => `  Acá: ${role}. Clave: ${key}. Usable ahora: ${usable}`,
+        keyFrom: (name, source) => `"${name}" desde ${source}`,
+        keyMissing: (name) => `sin clave "${name}"`,
+        keyNotNeeded: 'no hace falta',
+        keyOptional: (name) => `sin clave "${name}" (este servidor puede no necesitarla)`,
+        usableYes: 'sí',
+        usableNoModel: 'no: falta el modelo (provider.<nombre>.model)',
+        usableNoKey: (name) => `no: falta la clave "${name}" (msum secret set ${name})`,
+        usableDisabled: 'no: deshabilitado (no se pueden apagar sus herramientas de forma verificable)',
+        usableNoCommand: 'no: falta el comando (provider.genericCli.command)',
+        usableNotAcknowledged: 'no: provider.genericCli.acknowledgeRisk no es true',
+        usableNotChecked: 'no se verifica acá (hace falta una llamada: msum provider test)',
+        usableVerifyFailed: (detail) => `no: ${detail}`,
+        consent: (date) => `  Consentimiento para enviar tus chats: registrado el ${date}.`,
+        consentNone:
+          '  Consentimiento para enviar tus chats: ninguno registrado (revisalo con "msum provider use <nombre>").',
+        ollamaRemote: (origin) =>
+          `  Tu Ollama está en ${origin}, que NO es esta máquina: tus chats van a ese servidor. ("Solo local" significa "tu servidor de Ollama": usá una URL de loopback como http://127.0.0.1:11434 si tiene que estar en esta máquina.)`,
+        footer:
+          '\nElegí uno con "msum provider use <nombre>", guardá su clave con "msum secret set <nombre>" y probalo con "msum provider test".',
+      },
+      use: {
+        baseUrlRequired: 'openai-compatible necesita --base-url <url> (el servidor a usar).',
+        baseUrlIsOpenAi: 'Eso es OpenAI mismo: usá "msum provider use openai".',
+        baseUrlOnlyCompatible: '--base-url es solo para openai-compatible.',
+        modelNotForGeneric: 'generic-cli no tiene modelo: su comando lo dice todo. No se acepta --model.',
+        noModelHint:
+          'Pasá el modelo con --model <nombre>: no hay modelo por defecto porque los nombres de los modelos cambian seguido.',
+        notWritten: (file) => `No se escribió nada (${file} quedó como estaba).`,
+        fileNotJson: (file) => `${file} no es un objeto JSON. No se tocó: corregilo o borralo y probá de nuevo.`,
+        disclosureTitle: (provider) => `Antes de activar ${provider}, esto es lo que recibe:`,
+        // Las mismas palabras que la divulgación de la web (una sola fuente: `disclosure.ts`).
+        disclosureSends: `  - ${DISCLOSURE_SENDS.es}`,
+        disclosureHosts: (hosts) => `  - Va a: ${hosts}.`,
+        disclosureCommand: (command) =>
+          `  - Va a este comando, que decide adónde va el texto: ${command} (el prompt es su última entrada; {{prompt}} queda como está escrito). Cambiar el comando pide un consentimiento nuevo.`,
+        changedWhileEditing: (file) =>
+          `${file} cambió mientras se editaba, así que no se escribió nada: volvé a correrlo.`,
+        disclosurePolicy: (url) => `  - Qué hace con eso: ${url}`,
+        disclosureNoPolicy:
+          '  - Qué hace con eso: preguntale a quien lo ejecuta; no hay política de un fabricante para enlazar.',
+        disclosureLocalOnly:
+          '  - No se envía nada más. Tus mensajes y resúmenes se quedan en el directorio de datos de esta máquina.',
+        genericExplain:
+          'La CLI genérica ejecuta un comando que puede usar herramientas (leer archivos, ejecutar programas) sobre texto de chats escrito por terceros, que podrían intentar que lo haga (prompt injection). Por eso provider.genericCli.acknowledgeRisk lo tenés que poner en true vos, en config.json: este comando nunca lo hace, y hasta entonces la CLI genérica se niega a correr.',
+        confirm: (provider) => `¿Activar ${provider}? [s/N] `,
+        noTerminal: 'No hay una terminal donde preguntar. Leé lo de arriba y volvé a correrlo con --yes si aceptás.',
+        cancelled: 'Cancelado. No se escribió nada.',
+        wrote: (file, role, provider) => `Listo: ${provider} es ahora el proveedor ${role}. Escrito en ${file}.`,
+        keyReminder: (name) =>
+          `Necesita una clave de API: corré "msum secret set ${name}" (se lee de la entrada, nunca de un argumento).`,
+        genericNotAcknowledged:
+          'La CLI genérica quedó elegida pero TODAVÍA sin aceptar el riesgo: no corre hasta que pongas provider.genericCli.acknowledgeRisk en true.',
+        testReminder: 'Probalo con "msum provider test".',
+      },
+      test: {
+        noneConfigured: (role) => `No hay proveedor ${role} configurado: elegí uno con "msum provider use <nombre>".`,
+        noModel: (kind) => `Falta el modelo de ${kind}: definilo con "msum provider use ${kind} --model <nombre>".`,
+        noticeExternal: (hosts) =>
+          `Se va a hacer una llamada a ${hosts} con una conversación inventada (nombres inventados). No se envía nada tuyo.`,
+        noticeLocal: (url) => `Se va a hacer una llamada a ${url} (tu máquina) con una conversación inventada.`,
+        running: (kind) => `Probando ${kind}...`,
+        ok: (kind, ms, needsReply, priority) =>
+          `OK: ${kind} respondió en ${ms} ms con un resumen válido (necesita respuesta: ${needsReply}; prioridad: ${priority}).`,
+        failed: (kind, reason) => `FALLÓ: ${kind}: ${reason}`,
+        yes: 'sí',
+        no: 'no',
+        priorities: { high: 'alta', medium: 'media', low: 'baja' },
+        hints: {
+          missingKey: (name) => `No hay clave de API. Guardala con "msum secret set ${name}".`,
+          authFailed:
+            'El proveedor rechazó la clave (401/403): revisá que sea la correcta, que no haya vencido y que la cuenta pueda usar este modelo.',
+          unknownModel:
+            'El proveedor no conoce ese modelo: revisá el nombre en provider.<nombre>.model (los nombres de los modelos cambian seguido).',
+          rateLimit:
+            'El proveedor respondió "demasiados pedidos" y la espera pasaba el presupuesto. Probá más tarde; un plan gratuito tiene límites bajos.',
+          noCredit:
+            'La cuenta de API no tiene crédito o llegó a su límite de gasto. Cargá crédito en la consola del proveedor (la API se paga aparte de la suscripción del chat); esperar no lo arregla.',
+          timeout: 'El proveedor no respondió a tiempo. Revisá la conexión, o subí provider.<nombre>.timeoutMs.',
+          disabled: 'Este proveedor está deshabilitado: no se ejecutó nada. Mirá "msum provider ls" y el README.',
+          verifyFailed:
+            'No se pudo verificar que la CLI corra sin herramientas (RF-49), o no se encontró: mirá "msum doctor".',
+          unreachable: 'No se pudo conectar: revisá que esté corriendo y la dirección de la configuración.',
+          redirect: 'El servidor respondió con una redirección, que nunca se sigue: revisá la dirección (baseUrl).',
+          geminiSchemaShape:
+            'Gemini rechazó la forma del pedido (los campos de salida estructurada). Esa forma no se pudo comprobar con una respuesta real cuando se escribió: reportala con el mensaje de arriba.',
+          generic: 'Mirá el mensaje de arriba; "msum doctor" revisa la configuración sin llamar a nada.',
+        },
+      },
+    },
+    secret: {
+      keyPrompt: (provider) => `Clave de API de ${provider} (lo que escribas no se muestra): `,
+      emptyKey: 'No se recibió ninguna clave. No se guardó nada.',
+      invalidKey: 'Una clave no tiene espacios ni saltos de línea adentro. No se guardó nada.',
+      stored: (provider, file) => `La clave de ${provider} se guardó en ${file} (solo vos podés leerla).`,
+      envWins: (names) => `Ojo: ${names} está definida en el entorno y tiene prioridad sobre la clave guardada.`,
+      removed: (provider, file) => `Se quitó la clave de ${provider} de ${file}.`,
+      notStored: (provider, file) => `No hay clave de ${provider} en ${file}. No cambió nada.`,
+      invalidFile: (file) => `${file} no es un objeto JSON. No se tocó: corregilo o borralo y probá de nuevo.`,
+      header: 'Claves de API (los valores nunca se muestran):',
+      row: (provider, source) => `  ${provider}  ${source}`,
+      precedence:
+        'La clave se toma primero del entorno, luego de accounts/<id>/secrets.json y luego de secrets.json. "openai" (OPENAI_API_KEY) solo se usa con https://api.openai.com; cualquier otro provider.openai.baseUrl usa "openai-compatible" (MSUM_OPENAI_API_KEY).',
+      sourceEnv: (name) => `entorno (${name})`,
+      sourceAccountFile: (file) => `archivo de la cuenta (${file})`,
+      sourceFile: (file) => `archivo (${file})`,
+      sourceNone: 'sin clave',
+    },
+    whisper: {
+      modelsHeader: 'Modelos de whisper.cpp (formato ggml). Los más grandes transcriben mejor y más lento:',
+      modelRow: (name, size, installed) => `  ${name}  ${size}  ${installed ? '[descargado]' : ''}`.trimEnd(),
+      modelsHint: (dir) =>
+        `Descargá uno con "msum whisper download <nombre>" (a ${dir}). "base" o "small" es un buen comienzo para notas de voz.`,
+      downloading: (name, size, from) => `Descargando el modelo "${name}" (${size}) desde ${from}`,
+      progress: (percent, received, total) => `  ${percent}%  (${received} de ${total})`,
+      done: (name, path) => `Se descargó el modelo "${name}" y su checksum SHA-256 es correcto: ${path}`,
+      alreadyThere: (name, path) => `El modelo "${name}" ya está y su checksum es correcto: ${path}`,
+      enableHint: (name) =>
+        `Para usarlo, poné "transcription": { "enabled": true, "model": "${name}" } en config.json (mirá el README).`,
+      unknownModel: (name, known) => `"${name}" no es un modelo conocido. Modelos conocidos: ${known}.`,
+      httpError: (status) => `El servidor respondió con un error (HTTP ${status}). No se guardó nada.`,
+      networkError: 'La conexión falló o se cortó. No se guardó nada; probá de nuevo.',
+      sizeError: 'El archivo no tiene el tamaño esperado. No se guardó nada.',
+      checksumError: 'El checksum del archivo descargado no es el esperado. Se descartó el archivo.',
+      writeError: (dir) => `No se pudo escribir el modelo en ${dir}. No se guardó nada.`,
+    },
+    ollama: {
+      ramLine: (gb) => `Esta máquina tiene unos ${gb} GB de RAM.`,
+      candidatesHeader:
+        'Modelos de 3 a 8 mil millones de parámetros que entran en esta máquina, primero los que pasaron la evaluación (tag, descarga, RAM mínima, evaluación):',
+      candidateRow: (tag, size, ram, fits, evaluation) =>
+        `  ${tag}  ${size}  ${ram} de RAM  ${evaluation}${fits ? '' : '  [necesita más RAM de la que tiene esta máquina]'}`,
+      evaluationNone: 'sin evaluar',
+      evaluationDone: (date, validJson, agreement, latency, passed) =>
+        `${passed ? 'CUMPLIÓ' : 'NO CUMPLIÓ'} la evaluación del ${date}: JSON válido ${validJson}, "necesita respuesta" ${agreement} en los casos claros, ${latency} por resumen (RF-45 pide 100% y 90%)`,
+      hidden: (count) =>
+        `${count} ${count === 1 ? 'candidato más necesita' : 'candidatos más necesitan'} más RAM de la que tiene esta máquina y ${count === 1 ? 'está oculto' : 'están ocultos'}: "msum ollama recommend --all" ${count === 1 ? 'lo' : 'los'} muestra.`,
+      noneFits: (minGb) =>
+        `Ningún candidato entra en la RAM de esta máquina (el más chico necesita unos ${minGb} GB). Usá un proveedor por API o la CLI de uno ("msum provider ls").`,
+      choose:
+        'Elegís vos: no se elige ni se escribe nada por vos. Para usar uno, descargalo con "msum ollama pull <tag>" y configuralo con "msum provider use ollama --model <tag>" (o "provider.ollama.model" en config.json). Los que dicen "sin evaluar" se pueden medir con "npm run eval:ollama -- --models <tag>" (mirá "Elegir un modelo local" en el README).',
+      invalidTag: (tag) => `"${tag}" no parece un tag de modelo de Ollama (por ejemplo qwen3:4b).`,
+      remoteRefused: (origin) =>
+        `El Ollama configurado está en ${origin}, que no es esta máquina. No se descargó nada. Descargá el modelo allá, o repetí con --allow-remote si de verdad querés que ese servidor lo descargue.`,
+      pulling: (tag, origin) =>
+        `Pidiéndole al Ollama de ${origin} que descargue "${tag}". No se envía texto de chats, solo el tag.`,
+      progress: (percent, received, total) => `  ${percent}%  (${received} de ${total})`,
+      status: (status) => `  ${status}`,
+      done: (tag) => `Se descargó el modelo "${tag}".`,
+      doneHint: (tag) => `Elegilo con "msum provider use ollama --model ${tag}" y probalo con "msum provider test".`,
+      failed: (reason) => `La descarga falló: ${reason}`,
     },
     unexpectedError: (code) => `Algo salió mal (${code}).`,
     cannotCreateDataDir: (path) => `No se pudo crear el directorio de datos: ${path}`,
@@ -435,7 +653,39 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         whatsapp: 'WhatsApp',
         accounts: 'Cuentas',
         schedules: 'Horarios',
+        transcription: 'Transcripción',
+        whisper: 'whisper.cpp',
+        ffmpeg: 'ffmpeg',
+        whisperModel: 'Modelo de whisper',
+        mediaFiles: 'Archivos de audio',
+        secrets: 'Archivo de claves de API',
       },
+      mediaFull: (usedMb, capMb) =>
+        `los audios descargados ocupan ${usedMb} MB de los ${capMb} MB permitidos: no se aceptan audios nuevos hasta que se transcriban algunos`,
+      mediaFullFix:
+        'los audios se borran al transcribirse, así que una carpeta llena significa que se acumulan: revisá que whisper, ffmpeg y el modelo funcionen (mirá arriba), o subí "transcription.maxMediaMb".',
+      transcriptionOff: 'desactivada: los audios aparecen como "(audio sin transcribir)" y todo lo demás funciona',
+      transcriptionOn: (language) => `activada (idioma: ${language === 'auto' ? 'detectado en cada audio' : language})`,
+      whisperOk: (version) => (version === null ? 'encontrado' : `encontrado (${version})`),
+      whisperMissing: (command) => `no se pudo ejecutar "${command}"`,
+      whisperFix:
+        'instalá whisper.cpp (trae "whisper-cli") o poné la ruta en "transcription.whisperCommand". Mientras tanto los audios quedan sin transcribir.',
+      ffmpegOk: (version) => (version === null ? 'encontrado' : `encontrado (${version})`),
+      ffmpegMissing: (command) => `no se pudo ejecutar "${command}"`,
+      ffmpegFix:
+        'instalá ffmpeg (convierte los audios) o poné la ruta en "transcription.ffmpegCommand". Mientras tanto los audios quedan sin transcribir.',
+      modelNone: 'no hay modelo elegido',
+      modelNoneFix: 'corré "msum whisper download base" y poné "transcription.model" en "base" en config.json.',
+      modelMissing: (path) => `el archivo no existe: ${path}`,
+      modelMissingFix:
+        'corré "msum whisper download <nombre>" (mirá "msum whisper models") o corregí "transcription.model". Mientras tanto los audios quedan sin transcribir.',
+      modelVerified: (path) => `${path} (checksum correcto)`,
+      modelUnverified: (path) => `${path} (no hay un checksum con qué compararlo)`,
+      modelUnverifiedFix:
+        'no es uno de los modelos conocidos, así que no se pudo verificar: asegurate de que sea el archivo que querés.',
+      modelBadChecksum: (path) =>
+        `${path} no coincide con el checksum de su modelo: el archivo está dañado o lo cambiaron`,
+      modelBadChecksumFix: 'borrá el archivo y descargalo de nuevo con "msum whisper download <nombre>".',
       staleImport: (names) =>
         `quedaron en accounts/ directorios de importaciones que no terminaron: ${names}. Cada uno tiene una copia de una sesión de WhatsApp y de mensajes`,
       staleImportFix:
@@ -478,6 +728,58 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         provider === 'ollama'
           ? 'iniciá Ollama ("ollama serve") y revisá "provider.ollama.baseUrl".'
           : 'instalá Claude Code, iniciá sesión con "claude" y revisá "provider.claudeCli.command".',
+      providerApiOk: (provider, model, keyName, source) =>
+        `${provider} (modelo ${model}; usa la clave "${keyName}", desde ${source})`,
+      providerApiKeyOptional: (provider, model, keyName) =>
+        `${provider} (modelo ${model}; sin clave "${keyName}", que este servidor puede no necesitar; la clave "openai" nunca se le envía)`,
+      providerApiNoKey: (provider, keyName) => `no hay clave de API "${keyName}" para ${provider}`,
+      providerApiNoKeyFix: (keyName, envNames) =>
+        `corré "msum secret set ${keyName}" (la clave se lee de la entrada, nunca de la línea de comandos) o definí ${envNames} en el entorno.`,
+      secretsLoose: (file, mode) =>
+        `${file} tiene permisos ${mode}: otros usuarios pueden leer las claves de API que guarda`,
+      secretsLooseFix: (file) => `corré "chmod 600 ${file}".`,
+      providerApiNoModel: (provider) => `no hay modelo elegido para ${provider}`,
+      cliVerified: (provider, version) =>
+        `${provider}${version === null ? '' : ` (${version})`}; su --help lista todos los flags que apagan las herramientas`,
+      cliMissingFlags: (provider, flags) =>
+        `esta versión de ${provider} no se puede ejecutar sin herramientas: su --help no lista ${flags}`,
+      cliMissingFlagsFix: (provider) =>
+        `actualizá ${provider} a una versión que tenga esos flags. No se usa hasta entonces (los chats los escriben terceros y no deben llegar a un programa con herramientas).`,
+      cliUnrunnable: (provider) => `no se pudo verificar ${provider}: "${provider} --help" no corrió`,
+      cliUnrunnableFix: (provider) => `corré "${provider} --help" vos mismo y arreglá lo que diga.`,
+      cliDisabled: (provider) =>
+        `${provider} está deshabilitado: su documentación no ofrece una forma verificable de ejecutarlo sin herramientas`,
+      cliDisabledFix: (provider) =>
+        `elegí otro proveedor. Si aceptás el riesgo, "generic-cli" puede ejecutar ${provider} con tus propios argumentos (mirá el README).`,
+      genericNotAcknowledged:
+        'generic-cli está rechazado: su comando puede usar herramientas sobre texto de chats escrito por terceros',
+      genericNotAcknowledgedFix:
+        'si aceptás ese riesgo, poné "provider.genericCli.acknowledgeRisk" en true en config.json. Si no, elegí otro proveedor.',
+      genericRisk: (command) =>
+        `ejecutando "${command}": puede usar herramientas sobre texto de chats escrito por terceros (prompt injection); lo aceptaste`,
+      genericPromptInArgv:
+        'el comando usa {{prompt}}: el chat va en los argumentos, donde otros usuarios de esta máquina pueden leerlo (ps), y un chat largo puede pasar el límite de tamaño de los argumentos',
+      consentMissing: (provider, hosts) =>
+        `no hay consentimiento registrado para enviar chats a ${hosts} (${provider}); los resúmenes no se bloquean`,
+      ollamaRemote: (origin) =>
+        `Ollama está en ${origin}, que no es esta máquina: tus chats van a ese servidor (también los "solo locales", que van a tu servidor de Ollama)`,
+      ollamaRemoteFix:
+        'si tiene que estar en esta máquina, apuntá "provider.ollama.baseUrl" a una dirección de loopback como http://127.0.0.1:11434; si no, está como lo configuraste.',
+      ollamaModelOk: (model) => `el modelo "${model}" está instalado en ese Ollama`,
+      ollamaModelMissing: (model) => `Ollama no tiene el modelo "${model}": los digests fallarían con él`,
+      ollamaModelMissingFix: (model) =>
+        `descargalo con "msum ollama pull ${model}" (o elegí otro con "msum ollama recommend"). Para saltar esta revisión: "msum doctor --skip-model-check".`,
+      ollamaModelUnknown: (reason) => `no se pudo leer la lista de modelos de Ollama (${reason})`,
+      ollamaModelUnknownFix: 'probá de nuevo, o saltá esta revisión con "msum doctor --skip-model-check".',
+      consentMissingFix: (provider) =>
+        `revisalo con "msum provider use ${provider}": muestra qué se envía y registra tu respuesta. (Una configuración escrita a mano funciona sin esto; es solo un recordatorio.)`,
+      providerTestHint:
+        'doctor no llama a los proveedores: para probar la conexión de verdad, con una conversación inventada, corré "msum provider test" (y "msum provider test --backup" para el respaldo).',
+      genericPromptInArgvFix:
+        'si el programa puede leer el prompt por stdin, quitá {{prompt}} de "provider.genericCli.command": stdin es la opción privada por defecto.',
+      genericRiskFix: 'preferí un proveedor que corre sin herramientas (claude-cli, una API u Ollama).',
+      providerApiNoModelFix: (provider) =>
+        `poné "provider.${provider}.model" en config.json: no hay modelo por defecto porque los nombres de los modelos cambian seguido.`,
       providerNone: 'no hay proveedor elegido',
       whatsappOk: 'cuenta vinculada',
       whatsappNone: 'sin cuenta vinculada',

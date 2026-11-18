@@ -77,6 +77,28 @@ CREATE TABLE consents (
 );
 `,
   },
+  {
+    version: 4,
+    description: 'Consent keyed by the hosts that were disclosed',
+    sql: `
+-- RNF-02: a consent is for what was disclosed, so the key also holds the hosts of the disclosure: the sorted,
+-- comma-joined list (for an OpenAI-compatible server or a remote Ollama, the origin of its URL; for a generic CLI, the
+-- hash of its command). Pointing a provider somewhere else therefore needs a new consent. SQLite cannot change a primary
+-- key in place, so the table is rebuilt; the rows keep an empty \`hosts\`, which still covers a provider with fixed hosts.
+CREATE TABLE consents_v4 (
+  account_id   TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  provider     TEXT NOT NULL,
+  text_version INTEGER NOT NULL,
+  hosts        TEXT NOT NULL DEFAULT '',
+  given_at     TEXT NOT NULL,
+  PRIMARY KEY (account_id, provider, text_version, hosts)
+);
+INSERT INTO consents_v4 (account_id, provider, text_version, hosts, given_at)
+  SELECT account_id, provider, text_version, '', given_at FROM consents;
+DROP TABLE consents;
+ALTER TABLE consents_v4 RENAME TO consents;
+`,
+  },
 ]
 
 /** Opens (creating it when missing) the installation database: 0600, WAL, migrated. */

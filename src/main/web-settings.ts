@@ -1,4 +1,4 @@
-import { CONSENT_TEXT_VERSION, consentKeyFor } from '../domain/setup.js'
+import { consentKeyFor } from '../domain/setup.js'
 import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
 import { HttpError, type Route } from '../interfaces/http/router.js'
 import {
@@ -14,6 +14,7 @@ import {
   validateEffective,
 } from './config.js'
 import { updateAccountConfig } from './config-writer.js'
+import { consentStateOfKey } from './consent.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
 import { accountLayoutOf, unsafeAccountPath } from './paths.js'
@@ -48,6 +49,22 @@ const EDITABLE: Readonly<Record<string, { readonly kind: Kind; readonly nullable
   'provider.claudeCli.timeoutMs': { kind: 'number' },
   'provider.ollama.baseUrl': { kind: 'string' },
   'provider.ollama.model': { kind: 'string' },
+}
+
+/**
+ * The providers the web can choose today: the ones whose whole setup is a model or an address (Claude Code, Ollama). The
+ * rest of the table in `provider-info` (the APIs, the generic CLI, and the presets shipped disabled) needs a key, a model
+ * of its own or a command that the web has no field for: they are chosen with `msum provider use`, which also records
+ * the consent for what they disclose. A provider the file already holds stays visible (and keeps working).
+ */
+export const WEB_PROVIDERS = ['claude-cli', 'ollama'] as const satisfies readonly ProviderKind[]
+
+const providersOffered = (config: AppConfig): ProviderKind[] => {
+  const offered: ProviderKind[] = [...WEB_PROVIDERS]
+  for (const held of [config.provider.primary, config.provider.backup]) {
+    if (held !== null && !offered.includes(held)) offered.push(held)
+  }
+  return offered
 }
 
 export type SettingSource = 'account' | 'installation' | 'default'
@@ -176,7 +193,7 @@ async function describeSettings(source: SettingsRoutesSource, id: string): Promi
     view: {
       values: valuesOf(effective.value),
       sources,
-      options: { providers: PROVIDERS, languages: LANGUAGES },
+      options: { providers: providersOffered(effective.value), languages: LANGUAGES },
     },
   }
 }
@@ -211,6 +228,24 @@ export function settingsRoutes(source: SettingsRoutesSource, onChanged: () => vo
         const patch = readPatch(body)
         const account = accountLayoutOf(ctx.layout, id)
         if ((await unsafeAccountPath(account)) !== null) throw new HttpError(500, 'internal')
+        // A provider the web cannot set up (see `WEB_PROVIDERS`) is not chosen from here, so no provider that sends the chats
+        // out is activated without its disclosure and consent. Saving the one the file already holds is fine.
+        const held = await describeSettings(source, id)
+        for (const option of ['provider.primary', 'provider.backup'] as const) {
+          const chosen = patch[option]
+          // (A name that is no provider at all is left to the validation below, which says why: 422.)
+          if (
+            typeof chosen !== 'string' ||
+            (WEB_PROVIDERS as readonly string[]).includes(chosen) ||
+            !(PROVIDERS as readonly string[]).includes(chosen)
+          ) {
+            continue
+          }
+          const current = held.ok
+            ? held.view.values.provider[option === 'provider.primary' ? 'primary' : 'backup']
+            : null
+          if (chosen !== current) throw new HttpError(400, 'invalidRequest')
+        }
         // RNF-02: a recipient that gets the text of the chats out of this machine (Claude Code, or an Ollama server that is
         // not on this machine) is chosen here only with the consent of the account recorded; the page asks and retries.
         // What the file already holds (set by hand or by the CLI) is not touched: only a change of `provider.primary`,
@@ -233,7 +268,8 @@ export function settingsRoutes(source: SettingsRoutesSource, onChanged: () => vo
             keys.add(consentKeyFor('ollama', ollama.baseUrl))
           }
           for (const key of keys) {
-            if (key !== null && !source.installation.setup.hasConsent(id, key, CONSENT_TEXT_VERSION)) {
+            // Against the configuration this change would leave: the same rule as `doctor` (kind, current text, hosts).
+            if (key !== null && consentStateOfKey(source.installation.setup, id, key, preview.value) === 'missing') {
               return { status: 409, body: { error: 'consentRequired', provider: key } }
             }
           }

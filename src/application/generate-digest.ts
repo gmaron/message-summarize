@@ -32,6 +32,11 @@ export interface GenerateDigestDeps {
    * stored before the id was known (or by another version) must never reach the Summarizer. Default: none.
    */
   readonly ownConversationIds?: () => readonly string[]
+  /**
+   * Runs once the window is known, before the conversations are read: where the audios of the window are transcribed
+   * with a bounded wait (RF-15). Whatever it does, the digest goes on: a failure here is ignored.
+   */
+  readonly beforeWindow?: (window: SummaryWindow) => Promise<void>
 }
 
 export interface GenerateDigestRequest {
@@ -178,6 +183,11 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
       return committed.ok ? ok(newPointer) : err({ kind: 'concurrentRun' })
     }
 
+    try {
+      await deps.beforeWindow?.(window)
+    } catch {
+      // Transcripts are an extra: the digest is made with what is there.
+    }
     const prepared = await prepare(window, settings)
 
     if (prepared.length === 0) {

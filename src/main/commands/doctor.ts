@@ -1,14 +1,22 @@
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
+import { basename } from 'node:path'
 import { type Catalog, getCatalog } from '../../infrastructure/i18n/index.js'
+import { isOnMachine, ollamaHasModel, PROMPT_PLACEHOLDER, resolveExecutable } from '../../infrastructure/llm/index.js'
+import { envNames, type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/index.js'
+import { findModelByFile, resolveModelPath, sha256File } from '../../infrastructure/transcription/index.js'
+import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { openInstallation } from '../accounts.js'
-import { describeConfigIssue, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
+import { describeConfigIssue, isApiProvider, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
+import { findConsent, kindOfProvider, needsConsent, originOf } from '../consent.js'
 import { type CommandContext, hasSession } from '../context.js'
 import { IMPORT_DIR_PATTERN, importDirs } from '../import-workdirs.js'
 import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.js'
+import { openAiKeyProvider } from '../providers.js'
 import { createRuntime } from '../runtime.js'
 import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
+import { hostsText } from './provider.js'
 
 /** Oldest Node this project supports (package.json "engines"). */
 export const MINIMUM_NODE = '22.16.0'
@@ -29,9 +37,13 @@ export function compareVersions(a: string, b: string): number {
  * `--account`): a valid configuration (the installation's with the account's overrides), the provider command (or
  * Ollama server) and the linked WhatsApp account. It also reports what `app.db` and `accounts/` disagree on. Each
  * failure says how to fix it. Exit code 1 if any fails.
- * The only things it contacts are the configured providers and, for Ollama, the configured base URL.
+ * The only things it contacts are the configured CLI and, for Ollama, the configured base URL. For an API provider it
+ * checks that the model is set and that a key exists, and makes no request.
  */
-export async function doctorCommand(ctx: CommandContext, args: AccountArg): Promise<number> {
+export async function doctorCommand(
+  ctx: CommandContext,
+  args: { readonly skipModelCheck?: true } & AccountArg,
+): Promise<number> {
   const { io, layout } = ctx
   // Looked at BEFORE opening the installation, which tightens the data and accounts directories.
   const looseBefore = await loosePermissions(layout)
@@ -101,6 +113,7 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
     if (registryProblems.length === 0) ok(texts.names.accounts, texts.accountsOk(known.length))
     for (const [detail, fix] of registryProblems) fail(texts.names.accounts, detail, fix)
 
+    const checkedSecretFiles = new Set<string>()
     for (const account of targets) {
       // With several accounts each line says which one it is about.
       const label = (name: string): string =>
@@ -119,6 +132,33 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
       } else {
         ok(label(accountTexts.names.config), accountTexts.configOk)
         const { provider } = loaded.value
+        /**
+         * Reachability, and that the configured model is installed. The second asks the user's own Ollama for its list
+         * of models (`/api/tags`: no chat text, 3 s timeout) and `--skip-model-check` leaves it out.
+         */
+        const checkOllama = async (kind: ProviderKind): Promise<void> => {
+          const name = label(accountTexts.names.provider)
+          const reachable = await ctx.probes.ollamaReachable(provider.ollama.baseUrl)
+          if (!reachable) {
+            fail(name, accountTexts.providerMissing(provider.ollama.baseUrl), accountTexts.providerFix(kind))
+            return
+          }
+          ok(name, accountTexts.providerOk(kind, provider.ollama.baseUrl))
+          const model = provider.ollama.model
+          if (args.skipModelCheck === true || model === null) return
+          const models = await ctx.probes.ollamaModels(provider.ollama.baseUrl)
+          if (!models.ok) {
+            io.out(
+              accountTexts.warn(
+                name,
+                accountTexts.ollamaModelUnknown(models.error),
+                accountTexts.ollamaModelUnknownFix,
+              ),
+            )
+          } else if (!ollamaHasModel(model, models.value)) {
+            fail(name, accountTexts.ollamaModelMissing(model), accountTexts.ollamaModelMissingFix(model))
+          } else ok(name, accountTexts.ollamaModelOk(model))
+        }
         const kinds: ProviderKind[] = [provider.primary, provider.backup].filter((k): k is ProviderKind => k !== null)
         if (kinds.length === 0) {
           fail(label(accountTexts.names.provider), accountTexts.providerNone, accountCatalog.cli.config.noProvider)
@@ -132,16 +172,189 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
                 accountTexts.providerMissing(provider.claudeCli.command),
                 accountTexts.providerFix(kind),
               )
-            } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, version))
-          } else {
-            const reachable = await ctx.probes.ollamaReachable(provider.ollama.baseUrl)
-            if (!reachable) {
+            } else {
+              ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, version))
+              // RF-49: found is not enough, the version must be one that can be run without tools (`--help` only).
+              const verified = await ctx.probes.verifyCli(provider.claudeCli.command, ctx.env)
+              const name = label(accountTexts.names.provider)
+              if (verified.ok) ok(name, accountTexts.cliVerified(kind, null))
+              else if (verified.kind === 'missingFlags') {
+                fail(
+                  name,
+                  accountTexts.cliMissingFlags(kind, verified.flags.join(', ')),
+                  accountTexts.cliMissingFlagsFix(kind),
+                )
+              } else if (verified.kind === 'notFound') {
+                fail(name, accountTexts.providerMissing(provider.claudeCli.command), accountTexts.providerFix(kind))
+              } else
+                fail(name, accountTexts.cliUnrunnable(kind), accountTexts.cliUnrunnableFix(provider.claudeCli.command))
+            }
+          } else if (kind === 'gemini-cli' || kind === 'codex-cli') {
+            // Shipped disabled (RF-49): nothing is run to find out.
+            fail(label(accountTexts.names.provider), accountTexts.cliDisabled(kind), accountTexts.cliDisabledFix(kind))
+          } else if (kind === 'generic-cli') {
+            const [program = ''] = provider.genericCli.command ?? []
+            const name = label(accountTexts.names.provider)
+            if (!provider.genericCli.acknowledgeRisk) {
+              fail(name, accountTexts.genericNotAcknowledged, accountTexts.genericNotAcknowledgedFix)
+            } else {
+              io.out(accountTexts.warn(name, accountTexts.genericRisk(program), accountTexts.genericRiskFix))
+              if (provider.genericCli.command?.includes(PROMPT_PLACEHOLDER) === true) {
+                io.out(accountTexts.warn(name, accountTexts.genericPromptInArgv, accountTexts.genericPromptInArgvFix))
+              }
+              if (resolveExecutable(program, ctx.env) === null) {
+                fail(name, accountTexts.providerMissing(program), accountTexts.genericRiskFix)
+              }
+            }
+          } else if (isApiProvider(kind)) {
+            // An API provider: the model and the key are checked, without any request (RNF-01; the real connection
+            // test is a separate step).
+            const model = provider[kind].model
+            if (model === null) {
               fail(
                 label(accountTexts.names.provider),
-                accountTexts.providerMissing(provider.ollama.baseUrl),
-                accountTexts.providerFix(kind),
+                accountTexts.providerApiNoModel(kind),
+                accountTexts.providerApiNoModelFix(kind),
               )
-            } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, provider.ollama.baseUrl))
+              continue
+            }
+            // Which stored key this configuration uses: for openai, by the origin of its baseUrl (never the real
+            // OpenAI key for another server).
+            const keyName: KeyProvider = kind === 'openai' ? openAiKeyProvider(provider.openai.baseUrl) : kind
+            const found = resolveApiKey(keyName, {
+              env: ctx.env,
+              accountFile: account?.secretsFile,
+              file: layout.secretsFile,
+            })
+            const keyTexts = accountCatalog.cli.secret
+            if (found !== null) {
+              const source =
+                found.source.kind === 'env'
+                  ? keyTexts.sourceEnv(found.source.name)
+                  : found.source.kind === 'accountFile'
+                    ? keyTexts.sourceAccountFile(found.source.file)
+                    : keyTexts.sourceFile(found.source.file)
+              ok(label(accountTexts.names.provider), accountTexts.providerApiOk(kind, model, keyName, source))
+            } else if (keyName === 'openai-compatible') {
+              ok(label(accountTexts.names.provider), accountTexts.providerApiKeyOptional(kind, model, keyName))
+            } else {
+              fail(
+                label(accountTexts.names.provider),
+                accountTexts.providerApiNoKey(kind, keyName),
+                accountTexts.providerApiNoKeyFix(keyName, envNames(keyName).join(' / ')),
+              )
+            }
+          } else {
+            await checkOllama(kind)
+          }
+        }
+        // Chats marked "local only" go to Ollama even when it is neither the primary nor the backup (RF-43).
+        if (loaded.value.localOnlyPatterns.length > 0 && !kinds.includes('ollama')) await checkOllama('ollama')
+
+        // The files that hold API keys must be readable by the owner only (RNF-04).
+        if (process.platform !== 'win32') {
+          for (const file of [layout.secretsFile, account?.secretsFile]) {
+            if (file === undefined || checkedSecretFiles.has(file)) continue
+            checkedSecretFiles.add(file)
+            const mode = statSync(file, { throwIfNoEntry: false })?.mode
+            if (mode !== undefined && (mode & 0o077) !== 0) {
+              fail(
+                accountTexts.names.secrets,
+                accountTexts.secretsLoose(file, (mode & 0o777).toString(8)),
+                accountTexts.secretsLooseFix(file),
+              )
+            }
+          }
+        }
+
+        // RNF-02: a provider that sends the chats out, with no recorded consent for what it would receive. A WARNING:
+        // writing config.json by hand is the expert path and keeps working; the guided one (`msum provider use`)
+        // records the consent, and this makes the gap visible without blocking any digest.
+        // An Ollama that is not on this machine is a server of the user's, but the chats go out to it (the "local only"
+        // ones too: RF-43 means "your Ollama server").
+        const usesOllama =
+          provider.primary === 'ollama' || provider.backup === 'ollama' || loaded.value.localOnlyPatterns.length > 0
+        if (usesOllama && !isOnMachine(provider.ollama.baseUrl)) {
+          io.out(
+            accountTexts.warn(
+              label(accountTexts.names.provider),
+              accountTexts.ollamaRemote(originOf(provider.ollama.baseUrl)),
+              accountTexts.ollamaRemoteFix,
+            ),
+          )
+        }
+        if (account !== null) {
+          for (const chosen of [provider.primary, provider.backup]) {
+            const infoKind = kindOfProvider(loaded.value, chosen)
+            if (infoKind === null || !needsConsent(infoKind, loaded.value)) continue
+            if (findConsent(installation.setup, account.id, infoKind, loaded.value) === null) {
+              io.out(
+                accountTexts.warn(
+                  label(accountTexts.names.provider),
+                  accountTexts.consentMissing(infoKind, hostsText(accountCatalog.cli.provider, loaded.value, infoKind)),
+                  accountTexts.consentMissingFix(infoKind),
+                ),
+              )
+            }
+          }
+        }
+        if (kinds.length > 0) io.out(`       ${accountTexts.providerTestHint}`)
+
+        // Transcription (RF-81, RF-21): off is fine. On, the program, ffmpeg and the model must be there, or audios stay
+        // untranscribed (the product works either way, but the user asked for transcripts).
+        const transcription = loaded.value.transcription
+        if (!transcription.enabled) ok(label(accountTexts.names.transcription), accountTexts.transcriptionOff)
+        else {
+          ok(label(accountTexts.names.transcription), accountTexts.transcriptionOn(transcription.language))
+          // whisper.cpp has no stable `--version`: the program counts as found when it can be started at all, and the
+          // version is shown only when it answered the flag.
+          const whisper = await ctx.probes.commandProbe(transcription.whisperCommand, ['--version'], ctx.env)
+          if (!whisper.started) {
+            fail(
+              label(accountTexts.names.whisper),
+              accountTexts.whisperMissing(transcription.whisperCommand),
+              accountTexts.whisperFix,
+            )
+          } else ok(label(accountTexts.names.whisper), accountTexts.whisperOk(whisper.ok ? whisper.line : null))
+          const ffmpeg = await ctx.probes.commandProbe(transcription.ffmpegCommand, ['-version'], ctx.env)
+          if (!ffmpeg.started) {
+            fail(
+              label(accountTexts.names.ffmpeg),
+              accountTexts.ffmpegMissing(transcription.ffmpegCommand),
+              accountTexts.ffmpegFix,
+            )
+          } else ok(label(accountTexts.names.ffmpeg), accountTexts.ffmpegOk(ffmpeg.ok ? ffmpeg.line : null))
+          const modelName = label(accountTexts.names.whisperModel)
+          if (transcription.model === null) fail(modelName, accountTexts.modelNone, accountTexts.modelNoneFix)
+          else {
+            const path = resolveModelPath(layout.modelsDir, layout.dataDir, transcription.model)
+            if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) {
+              fail(modelName, accountTexts.modelMissing(path), accountTexts.modelMissingFix)
+            } else {
+              const known = findModelByFile(basename(path), ctx.whisperModels)
+              if (known === undefined) {
+                io.out(
+                  accountTexts.warn(modelName, accountTexts.modelUnverified(path), accountTexts.modelUnverifiedFix),
+                )
+              } else if ((await sha256File(path).catch(() => null)) === known.sha256) {
+                ok(modelName, accountTexts.modelVerified(path))
+              } else fail(modelName, accountTexts.modelBadChecksum(path), accountTexts.modelBadChecksumFix)
+            }
+          }
+          // The audios are deleted once transcribed: a folder that is (nearly) full means they pile up. New ones are
+          // refused at the cap, so the user is told before that happens.
+          if (account !== null) {
+            const used = await mediaDirectoryBytes(account.mediaDir)
+            const cap = transcription.maxMediaMb * 1024 * 1024
+            if (used >= cap * 0.9) {
+              io.out(
+                accountTexts.warn(
+                  label(accountTexts.names.mediaFiles),
+                  accountTexts.mediaFull(Math.round(used / 1024 / 1024), transcription.maxMediaMb),
+                  accountTexts.mediaFullFix,
+                ),
+              )
+            }
           }
         }
       }

@@ -1,0 +1,731 @@
+[
+  {
+    "id": "c01",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Marta Ibáñez",
+    "isGroup": false,
+    "transcript": "Chat con: Marta Ibáñez\n\n[08:10] Marta Ibáñez: ¿Cenamos el jueves?\n[08:12] Marta Ibáñez: Yo propongo ese lugar de pastas de siempre\n[08:15] Marta Ibáñez: Reservo para las 21\n[08:16] Marta Ibáñez: Puede venir también mi hermano\n[08:20] Marta Ibáñez: ¿Te queda bien?\n[08:25] Marta Ibáñez: Avisame cuando puedas",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c02",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Ana Gómez",
+    "isGroup": false,
+    "transcript": "Chat con: Ana Gómez\n\n[08:30] Ana Gómez: Hola Sofi, ¿pudiste ver el presupuesto del catering?\n[08:31] Ana Gómez: Lo necesito hoy para confirmar con el salón\n[08:45] Ana Gómez: ¿Me avisás cuando puedas?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c03",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Rosa Molina",
+    "isGroup": false,
+    "transcript": "Chat con: Rosa Molina\n\n[08:50] Rosa Molina: Sofi, ¿confirmás la reunión del lunes?\n[08:51] Rosa Molina: Necesito saber hoy cuántos van a ser\n[08:55] Sofía [VOS]: Creo que sí, te confirmo más tarde\n[08:58] Rosa Molina: Dale. Mandame también la agenda\n[09:20] Rosa Molina: Y avisame si traés el proyector",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c04",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Luis Ferreyra",
+    "isGroup": false,
+    "transcript": "Chat con: Luis Ferreyra\n\n[09:00] Luis Ferreyra: Sofi, te paso el contrato revisado\n[09:01] Luis Ferreyra: Falta tu firma en la página 3\n[09:10] Sofía [VOS]: Genial, lo firmo y te lo devuelvo\n[09:15] Luis Ferreyra: Perfecto, quedo atento",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c05",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Edificio Torre Sur",
+    "isGroup": true,
+    "transcript": "Grupo: Edificio Torre Sur\n\n[09:30] Vecina del 3B: Buen día, mañana cortan el agua de 9 a 12\n[09:35] Luis Ferreyra: Gracias por avisar\n[09:40] Vecina del 3B: Recuerden pagar las expensas antes del viernes\n[09:45] Sofía [VOS]: Ok, las pago el jueves\n[09:50] Vecina del 3B: La asamblea es el sábado a las 18 en el SUM\n[09:52] Vecina del 3B: Hay que confirmar asistencia",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c06",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Carlos Díaz",
+    "isGroup": false,
+    "transcript": "Chat con: Carlos Díaz\n\n[10:00] Carlos Díaz: Mirá este meme\n[10:01] Carlos Díaz: Jajaja\n[10:05] Carlos Díaz: Y este otro\n[10:06] Carlos Díaz: El gato del vecino otra vez\n[10:10] Carlos Díaz: Mañana te cuento algo\n[10:20] Carlos Díaz: Nada importante\n[10:25] Carlos Díaz: Buen finde si no hablamos",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c07",
+    "source": "01-sections-and-order/run-1",
+    "owner": "Sofía",
+    "chatName": "Club de Ajedrez",
+    "isGroup": true,
+    "transcript": "Grupo: Club de Ajedrez\n\n[10:30] Carlos Díaz: Resultados del torneo: ganó Pedro\n[10:31] Carlos Díaz: Fue una final muy reñida\n[10:35] Luis Ferreyra: Felicitaciones Pedro\n[10:36] Ana Gómez: Bien ahí\n[10:40] Carlos Díaz: Las fotos las subimos mañana",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c08",
+    "source": "02-unsaved-flag-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Tienda Luz ( +5491155550113 )",
+    "isGroup": false,
+    "transcript": "Chat con: Tienda Luz ( +5491155550113 )\n\n[08:10] +5491155550113: Hola, te escribo de Tienda Luz por tu pedido de lámparas\n[08:12] +5491155550113: Ya está listo para retirar\n[08:13] +5491155550113: Abrimos hasta las 19\n[08:15] +5491155550113: ¡Gracias!",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c09",
+    "source": "02-unsaved-flag-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Grupo sin nombre",
+    "isGroup": true,
+    "transcript": "Grupo: Grupo sin nombre\n\n[08:20] Ana Gómez: Chicos, mañana pasa el fumigador\n[08:21] Nico: Yo no estoy, dejo la llave en portería\n[08:22] Lucho (Plomero): El jueves arreglo la bomba de agua\n[08:23] +5491155550117: ¿Alguien sabe a qué hora cortan la luz?",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c10",
+    "source": "02-unsaved-flag-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Ana Gómez",
+    "isGroup": false,
+    "transcript": "Chat con: Ana Gómez\n\n[08:30] Ana Gómez: Sofi, ¿venís al cumple de Tomás el sábado?\n[08:31] Ana Gómez: Necesito saber hoy para pedir la torta\n[08:32] Ana Gómez: ¿Me avisás?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c11",
+    "source": "02-unsaved-flag-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Mati ( +5491155550115 )",
+    "isGroup": false,
+    "transcript": "Chat con: Mati ( +5491155550115 )\n\n[08:40] Mati: Buenas, soy Mati, el que alquila el depto del 4°\n[08:41] Mati: Solo te aviso que ya depositó la inmobiliaria\n[08:42] Mati: Cualquier cosa me escribís",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c12",
+    "source": "02-unsaved-flag-off/run-1",
+    "owner": "Sofía",
+    "chatName": "+5491155550114",
+    "isGroup": false,
+    "transcript": "Chat con: +5491155550114\n\n[08:50] +5491155550114: Hola, soy del consorcio, falta que mandes la foto del DNI\n[08:51] +5491155550114: La podés pasar por acá hasta el viernes",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c13",
+    "source": "02-unsaved-flag-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Nico ( +5491155550112 )",
+    "isGroup": false,
+    "transcript": "Chat con: Nico ( +5491155550112 )\n\n[09:00] Nico: Sofi, ¿me pasás el contacto del electricista?\n[09:01] Nico: Es urgente, se me fue la luz",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c14",
+    "source": "03-own-mass-in-context/run-1",
+    "owner": "Sofía",
+    "chatName": "Lola Vega",
+    "isGroup": false,
+    "transcript": "Chat con: Lola Vega\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[08:50] Lola Vega: Buen día Sofi\n[09:00] Lola Vega: Hola Sofi, ¿viste mi mensaje?\n[09:05] Sofía [VOS]: (mensaje masivo tuyo, no es una respuesta personal) «Atención a todos: el consultorio atiende de 9 a 17 hs. Graci…»\n[09:10] Sofía [VOS]: (mensaje masivo tuyo, no es una respuesta personal) «Aviso: hoy no atiendo, escribime mañana.…»\n[09:15] Lola Vega: Dale, quedo atenta\n\nMensajes sin leer (resumí estos):\n[10:20] Lola Vega: Sofi, ¿confirmás el turno de mañana?\n[10:25] Lola Vega: Necesito saber antes de las 18",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c15",
+    "source": "03-own-mass-messages/run-1",
+    "owner": "Sofía",
+    "chatName": "Beto Sosa",
+    "isGroup": false,
+    "transcript": "Chat con: Beto Sosa\n\n[08:00] Beto Sosa: Hola Sofi, ¿cómo va todo?\n[08:06] Sofía [VOS]: Hoy el local cierra a las seis y media.\n[08:07] Sofía [VOS]: Consorcio: reunión el jueves 18 hs en el SUM.\n[08:08] Sofía [VOS]: Nos vemos en la plaza hoy a las cinco 😀\n[08:10] Beto Sosa: Todo bien, gracias por avisar",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c16",
+    "source": "03-own-mass-messages/run-1",
+    "owner": "Sofía",
+    "chatName": "Cora Beltrán",
+    "isGroup": false,
+    "transcript": "Chat con: Cora Beltrán\n\n[08:20] Cora Beltrán: Sofi, ¿mañana hay clase?\n[08:23] Sofía [VOS]: Hoy el local cierra a las seis y media.\n[08:24] Sofía [VOS]: Consorcio: reunión el jueves 18 hs en el SUM.\n[08:25] Sofía [VOS]: Nos vemos en la plaza hoy a las cinco 😀\n[08:30] Cora Beltrán: Perfecto, ahí estaré",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c17",
+    "source": "03-own-mass-messages/run-1",
+    "owner": "Sofía",
+    "chatName": "Eli Paz",
+    "isGroup": false,
+    "transcript": "Chat con: Eli Paz\n\n[09:30] Eli Paz: Sofi, ¿seguro hoy hay clase?\n[09:32] Sofía [VOS]: Se suspende la clase de hoy por lluvia, perdón!\n[09:40] Sofía [VOS]: Se suspende la clase de hoy por lluvia, perdón!\n[09:45] Eli Paz: Entiendo, gracias",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c18",
+    "source": "03-own-mass-messages/run-1",
+    "owner": "Sofía",
+    "chatName": "Fede Luna",
+    "isGroup": false,
+    "transcript": "Chat con: Fede Luna\n\n[10:00] Fede Luna: ¿Qué pasó con la clase?\n[10:02] Sofía [VOS]: Se suspende la clase de hoy por lluvia, perdón!\n[10:05] Fede Luna: Ah, ok",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c19",
+    "source": "04-repeated-group-notices/run-1",
+    "owner": "Sofía",
+    "chatName": "Marcos Acosta",
+    "isGroup": false,
+    "transcript": "Chat con: Marcos Acosta\n\n[07:30] Marcos Acosta: Recordatorio: la reunión de consorcio es el jueves a las 18 hs.\n[07:35] Marcos Acosta: Recordatorio: la reunión de consorcio es el jueves a las 18 hs.",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c20",
+    "source": "04-repeated-group-notices/run-1",
+    "owner": "Sofía",
+    "chatName": "Lucía Benítez",
+    "isGroup": false,
+    "transcript": "Chat con: Lucía Benítez\n\n[07:45] Lucía Benítez: Se cortará el agua del edificio el sábado de 9 a 13 por obras.",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c21",
+    "source": "04-repeated-group-notices/run-1",
+    "owner": "Sofía",
+    "chatName": "Consorcio Los Aromos",
+    "isGroup": true,
+    "transcript": "Grupo: Consorcio Los Aromos\n\n[08:00] Nora Cabrera: Buen día a todos\n[10:15] Marcos Acosta: Recordatorio: la reunión de consorcio es el jueves a las 18 hs. (mismo mensaje en 3 grupos más)\n[10:20] Marcos Acosta: ¡Gracias!",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c22",
+    "source": "04-repeated-group-notices/run-1",
+    "owner": "Sofía",
+    "chatName": "Vecinos del 3°",
+    "isGroup": true,
+    "transcript": "Grupo: Vecinos del 3°\n\n[08:30] Lucía Benítez: Buen día vecinos\n[08:50] Lucía Benítez: Se cortará el agua del edificio el sábado de 9 a 13 por obras. (mismo mensaje en 1 grupo más)\n[08:55] Rita Escobar: Pasen por secretaría a retirar el sello \n[09:00] Marcos Acosta: ¡Gracias!\n[09:01] Rita Escobar: 🎤 (audio) Les cuento por audio que el jueves la reunión se pasa para las 19 en el SUM.",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c23",
+    "source": "04-repeated-group-notices/run-1",
+    "owner": "Sofía",
+    "chatName": "Feria de Plaza Sur",
+    "isGroup": true,
+    "transcript": "Grupo: Feria de Plaza Sur\n\n[09:05] Rita Escobar: Buenas, ¿alguien va a la feria?\n[09:20] Sofía [VOS]: Gracias a todos por venir a la reunión, fue muy productiva. (mismo mensaje en 1 grupo más)\n[09:25] Rita Escobar: Se vende bicicleta rodado 26, impecable, consultas por privado. (mismo mensaje en 1 grupo más)\n[09:36] Rita Escobar: Pasen por secretaría a retirar el sello \n[09:37] Rita Escobar: 🎤 (audio) Les cuento por audio que el jueves la reunión se pasa para las 19 en el SUM.\n[09:40] Marcos Acosta: ¡Gracias!",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c24",
+    "source": "04-repeated-group-notices/run-1",
+    "owner": "Sofía",
+    "chatName": "Comisión de Obras",
+    "isGroup": true,
+    "transcript": "Grupo: Comisión de Obras\n\n[09:50] Pedro Duarte: Mañana pasa el recolector de residuos voluminosos desde las 8. (mismo mensaje en 1 grupo más)\n[09:55] Nora Cabrera: Recordatorio: la reunión de consorcio es el jueves a las 18 hs.\n[10:02] ?: Gracias a todos por venir a la reunión, fue muy productiva.\n[10:05] Pedro Duarte: Pasen por secretaría a retirar el recibo (mismo mensaje en 1 grupo más)",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c25",
+    "source": "05-unread-only/run-1",
+    "owner": "Sofía",
+    "chatName": "Ágata Fuentes",
+    "isGroup": false,
+    "transcript": "Chat con: Ágata Fuentes\n\n[08:10] Ágata Fuentes: Buen día, ¿ya viste los pasajes?\n[08:15] Sofía [VOS]: Todavía no, los miro hoy\n[08:20] Ágata Fuentes: Dale, avisame",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c26",
+    "source": "05-unread-only/run-1",
+    "owner": "Sofía",
+    "chatName": "Diego Iglesias",
+    "isGroup": false,
+    "transcript": "Chat con: Diego Iglesias\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[18:10] Diego Iglesias: Empate, jugamos mal\n[18:15] Sofía [VOS]: Qué lástima\n[09:00] Diego Iglesias: Che, ¿mañana jugás?\n[09:05] Sofía [VOS]: Sí, si no llueve\n[09:10] Diego Iglesias: Genial\n\nMensajes sin leer (resumí estos):\n[09:20] Diego Iglesias: Sofi, ¿puedo pasar a buscarte a las 20?\n[09:25] Sofía [VOS]: Mejor a las 20:30\n[09:30] Diego Iglesias: Perfecto, 20:30 entonces\n[09:35] Diego Iglesias: Llevo yo las pelotas",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c27",
+    "source": "05-unread-only/run-1",
+    "owner": "Sofía",
+    "chatName": "Elena Juárez",
+    "isGroup": false,
+    "transcript": "Chat con: Elena Juárez\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[22:00] Elena Juárez: Sofi, buen día de mañana\n[10:00] Elena Juárez: Te cuento lo de la mudanza\n\nMensajes sin leer (resumí estos):\n[10:05] Elena Juárez: Ya tengo el camión para el sábado\n[10:10] Sofía [VOS]: Qué bueno, ¿a qué hora?\n[10:15] Elena Juárez: A las 9, si podés ayudar\n[10:20] Elena Juárez: Traé guantes y cinta",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c28",
+    "source": "05-unread-only/run-1",
+    "owner": "Sofía",
+    "chatName": "Fabián Kramer",
+    "isGroup": false,
+    "transcript": "Chat con: Fabián Kramer\n\n[10:30] Fabián Kramer: Hola Sofi, soy Fabián, el del curso de fotografía\n[10:35] Sofía [VOS]: Hola Fabián, ¿cómo estás?\n[10:40] Fabián Kramer: Bien, quería pasarte el programa\n[10:45] Fabián Kramer: Empieza el 15",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c29",
+    "source": "05-unread-only/run-1",
+    "owner": "Sofía",
+    "chatName": "Equipo de Fútbol 5",
+    "isGroup": true,
+    "transcript": "Grupo: Equipo de Fútbol 5\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[12:00] Nacho Olivera: Hoy juego a las 21 en la cancha de siempre\n[12:05] Sofía [VOS]: Yo llevo las pecheras\n\nMensajes sin leer (resumí estos):\n[12:10] Nacho Olivera: Perfecto, gracias Sofi\n[12:15] Tomi Paz: ¿Hay lugar para uno más?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c30",
+    "source": "05-unread-only/run-1",
+    "owner": "Sofía",
+    "chatName": "Irene Navarro",
+    "isGroup": false,
+    "transcript": "Chat con: Irene Navarro\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[07:00] Irene Navarro: Sofi, ¿tenés el contacto del gasista?\n\nMensajes sin leer (resumí estos):\n[19:30] Irene Navarro: Perdón, también necesito el del plomero",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c31",
+    "source": "06-truncation/run-1",
+    "owner": "Sofía",
+    "chatName": "Gonzalo Peña",
+    "isGroup": false,
+    "transcript": "Chat con: Gonzalo Peña\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[08:10] Gonzalo Peña: k01 k02 k03 k04 k05 k06 k07 k08 k09 k10 k11 k12 k13 k14 k15 k16 k17 k18 k19 k20 k21 k22 k2\n[08:20] Sofía [VOS]: l01 l02 l03 l04 l05 l06 l07 l08 l09 l10 l11 l12 l13 l14 l15 l16 l17 l18 l19 l20 l21 l22 l2\n[08:30] Gonzalo Peña: s01 s02 s03 s04 s05 s06 s07 s08 s09 s10 s11 s12 s13 s14 s15 s16 s17 s18 s19 s20 s21 s22 s2\n[08:40] Sofía [VOS]: t01 t02 t03 t04 t05 t06 t07 t08 t09 t10 t11 t12 t13 t14 t15 t16 t17 t18 t19 t20 t21 t22 t2\n[08:50] Gonzalo Peña: u01 u02 u03 u04 u05 u06 u07 u08 u09 u10 u11 u12 u13 u14 u15 u16 u17 u18 u19 u20 u21 u22 u2\n\nMensajes sin leer (resumí estos):\n(…mensajes anteriores recortados…)\n37 v3\n[10:05] Sofía [VOS]: w01 w02 w03 w04 w05 w06 w07 w08 w09 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25.\n[10:10] Gonzalo Peña: x01 x02 x03 x04 x05 x06 x07 x08 x09 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30 x31 x32 x33 x34 x35 x36 x37 x3",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c32",
+    "source": "06-truncation/run-1",
+    "owner": "Sofía",
+    "chatName": "Hilda Ríos",
+    "isGroup": false,
+    "transcript": "Chat con: Hilda Ríos\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[08:15] Hilda Ríos: y01 y02 y03 y04 y05 y06 y07 y08 y09 y10 y11 y12 y13 y14 y15 y16 y17 y18 y19 y20.\n[08:25] Hilda Ríos: z01 z02 z03 z04 z05 z06 z07 z08 z09 z10 z11 z12 z13 z14 z15 z16 z17 z18 z19 z20.\n[08:35] Hilda Ríos: A01 A02 A03 A04 A05 A06 A07 A08 A09 A10 A11 A12 A13 A14 A15 A16 A17 A18 A19 A20.\n[08:45] Hilda Ríos: B01 B02 B03 B04 B05 B06 B07 B08 B09 B10 B11 B12 B13 B14 B15 B16 B17 B18 B19 B20.\n[08:55] Hilda Ríos: C01 C02 C03 C04 C05 C06 C07 C08 C09 C10 C11 C12 C13 C14 C15 C16 C17 C18 C19 C20.\n\nMensajes sin leer (resumí estos):\n[11:00] Hilda Ríos: D01 D02 D03 D04 D05 D06 D07 D08 D09 D10 D11 D12 D13 D14 D15.",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c33",
+    "source": "06-truncation/run-1",
+    "owner": "Sofía",
+    "chatName": "Ana Torres",
+    "isGroup": false,
+    "transcript": "Chat con: Ana Torres\n\n[09:00] Ana Torres: a01 a02 a03 a04 a05 a06 a07 a08 a09 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20.\n[09:01] Ana Torres: b01 b02 b03 b04 b05 b06 b07 b08 b09 b10 b11 b12 b13 b14 b15 b16 b17 b18 b19 b20.\n[09:02] Ana Torres: c01 c02 c03 c04 c05 c06 c07 c08 c09 c10 c11 c12 c13 c14 c15 c16 c17 c18 c19 c2",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c34",
+    "source": "06-truncation/run-1",
+    "owner": "Sofía",
+    "chatName": "Omar Vega",
+    "isGroup": false,
+    "transcript": "Chat con: Omar Vega\n\n(…mensajes anteriores recortados…)\n09:10] Omar Vega: d01 d02 d03 d04 d05 d06 d07 d08 d09 d10 d11 d12 d13 d14 d15 d16 d17 d18 d19 d20.\n[09:11] Omar Vega: e01 e02 e03 e04 e05 e06 e07 e08 e09 e10 e11 e12 e13 e14 e15 e16 e17 e18 e19 e20.\n[09:12] Omar Vega: f01 f02 f03 f04 f05 f06 f07 f08 f09 f10 f11 f12 f13 f14 f15 f16 f17 f18 f19 f20 f2",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c35",
+    "source": "06-truncation/run-1",
+    "owner": "Sofía",
+    "chatName": "Marina Cruz",
+    "isGroup": false,
+    "transcript": "Chat con: Marina Cruz\n\n(…mensajes anteriores recortados…)\n2 o13 o14 o15 o16 o17 o1\n[09:23] Marina Cruz: p01 p02 p03 p04 p05 p06 p07 p08 p09 p10 p11 p12 p13 p14 p15 p16 p17 p1\n[09:24] Marina Cruz: q01 q02 q03 q04 q05 q06 q07 q08 q09 q10 q11 q12 q13 q14 q15 q16 q17 q1\n[09:25] Marina Cruz: r01 r02 r03 r04 r05 r06 r07 r08 r09 r10 r11 r12 r13 r14 r15 r16 r17 r1",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c36",
+    "source": "06-truncation/run-1",
+    "owner": "Sofía",
+    "chatName": "Emi Díaz",
+    "isGroup": false,
+    "transcript": "Chat con: Emi Díaz\n\n(…mensajes anteriores recortados…)\n\ude00h01 h02 h03 h04 h05.\n[09:31] Emi Díaz: i01 i02 i03 i04 i05 i06 i07 i08 i09 i10 i11 i12 i13 i14 i15 i16 i17 i18 i19 i20 i21 i22 i23 i24 i25 i26 i27 i28 i29 i30.\n[09:32] Emi Díaz: j01 j02 j03 j04 j05 j06 j07 j08 j09 j10 j11 j12 j13 j14 j15 j16 j17 j18 j19 j20 j21 j22 j23 j24 j25 j26 j27 j28 j29 j30 j",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c37",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Lucía Paredes",
+    "isGroup": false,
+    "transcript": "Chat con: Lucía Paredes\n\n[08:05] Lucía Paredes: Hola Sofi, te dejo un audio porque es largo\n[08:06] Lucía Paredes: 🎤 (audio) Che, te cuento que el sábado cambiamos el horario de la comida a las dos de la tarde, avisale a tu mamá.\n[08:07] Lucía Paredes: Después me decís si les sirve\n[08:20] Sofía [VOS]: 🎤 (audio) Perfecto Lu, les aviso y confirmo esta noche.\n[08:21] Lucía Paredes: Genial, gracias!",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c38",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Mateo Rinaldi",
+    "isGroup": false,
+    "transcript": "Chat con: Mateo Rinaldi\n\n[09:00] Mateo Rinaldi: 🎤 (audio sin transcribir)\n[09:02] Mateo Rinaldi: 🎤 (audio sin transcribir)",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c39",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Julia Soto",
+    "isGroup": false,
+    "transcript": "Chat con: Julia Soto\n\n[09:30] Julia Soto: ¿Pudiste escuchar lo que te mandé ayer?\n[09:40] Sofía [VOS]: 🎤 (audio) Sí, lo escuché. Mañana te llamo para coordinar.\n[09:41] Sofía [VOS]: 🎤 (audio sin transcribir)",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c40",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Valentín Cruz",
+    "isGroup": false,
+    "transcript": "Chat con: Valentín Cruz\n\n[10:00] Valentín Cruz: 🎤 (audio sin transcribir)\n[10:01] Valentín Cruz: 🎤 (audio) Primera línea del audio.\nSegunda línea después de una pausa.\n[10:02] Valentín Cruz: 🎤 (audio sin transcribir)",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c41",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Nuevo Vecino ( +5491155550205 )",
+    "isGroup": false,
+    "transcript": "Chat con: Nuevo Vecino ( +5491155550205 )\n\n[10:30] Nuevo Vecino: 🎤 (audio) Hola, soy el nuevo del 4B, ¿tenés la llave del bicicletero?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c42",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Cumple de Tía Marta",
+    "isGroup": true,
+    "transcript": "Grupo: Cumple de Tía Marta\n\n[11:00] Primo Tomás: ¿Quién se encarga de la torta?\n[11:02] Lucía Paredes: 🎤 (audio) Yo llevo la torta y las velitas.\n[11:03] Mateo Rinaldi: 🎤 (audio sin transcribir)\n[11:05] Sofía [VOS]: Yo llevo las bebidas\n[11:06] Sofía [VOS]: 🎤 (audio) Perdón, me olvidé de contar las sillas: necesitamos diez más.\n[11:08] Sofía [VOS]: 🎤 (audio sin transcribir)\n[11:10] Primo Tomás: Gracias a todos",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c43",
+    "source": "07-audios/run-1",
+    "owner": "Sofía",
+    "chatName": "Vecinos del 5to",
+    "isGroup": true,
+    "transcript": "Grupo: Vecinos del 5to\n\n[12:00] Primo Tomás: 🎤 (audio) Mañana cortan el agua de nueve a doce, llenen los tanques.\n[12:01] Mateo Rinaldi: 🎤 (audio sin transcribir)\n[12:05] Lucía Paredes: 🎤 (audio) Gracias por avisar.",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c44",
+    "source": "08-exclusions/run-1",
+    "owner": "Sofía",
+    "chatName": "Bruno Acosta",
+    "isGroup": false,
+    "transcript": "Chat con: Bruno Acosta\n\n[08:00] Bruno Acosta: Sofi, ¿viste el partido de anoche?\n[09:20] Bruno Acosta: Dale, mañana te cuento",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c45",
+    "source": "08-exclusions/run-1",
+    "owner": "Sofía",
+    "chatName": "Familia Rey",
+    "isGroup": true,
+    "transcript": "Grupo: Familia Rey\n\n[08:15] Camila Ortiz: Domingo almuerzo en lo de los abuelos\n[09:25] Bruno Acosta: Yo llevo el postre",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c46",
+    "source": "08-exclusions/run-1",
+    "owner": "Sofía",
+    "chatName": "Camila Ortiz",
+    "isGroup": false,
+    "transcript": "Chat con: Camila Ortiz\n\n[08:35] Camila Ortiz: Te mando las fotos del viaje más tarde",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c47",
+    "source": "08-exclusions/run-1",
+    "owner": "Sofía",
+    "chatName": "Club de Lectura",
+    "isGroup": true,
+    "transcript": "Grupo: Club de Lectura\n\n[08:45] Bruno Acosta: Este mes leemos una novela corta",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c48",
+    "source": "08-exclusions/run-1",
+    "owner": "Sofía",
+    "chatName": "Marcos ( +5491155550213 )",
+    "isGroup": false,
+    "transcript": "Chat con: Marcos ( +5491155550213 )\n\n[09:00] Marcos: Hola, me pasaron tu número por la mudanza",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c49",
+    "source": "08-exclusions/run-1",
+    "owner": "Sofía",
+    "chatName": "Diego Molina",
+    "isGroup": false,
+    "transcript": "Chat con: Diego Molina\n\n[09:30] Diego Molina: Sofi, ¿tenés el cargador que te presté?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c50",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Gabriela Núñez",
+    "isGroup": false,
+    "transcript": "Chat con: Gabriela Núñez\n\n[08:10] Gabriela Núñez: Sofi, necesito tu opinión sobre el contrato\n[08:12] Gabriela Núñez: ¿Podés revisarlo hoy?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c51",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Hernán Vidal",
+    "isGroup": false,
+    "transcript": "Chat con: Hernán Vidal\n\n[08:30] Hernán Vidal: Che, ¿vas a ir a la reunión de padres?\n[08:31] Hernán Vidal: Avisame así reservo lugar",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c52",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Irene Sosa",
+    "isGroup": false,
+    "transcript": "Chat con: Irene Sosa\n\n[08:50] Irene Sosa: Sofi, ¿me prestás el taladro este finde?\n[08:51] Irene Sosa: Lo necesito para colgar unos estantes",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c53",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Joaquín Bravo",
+    "isGroup": false,
+    "transcript": "Chat con: Joaquín Bravo\n\n[09:10] Joaquín Bravo: Te paso la lista de materiales para la obra\n[09:12] Joaquín Bravo: Falta pintura y masilla",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c54",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Karina Lugo",
+    "isGroup": false,
+    "transcript": "Chat con: Karina Lugo\n\n[09:30] Karina Lugo: Acordate de traer los formularios firmados\n[09:31] Karina Lugo: Y la copia del DNI",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c55",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Leandro Paz",
+    "isGroup": false,
+    "transcript": "Chat con: Leandro Paz\n\n[09:50] Leandro Paz: Mirá esta foto del atardecer\n[09:52] Leandro Paz: Qué lindo cielo",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c56",
+    "source": "09-hide-rest-off/run-1",
+    "owner": "Sofía",
+    "chatName": "Club de Jardinería",
+    "isGroup": true,
+    "transcript": "Grupo: Club de Jardinería\n\n[10:10] Leandro Paz: Mañana regamos los canteros\n[10:12] Leandro Paz: Traigan guantes",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c57",
+    "source": "09-hide-rest-off/run-2",
+    "owner": "Sofía",
+    "chatName": "Mara Ledesma",
+    "isGroup": false,
+    "transcript": "Chat con: Mara Ledesma\n\n[12:10] Mara Ledesma: Feliz cumple atrasado\n[12:11] Mara Ledesma: Que la hayas pasado genial",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c58",
+    "source": "09-hide-rest-off/run-3",
+    "owner": "Sofía",
+    "chatName": "Nora Giménez",
+    "isGroup": false,
+    "transcript": "Chat con: Nora Giménez\n\n[14:10] Nora Giménez: Sofi, te mando el resumen de todo lo hablado\n[14:15] Nora Giménez: ¿Me confirmás que está bien?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c59",
+    "source": "09-hide-rest-off/run-3",
+    "owner": "Sofía",
+    "chatName": "Omar Ríos",
+    "isGroup": false,
+    "transcript": "Chat con: Omar Ríos\n\n[14:30] Omar Ríos: Recordá renovar el seguro del auto\n[14:31] Omar Ríos: Vence a fin de mes",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c60",
+    "source": "09-hide-rest-off/run-3",
+    "owner": "Sofía",
+    "chatName": "Pablo Duarte",
+    "isGroup": false,
+    "transcript": "Chat con: Pablo Duarte\n\n[14:50] Pablo Duarte: Saludos desde la costa\n[14:52] Pablo Duarte: Hace mucho viento",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c61",
+    "source": "09-hide-rest-off/run-4",
+    "owner": "Sofía",
+    "chatName": "Quique Salas",
+    "isGroup": false,
+    "transcript": "Chat con: Quique Salas\n\n[16:10] Quique Salas: No te olvides de pasar por el correo\n[16:11] Quique Salas: Hay un paquete a tu nombre",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c62",
+    "source": "09-hide-rest-off/run-5",
+    "owner": "Sofía",
+    "chatName": "Rita Cano",
+    "isGroup": false,
+    "transcript": "Chat con: Rita Cano\n\n[18:10] Rita Cano: Sofi, ¿me llamás cuando puedas?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c63",
+    "source": "09-hide-rest-off/run-6",
+    "owner": "Sofía",
+    "chatName": "Sergio Cano",
+    "isGroup": false,
+    "transcript": "Chat con: Sergio Cano\n\n[20:10] Sergio Cano: Sofi, ¿me llamás cuando puedas?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c64",
+    "source": "09-hide-rest-off/run-7",
+    "owner": "Sofía",
+    "chatName": "Tina Cano",
+    "isGroup": false,
+    "transcript": "Chat con: Tina Cano\n\n[22:10] Tina Cano: Sofi, ¿me llamás cuando puedas?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c65",
+    "source": "09-hide-rest-off/run-7",
+    "owner": "Sofía",
+    "chatName": "Ugo Cano",
+    "isGroup": false,
+    "transcript": "Chat con: Ugo Cano\n\n[22:20] Ugo Cano: Acordate de pagar la patente",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c66",
+    "source": "10-window-and-pointer/run-1",
+    "owner": "Sofía",
+    "chatName": "Xavier Roldán",
+    "isGroup": false,
+    "transcript": "Chat con: Xavier Roldán\n\n[06:00] Xavier Roldán: Sofi, ¿confirmamos la visita de las 10?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c67",
+    "source": "10-window-and-pointer/run-1",
+    "owner": "Sofía",
+    "chatName": "Bea Cortés",
+    "isGroup": false,
+    "transcript": "Chat con: Bea Cortés\n\n[09:00] Bea Cortés: Te dejo las llaves en la portería\n[09:10] Bea Cortés: Cualquier cosa me llamás",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c68",
+    "source": "10-window-and-pointer/run-2",
+    "owner": "Sofía",
+    "chatName": "Yago Sanz",
+    "isGroup": false,
+    "transcript": "Chat con: Yago Sanz\n\n[12:00] Yago Sanz: Sofi, ¿almorzamos hoy?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c69",
+    "source": "10-window-and-pointer/run-2",
+    "owner": "Sofía",
+    "chatName": "Carlos Díaz",
+    "isGroup": false,
+    "transcript": "Chat con: Carlos Díaz\n\n[13:30] Carlos Díaz: Te mando el informe a la tarde",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c70",
+    "source": "10-window-and-pointer/run-3",
+    "owner": "Sofía",
+    "chatName": "Ana Gómez",
+    "isGroup": false,
+    "transcript": "Chat con: Ana Gómez\n\n[05:30] Ana Gómez: Buen día, ¿te llegó el paquete?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c71",
+    "source": "10-window-and-pointer/run-4",
+    "owner": "Sofía",
+    "chatName": "Dina Funes",
+    "isGroup": false,
+    "transcript": "Chat con: Dina Funes\n\n[16:00] Dina Funes: Sofi, ¿me pasás la factura del mes?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c72",
+    "source": "11-llm-error/run-1",
+    "owner": "Sofía",
+    "chatName": "Ofelia Quiroga",
+    "isGroup": false,
+    "transcript": "Chat con: Ofelia Quiroga\n\n[08:00] Ofelia Quiroga: Sofi, ¿viste el mail del banco?\n[08:02] Ofelia Quiroga: Dice que hay que actualizar los datos",
+    "legacyNeedsReply": null
+  },
+  {
+    "id": "c73",
+    "source": "11-llm-error/run-1",
+    "owner": "Sofía",
+    "chatName": "Pedro Aguirre",
+    "isGroup": false,
+    "transcript": "Chat con: Pedro Aguirre\n\n[08:10] Pedro Aguirre: ¿Jugamos al pádel el sábado?",
+    "legacyNeedsReply": true
+  },
+  {
+    "id": "c74",
+    "source": "11-llm-error/run-1",
+    "owner": "Sofía",
+    "chatName": "Rubén Mansilla",
+    "isGroup": false,
+    "transcript": "Chat con: Rubén Mansilla\n\n[08:20] Rubén Mansilla: Te paso el presupuesto de la reparación\n[08:21] Rubén Mansilla: Son tres cuotas",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c75",
+    "source": "11-llm-error/run-2",
+    "owner": "Sofía",
+    "chatName": "Tomás Herrera",
+    "isGroup": false,
+    "transcript": "Chat con: Tomás Herrera\n\n[10:00] Tomás Herrera: Sofi, ¿tenés el número del electricista?",
+    "legacyNeedsReply": null
+  },
+  {
+    "id": "c76",
+    "source": "11-llm-error/run-2",
+    "owner": "Sofía",
+    "chatName": "Úrsula Vega",
+    "isGroup": false,
+    "transcript": "Chat con: Úrsula Vega\n\n[10:05] Úrsula Vega: Mañana paso por los papeles",
+    "legacyNeedsReply": null
+  },
+  {
+    "id": "c77",
+    "source": "11-llm-error/run-2",
+    "owner": "Sofía",
+    "chatName": "Víctor Lamas",
+    "isGroup": false,
+    "transcript": "Chat con: Víctor Lamas\n\n[10:20] Víctor Lamas: Gracias por lo de ayer",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c78",
+    "source": "11-llm-error/run-2",
+    "owner": "Sofía",
+    "chatName": "Peña de Amigos",
+    "isGroup": true,
+    "transcript": "Grupo: Peña de Amigos\n\n[10:30] Víctor Lamas: El asado es el domingo a las 13\n[10:32] Pedro Aguirre: Yo llevo el pan",
+    "legacyNeedsReply": false
+  },
+  {
+    "id": "c79",
+    "source": "11-llm-error/run-3",
+    "owner": "Sofía",
+    "chatName": "Wanda Pinto",
+    "isGroup": false,
+    "transcript": "Chat con: Wanda Pinto\n\n[12:00] Wanda Pinto: Sofi, te escribo por la inscripción\n[12:01] Wanda Pinto: ¿Llegaste a completar el formulario?",
+    "legacyNeedsReply": null
+  },
+  {
+    "id": "c80",
+    "source": "11-llm-error/run-4",
+    "owner": "Sofía",
+    "chatName": "Ximena Ocampo",
+    "isGroup": false,
+    "transcript": "Chat con: Ximena Ocampo\n\n[14:00] Ximena Ocampo: Sofi, ¿me mandás la dirección?",
+    "legacyNeedsReply": null
+  },
+  {
+    "id": "c81",
+    "source": "11-llm-error/run-4",
+    "owner": "Sofía",
+    "chatName": "Vecinos del 2do",
+    "isGroup": true,
+    "transcript": "Grupo: Vecinos del 2do\n\n[14:10] Víctor Lamas: Mañana limpian el tanque de agua\n[14:12] Tomás Herrera: Avisen si necesitan algo",
+    "legacyNeedsReply": null
+  }
+]

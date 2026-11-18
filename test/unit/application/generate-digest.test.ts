@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createGenerateDigest, type GenerateDigestRequest } from '../../../src/application/generate-digest.js'
+import type { Summarizer } from '../../../src/application/ports/summarizer.js'
 import { err, ok, type Result } from '../../../src/domain/result.js'
 import { DEFAULT_SETTINGS, type DigestSettings } from '../../../src/domain/settings.js'
+import { FallbackSummarizer } from '../../../src/infrastructure/llm/index.js'
 import { createRenderers } from '../../../src/infrastructure/rendering/index.js'
 import {
   deferred,
@@ -645,6 +647,38 @@ describe('GenerateDigest: throw safety', () => {
       'the summarizer returned something that is not a result',
     ])
     expect(result.ok && result.value.digest).not.toBeNull()
+  })
+
+  it('records the provider that answered each conversation, also when an API primary falls back to the Ollama backup (RF-74)', async () => {
+    // The primary (an API) answers Ana and fails for Beto; the backup (Ollama) takes Beto over. Each names itself.
+    const primary: Summarizer = {
+      summarize: async (req) =>
+        req.conversation.name === 'Beto Ruiz'
+          ? err('anthropic returned 500')
+          : { ok: true, value: VALID_RESPONSE, provider: 'anthropic' },
+    }
+    const backup: Summarizer = { summarize: async () => ({ ok: true, value: VALID_RESPONSE, provider: 'ollama' }) }
+    const source = new InMemorySource()
+    const store = new InMemoryStore(null)
+    const run = createGenerateDigest({
+      source,
+      summarizer: new FallbackSummarizer(primary, backup),
+      store,
+      clock: new FixedClock(UNTIL),
+      renderers,
+    })
+    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'a']])
+    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'b']])
+    const result = await run(request({ runId: 7 }))
+    expect(result.ok && result.value.providers).toEqual({ anthropic: 1, ollama: 1 })
+    // ...and it is what the committed run (the history) is given
+    expect(store.commits).toHaveLength(1)
+    expect(store.commits[0]?.run).toMatchObject({
+      runId: 7,
+      summarized: 2,
+      failed: 0,
+      providers: { anthropic: 1, ollama: 1 },
+    })
   })
 
   it('passes the conversation to the Summarizer', async () => {

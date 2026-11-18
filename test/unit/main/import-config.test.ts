@@ -91,19 +91,61 @@ describe('mapLegacyConfig: what is written and what is reported', () => {
     const mapped = map({
       proveedor: 'claude',
       leerImagenes: true,
-      diasDeAudiosDelHistorial: 14,
-      whisper: { idioma: 'es' },
       web: { permitidos: [] },
       algoNuevo: 1,
     })
-    expect([...mapped.unmapped].sort()).toEqual([
-      'algoNuevo',
-      'diasDeAudiosDelHistorial',
-      'leerImagenes',
-      'web',
-      'whisper',
-    ])
+    expect([...mapped.unmapped].sort()).toEqual(['algoNuevo', 'leerImagenes', 'web'])
     expect(mapped.config).toEqual({ provider: { primary: 'claude-cli' } })
+  })
+
+  describe('audio transcription (RF-15, RF-23)', () => {
+    it('diasDeAudiosDelHistorial becomes transcription.historyAudioDays, and whisper.idioma transcription.language', () => {
+      const mapped = map({ proveedor: 'claude', diasDeAudiosDelHistorial: 30, whisper: { idioma: 'es' } })
+      expect(mapped.config).toEqual({
+        provider: { primary: 'claude-cli' },
+        transcription: { historyAudioDays: 30, language: 'es' },
+      })
+      expect(mapped.written).toEqual(
+        expect.arrayContaining(['transcription.historyAudioDays', 'transcription.language']),
+      )
+      expect(mapped.unmapped).toEqual([])
+      expect(mapped.invalid).toEqual([])
+    })
+
+    it('writes only what differs from the default: the same 14 days is not written', () => {
+      const mapped = map({ proveedor: 'claude', diasDeAudiosDelHistorial: 14 })
+      expect(mapped.config).toEqual({ provider: { primary: 'claude-cli' } })
+    })
+
+    it('whisper.modelo becomes transcription.model when its file is a known ggml model, whatever folder it was in', () => {
+      for (const modelo of ['models/ggml-base.bin', '/opt/whisper/ggml-small.en.bin', 'ggml-large-v3-turbo-q5_0.bin']) {
+        const name = /ggml-(.+)\.bin$/.exec(modelo)?.[1]
+        expect(map({ proveedor: 'claude', whisper: { modelo } }).config.transcription, modelo).toEqual({
+          model: name,
+        })
+      }
+    })
+
+    it('whisper.modelo that is not a known model is reported by name, not guessed', () => {
+      const mapped = map({ proveedor: 'claude', whisper: { modelo: 'models/whisper-de-prueba.bin', idioma: 'es' } })
+      expect(mapped.unmapped).toEqual(['whisper.modelo'])
+      expect(mapped.config.transcription).toEqual({ language: 'es' })
+    })
+
+    it('never turns transcription on: it would start downloading the audios of the account', () => {
+      const mapped = map({
+        proveedor: 'claude',
+        diasDeAudiosDelHistorial: 30,
+        whisper: { modelo: 'models/ggml-base.bin', idioma: 'es' },
+      })
+      expect(mapped.config.transcription).not.toHaveProperty('enabled')
+    })
+
+    it('drops, and reports, a value that is not valid here instead of writing it', () => {
+      const mapped = map({ proveedor: 'claude', diasDeAudiosDelHistorial: -3, whisper: { idioma: 'Español' } })
+      expect(mapped.config.transcription).toBeUndefined()
+      expect(mapped.invalid.length).toBeGreaterThan(0)
+    })
   })
 
   it('reports values that are not valid here, and does not write them', () => {

@@ -1,8 +1,13 @@
 import { readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { Readable } from 'node:stream'
 import type { CaptureMessages } from '../../application/capture-messages.js'
+import { createDownloadAudios, type DownloadAudios, type DownloadOutcome } from '../../application/download-audios.js'
 import type { Clock } from '../../application/ports/clock.js'
+import type { AudioDownloader, DownloadQueue } from '../../application/ports/download-queue.js'
+import { err } from '../../domain/result.js'
 import { getCatalog, type Language } from '../i18n/index.js'
+import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
 import { createTranslator } from './translate.js'
 import type {
@@ -85,6 +90,12 @@ export interface WhatsAppSocket {
   sendTextToSelf(text: string): Promise<void>
   /** Read-only query of the subject of a group. */
   groupMetadata(jid: string): Promise<{ readonly subject?: string | undefined }>
+  /**
+   * Read-only: opens an audio, from its download descriptor, as a stream of its decrypted bytes (RF-15). It only
+   * downloads, from WhatsApp's own media host. It never asks the sender to upload an expired media again, because that
+   * would be a message out (RNF-17): such an audio is an error.
+   */
+  openAudio(descriptor: AudioDescriptor): Promise<Readable>
   readonly signalRepository?: {
     readonly lidMapping?:
       | {
@@ -128,6 +139,31 @@ export interface WhatsAppConnectionOptions {
   readonly backoff?: BackoffPolicy
   /** A fixed code for something that went wrong inside the adapter. Never chat content, never a secret. */
   readonly onWarning?: (code: string) => void
+  /**
+   * RF-15: download the audios the capture asks for (live ones, and those of the history within the configured days)
+   * into `mediaDir`, from the DURABLE download queue `queue` (the database), one at a time. Without it no audio is
+   * downloaded (the transcription is off).
+   */
+  readonly media?: {
+    readonly mediaDir: string
+    readonly queue: DownloadQueue
+    /**
+     * False: this connection only CAPTURES and queues the audios (the rows stay `download_pending`) and never downloads
+     * one: `msum link` is short and must not compete with the daemon's worker (one whisper per installation, RNF-09).
+     * Default true.
+     */
+    readonly worker?: boolean
+    readonly maxBytes?: number
+    readonly timeoutMs?: number
+    /** The most the media directory may hold: past it, new downloads are refused (`media-cap`). */
+    readonly maxDirBytes?: number
+    /** Transient failures of one audio before it fails for good. Default 5. */
+    readonly maxAttempts?: number
+    /** Called after a file was stored: the transcription queue can start. */
+    readonly onDownloaded?: () => void
+    /** Told about every download attempt (a fixed word), for logs. */
+    readonly onOutcome?: (outcome: DownloadOutcome) => void
+  }
 }
 
 /** Baileys' `DisconnectReason`, for the ones that change what we do or what we say. */
@@ -160,8 +196,9 @@ export const backoffDelay = (policy: BackoffPolicy, attempt: number): number =>
  * which `WhatsAppSelfChatDelivery` uses. It never sends anything else, never touches presence, never sends read
  * receipts, and the socket is created with `markOnlineOnConnect: false` (see `baileys-socket.ts`).
  *
- * TODO (transcription commit, RF-15): downloading an audio must NOT pass `reuploadRequest` to Baileys: that sends a media
- * retry request to the sender, which is a message out. A media that cannot be downloaded is simply skipped.
+ * Audios (RF-15): with `media` set it downloads the audios that arrive while connected, one at a time and in the
+ * background. The download never asks the sender to upload an expired media again (that would be a message out): such
+ * an audio is recorded as failed and shows as not transcribed.
  *
  * Events of a socket are processed one at a time in the order they arrived, so a history sync stays in order.
  */
@@ -177,6 +214,9 @@ export class WhatsAppConnection {
   private recentStored = false
   private recentStatusComplete = false
   private readonly translator
+  private fetcher: AudioFetcher | null = null
+  private worker: DownloadAudios | null = null
+  private activeDownload: AbortController | null = null
   private session: SocketSession | null = null
   private detach: (() => void) | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -190,7 +230,26 @@ export class WhatsAppConnection {
 
   constructor(private readonly options: WhatsAppConnectionOptions) {
     this.backoff = options.backoff ?? DEFAULT_BACKOFF
+    const media = options.media
+    if (media !== undefined && media.worker !== false) {
+      this.fetcher = createAudioFetcher({
+        mediaDir: media.mediaDir,
+        openAudio: async (descriptor) => {
+          const session = this.session
+          if (session === null) throw new Error('not connected')
+          return session.socket.openAudio(descriptor)
+        },
+        ...(media.maxBytes === undefined ? {} : { maxBytes: media.maxBytes }),
+        ...(media.timeoutMs === undefined ? {} : { timeoutMs: media.timeoutMs }),
+        ...(media.maxDirBytes === undefined ? {} : { maxDirBytes: media.maxDirBytes }),
+        // Nothing is stored for a connection that is closed or has dropped.
+        isLive: () => this.session !== null,
+      })
+      this.worker = this.makeWorker(media)
+    }
     this.translator = createTranslator({
+      // Present when audios are downloaded: the translator hands the capture the descriptor and wakes the worker.
+      ...(media === undefined ? {} : { audio: { kick: () => this.kickDownloads() } }),
       capture: options.capture,
       catalog: getCatalog(options.language),
       clock: options.clock,
@@ -309,7 +368,57 @@ export class WhatsAppConnection {
     this.release()
     this.setStatus({ state: 'stopped' })
     await this.queue
+    // The download in progress is aborted (stream destroyed, partial file removed) and its audio stays in the durable
+    // queue, to be downloaded after the next start. When this returns nothing of the account is open and nothing will
+    // write to its database (it is closed next). A fresh worker is ready if the connection is started again.
+    const worker = this.worker
+    if (worker !== null && this.options.media !== undefined && this.options.media.worker !== false) {
+      await worker.stop()
+      this.worker = this.makeWorker(this.options.media)
+    }
     await Promise.all(this.settling.splice(0))
+  }
+
+  /**
+   * Wakes the download worker (RF-15): it takes the audios of the durable queue, oldest first, one at a time, while the
+   * connection is open. Called when an audio is queued, when the connection opens and on the sweep of the daemon. Does
+   * nothing when audios are not downloaded.
+   */
+  kickDownloads(): void {
+    this.worker?.kick()
+  }
+
+  /** The download worker over the durable queue, one audio at a time (see `createDownloadAudios`). */
+  private makeWorker(media: NonNullable<WhatsAppConnectionOptions['media']>): DownloadAudios {
+    const fetcher = this.fetcher
+    if (fetcher === null) throw new Error('no fetcher')
+    const downloader: AudioDownloader = {
+      download: async (item) => {
+        // Without a connection nothing can be downloaded: not the fault of the audio, so it is not counted.
+        if (this.session === null) return err({ kind: 'unavailable', reason: 'not-connected' })
+        const controller = new AbortController()
+        this.activeDownload = controller
+        try {
+          const result = await fetcher.fetch(
+            item.descriptor,
+            { conversationId: item.conversationId, messageId: item.messageId },
+            controller.signal,
+          )
+          return result.ok ? result : err({ kind: classifyFailure(result.error), reason: result.error })
+        } finally {
+          if (this.activeDownload === controller) this.activeDownload = null
+        }
+      },
+      abort: () => this.activeDownload?.abort(),
+    }
+    return createDownloadAudios({
+      queue: media.queue,
+      downloader,
+      clock: this.options.clock,
+      ...(media.maxAttempts === undefined ? {} : { maxAttempts: media.maxAttempts }),
+      ...(media.onDownloaded === undefined ? {} : { onDownloaded: media.onDownloaded }),
+      ...(media.onOutcome === undefined ? {} : { onOutcome: media.onOutcome }),
+    })
   }
 
   /**
@@ -347,6 +456,9 @@ export class WhatsAppConnection {
     this.detach?.()
     this.detach = null
     this.session = null
+    // A download in progress belongs to the connection that is going away: it is aborted (stream destroyed, partial file
+    // removed) and its audio stays in the durable queue.
+    this.activeDownload?.abort()
     if (session === null) return
     this.settling.push(session.settle().catch(() => this.options.onWarning?.('settle-failed')))
     try {
@@ -474,6 +586,8 @@ export class WhatsAppConnection {
       this.options.ownIds.set([...this.options.ownIds.get(), user?.id, user?.lid])
       this.translator.beginSession(this.options.clock.now())
       this.setStatus({ state: 'connected' })
+      // The audios that were waiting (history, or from before a restart or a drop) are downloaded now.
+      this.kickDownloads()
     } else if (update.connection === 'close') {
       this.onClosed(generation, statusCodeOf(update.lastDisconnect?.error))
     }

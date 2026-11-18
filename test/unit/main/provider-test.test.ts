@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { PROVIDERS } from '../../../src/main/config.js'
 import { classifyProviderError, TEST_TIMEOUT_MS, TEST_TRANSCRIPT } from '../../../src/main/provider-test.js'
 
 describe('classifyProviderError (RF-41)', () => {
   it.each([
     ['could not run claude: ENOENT', 'notFound'],
     ['could not run /opt/bin/claude: EACCES', 'notFound'],
+    // the CLI is checked with --help before it runs (RF-49): a missing program says so
+    ['claude was not found', 'notFound'],
+    ['claude could not be checked: its --help did not run', 'failed'],
     ['claude timed out after 90s', 'timeout'],
     ['ollama timed out after 60s', 'timeout'],
     ['could not reach ollama: fetch failed', 'unreachable'],
@@ -25,7 +29,11 @@ describe('classifyProviderError (RF-41)', () => {
 
 describe('the test of a provider', () => {
   it('is bounded: a minute and a half for Claude, one minute for Ollama', () => {
-    expect(TEST_TIMEOUT_MS).toEqual({ 'claude-cli': 90_000, ollama: 60_000 })
+    expect(TEST_TIMEOUT_MS['claude-cli']).toBe(90_000)
+    expect(TEST_TIMEOUT_MS.ollama).toBe(60_000)
+    // every provider the configuration knows has a limit, and none waits longer than a minute and a half
+    expect(Object.keys(TEST_TIMEOUT_MS).sort()).toEqual([...PROVIDERS].sort())
+    expect(Math.max(...Object.values(TEST_TIMEOUT_MS))).toBeLessThanOrEqual(90_000)
   })
 
   it('summarizes a made-up chat that holds no real-looking data', () => {

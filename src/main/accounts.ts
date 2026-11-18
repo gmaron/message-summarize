@@ -45,7 +45,10 @@ export interface Installation {
   readonly registry: SqliteAccountRegistry
   /** The schedules of the accounts, on the same `app.db` connection. */
   readonly schedules: SqliteScheduleRepository
-  /** The setup wizard and the consents (RF-70, RNF-02), on the same connection. */
+  /**
+   * The setup wizard and the consents (RF-70, RNF-02), on the same connection. Every consent of the installation is
+   * recorded and read here, by the wizard, the settings and `msum provider use` alike.
+   */
   readonly setup: SqliteSetupRepository
   readonly report: ReconcileReport
   /** Registered accounts (after reconciling), ordered by id. */

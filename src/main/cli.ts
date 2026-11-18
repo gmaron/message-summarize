@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createInterface } from 'node:readline/promises'
+import { Writable } from 'node:stream'
 import { runMain } from './app.js'
 import { DEFAULT_LINK_TIMING } from './context.js'
 import { createTappableLogger } from './logger.js'
@@ -22,6 +23,31 @@ async function confirm(question: string): Promise<boolean> {
   }
 }
 
+/**
+ * Reads a secret from the input (RNF-04). On a terminal the prompt goes to stderr and what is typed is not echoed (the
+ * readline output is a sink that discards everything). Piped, the whole of stdin is read. Never from the arguments.
+ */
+async function readSecret(prompt: string): Promise<string> {
+  if (process.stdin.isTTY) {
+    process.stderr.write(prompt)
+    const muted = new Writable({
+      write(_chunk, _encoding, done) {
+        done()
+      },
+    })
+    const rl = createInterface({ input: process.stdin, output: muted, terminal: true })
+    try {
+      return await rl.question('')
+    } finally {
+      rl.close()
+      process.stderr.write('\n')
+    }
+  }
+  const chunks: Buffer[] = []
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 // One logger for the whole process: the guards, the commands and the crash handler below. The daemon attaches its log
 // file to it (see `startDaemonLogs`), so a fatal error reaches the file and the web too.
 const logger = createTappableLogger(process.stdout, process.stderr)
@@ -41,6 +67,7 @@ async function main(): Promise<void> {
     clock: systemClock,
     connectionFactory: createWhatsAppConnectionFor,
     confirm,
+    readSecret,
     waitForShutdown: () => shutdown.wait(),
     probes: realProbes,
     openUrl: openInBrowser,

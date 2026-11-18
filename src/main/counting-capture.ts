@@ -64,6 +64,9 @@ export function countingCapture(capture: CaptureMessages): CountingCapture {
     },
     participantInfo: passing((event) => capture.participantInfo(event)),
     transcriptReady: passing((event) => capture.transcriptReady(event)),
+    // The audios of the history queue up while linking: the daemon's worker downloads them later (RF-15).
+    queueMedia: passing((event) => capture.queueMedia(event)),
+    mediaFailed: passing((event) => capture.mediaFailed(event)),
   }
   ;(counting as { capture: CaptureMessages }).capture = wrapped
   return counting

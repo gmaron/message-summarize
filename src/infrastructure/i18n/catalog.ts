@@ -3,6 +3,7 @@ import type { ScheduleIssue } from '../../domain/schedule.js'
 import type { SettingsIssueCode } from '../../domain/settings.js'
 import type { SetupStep } from '../../domain/setup.js'
 import type { WindowError } from '../../domain/window.js'
+import type { ProviderCharge, ProviderInfoKind } from '../llm/provider-info.js'
 
 export type Language = 'es' | 'en'
 
@@ -219,6 +220,10 @@ export interface Catalog {
       unknownSubcommand(value: string): string
       invalidTime(value: string): string
       invalidDays(value: string): string
+      /** `msum secret set|rm <provider>` with a provider that has no key; `allowed` is the list of the ones that do. */
+      unknownProvider(allowed: string): string
+      /** `msum provider use|test` with a kind that does not exist; `allowed` lists the ones that do. */
+      unknownProviderKind(value: string, allowed: string): string
     }
     /** Problems of config.json that the digest settings do not cover (RF-73). */
     readonly config: {
@@ -230,6 +235,8 @@ export interface Catalog {
       notOneOf(option: string, allowed: string): string
       required(option: string): string
       invalidTimezone(option: string): string
+      /** A transcription language that is neither "auto" nor an ISO 639 code (RF-23). */
+      invalidLanguage(option: string): string
       invalidPort(option: string): string
       belowMinimum(option: string): string
       invalidUrl(option: string): string
@@ -238,6 +245,134 @@ export interface Catalog {
       installationOnly(option: string): string
       readonly noProvider: string
       promptFile(path: string): string
+      /** An API key written in config.json: keys are secrets and go in secrets.json or the environment (RNF-04). */
+      secretInConfig(option: string): string
+      /** `provider.genericCli.command`: it needs a program first, and `{{prompt}}` only as a whole element. */
+      invalidCommandTemplate(option: string): string
+      /**
+       * Printed when a command starts with the generic CLI chosen (RF-47, RF-49): the command may run tools on text written
+       * by third parties. `acknowledged` says whether the user accepted that, which is what lets it run.
+       */
+      genericCliWarning(acknowledged: boolean): string
+    }
+    /** `msum provider ls|use|test` (RF-41, RNF-02): choosing a provider and trying it. */
+    readonly provider: {
+      readonly descriptions: Readonly<Record<ProviderInfoKind, string>>
+      readonly charge: Readonly<Record<ProviderCharge, string>>
+      readonly dataLeaves: string
+      readonly dataStays: string
+      /** No host to list: Ollama, which stays on the machine. */
+      readonly hostsNone: string
+      /** `openai-compatible`: the host of `provider.openai.baseUrl`. */
+      readonly hostsYourServer: string
+      readonly hostsYourCommand: string
+      /** A preset that is disabled and contacts nothing. */
+      readonly hostsDisabled: string
+      readonly policyNone: string
+      readonly roles: { readonly primary: string; readonly backup: string; readonly none: string }
+      readonly ls: {
+        title(account: string): string
+        kind(kind: string, description: string): string
+        info(charge: string, data: string, hosts: string, policy: string): string
+        state(role: string, key: string, usable: string): string
+        /** `source` is already translated (`secret.source*`); the key itself is never shown. */
+        keyFrom(name: string, source: string): string
+        keyMissing(name: string): string
+        readonly keyNotNeeded: string
+        keyOptional(name: string): string
+        readonly usableYes: string
+        readonly usableNoModel: string
+        usableNoKey(name: string): string
+        readonly usableDisabled: string
+        readonly usableNoCommand: string
+        readonly usableNotAcknowledged: string
+        readonly usableNotChecked: string
+        /** `detail` is the reason `doctor` gives for a CLI that failed `verify`. */
+        usableVerifyFailed(detail: string): string
+        /** RNF-02, for a configured provider that sends the chats out: when it was accepted (`date` is YYYY-MM-DD). */
+        consent(date: string): string
+        readonly consentNone: string
+        /** Ollama at an address that is not this machine: the chats go to that server (a line under its data). */
+        ollamaRemote(origin: string): string
+        readonly footer: string
+      }
+      readonly use: {
+        readonly baseUrlRequired: string
+        readonly baseUrlIsOpenAi: string
+        readonly baseUrlOnlyCompatible: string
+        readonly modelNotForGeneric: string
+        readonly noModelHint: string
+        /** `file` was not touched. */
+        notWritten(file: string): string
+        fileNotJson(file: string): string
+        disclosureTitle(provider: string): string
+        readonly disclosureSends: string
+        disclosureHosts(hosts: string): string
+        /** The generic CLI: the command that receives the chats, as a JSON list, `{{prompt}}` shown literally. */
+        disclosureCommand(command: string): string
+        /** The config file was modified while the user was being asked: nothing was written. */
+        changedWhileEditing(file: string): string
+        disclosurePolicy(url: string): string
+        readonly disclosureNoPolicy: string
+        readonly disclosureLocalOnly: string
+        /** The generic CLI: what `acknowledgeRisk` is, before anything is activated. */
+        readonly genericExplain: string
+        confirm(provider: string): string
+        readonly noTerminal: string
+        readonly cancelled: string
+        wrote(file: string, role: string, provider: string): string
+        keyReminder(name: string): string
+        readonly genericNotAcknowledged: string
+        readonly testReminder: string
+      }
+      readonly test: {
+        noneConfigured(role: string): string
+        noModel(kind: string): string
+        noticeExternal(hosts: string): string
+        noticeLocal(url: string): string
+        running(kind: string): string
+        ok(kind: string, ms: number, needsReply: string, priority: string): string
+        failed(kind: string, reason: string): string
+        readonly yes: string
+        readonly no: string
+        readonly priorities: { readonly high: string; readonly medium: string; readonly low: string }
+        readonly hints: {
+          missingKey(name: string): string
+          readonly authFailed: string
+          readonly unknownModel: string
+          readonly rateLimit: string
+          readonly noCredit: string
+          readonly timeout: string
+          readonly disabled: string
+          readonly verifyFailed: string
+          readonly unreachable: string
+          readonly redirect: string
+          readonly geminiSchemaShape: string
+          readonly generic: string
+        }
+      }
+    }
+    /** `msum secret set|rm|ls`: the API keys (RNF-04). A key is never printed, not even partly. */
+    readonly secret: {
+      /** The question on a terminal; the typing is not shown. */
+      keyPrompt(provider: string): string
+      readonly emptyKey: string
+      readonly invalidKey: string
+      stored(provider: string, file: string): string
+      /** A variable of the environment wins over the stored key; `names` is the list of variables. */
+      envWins(names: string): string
+      removed(provider: string, file: string): string
+      notStored(provider: string, file: string): string
+      /** The file exists and is not a JSON object: it is not touched. */
+      invalidFile(file: string): string
+      readonly header: string
+      /** `provider` is already padded to the width of the column; `source` comes from the `source*` texts. */
+      row(provider: string, source: string): string
+      readonly precedence: string
+      sourceEnv(name: string): string
+      sourceAccountFile(file: string): string
+      sourceFile(file: string): string
+      readonly sourceNone: string
     }
     readonly unexpectedError: (code: string) => string
     cannotCreateDataDir(path: string): string
@@ -287,6 +422,53 @@ export interface Catalog {
       loggedOut(id: string): string
       failed(reason: string): string
       readonly timeout: string
+    }
+    /** `msum whisper models|download` (RF-22): the whisper.cpp models of the installation. */
+    readonly whisper: {
+      readonly modelsHeader: string
+      /** `name` and `size` are already padded to the width of their column. */
+      modelRow(name: string, size: string, installed: boolean): string
+      /** Printed under the list: how to download one, and where from (RNF-01). */
+      modelsHint(dir: string): string
+      downloading(name: string, size: string, from: string): string
+      /** One line of progress, at every tenth of the file. The sizes are already formatted. */
+      progress(percent: number, received: string, total: string): string
+      done(name: string, path: string): string
+      alreadyThere(name: string, path: string): string
+      /** What to do next, after a download: turn it on in the configuration. */
+      enableHint(name: string): string
+      unknownModel(name: string, known: string): string
+      httpError(status: number): string
+      readonly networkError: string
+      readonly sizeError: string
+      readonly checksumError: string
+      writeError(dir: string): string
+    }
+    /** `msum ollama recommend|pull` (RF-45): the small local models to choose from, and the download of one. */
+    readonly ollama: {
+      /** `gb` is already formatted ("16"). */
+      ramLine(gb: string): string
+      readonly candidatesHeader: string
+      /** `size` and `ram` are already formatted; `evaluation` is the text of `evaluationDone` or `evaluationNone`. */
+      candidateRow(tag: string, size: string, ram: string, fits: boolean, evaluation: string): string
+      readonly evaluationNone: string
+      /** `agreement` is on the clear cases; `latency` is already formatted. */
+      evaluationDone(date: string, validJson: string, agreement: string, latency: string, passed: boolean): string
+      /** Candidates that need more RAM than this machine has are hidden unless `--all`. */
+      hidden(count: number): string
+      noneFits(minGb: number): string
+      /** The user chooses: nothing is picked or written. The commands to run next. */
+      readonly choose: string
+      invalidTag(tag: string): string
+      /** Pulling needs an Ollama on this machine, unless `--allow-remote` says otherwise. */
+      remoteRefused(origin: string): string
+      pulling(tag: string, origin: string): string
+      /** One line of progress. The sizes are already formatted. */
+      progress(percent: number, received: string, total: string): string
+      status(status: string): string
+      done(tag: string): string
+      doneHint(tag: string): string
+      failed(reason: string): string
     }
     readonly unlink: {
       confirm(id: string): string
@@ -416,7 +598,39 @@ export interface Catalog {
         readonly whatsapp: string
         readonly accounts: string
         readonly schedules: string
+        readonly transcription: string
+        readonly whisper: string
+        readonly ffmpeg: string
+        readonly whisperModel: string
+        readonly mediaFiles: string
+        readonly secrets: string
       }
+      /** A file with API keys that other users can read (RNF-04). `mode` is octal text. */
+      secretsLoose(file: string, mode: string): string
+      secretsLooseFix(file: string): string
+      /** The downloaded audios of the account take (nearly) all the space they are allowed (`transcription.maxMediaMb`). */
+      mediaFull(usedMb: number, capMb: number): string
+      readonly mediaFullFix: string
+      /** Transcription is off: audios show as not transcribed, and that is fine (RF-21). */
+      readonly transcriptionOff: string
+      transcriptionOn(language: string): string
+      whisperOk(version: string | null): string
+      whisperMissing(command: string): string
+      readonly whisperFix: string
+      ffmpegOk(version: string | null): string
+      ffmpegMissing(command: string): string
+      readonly ffmpegFix: string
+      readonly modelNone: string
+      readonly modelNoneFix: string
+      modelMissing(path: string): string
+      readonly modelMissingFix: string
+      /** The file is there and its SHA-256 is the pinned one of a known model. */
+      modelVerified(path: string): string
+      /** The file is there but no checksum is pinned for it (a model of your own). */
+      modelUnverified(path: string): string
+      readonly modelUnverifiedFix: string
+      modelBadChecksum(path: string): string
+      readonly modelBadChecksumFix: string
       /** Work directories of imports that died, which hold a copy of a WhatsApp session. */
       staleImport(names: string): string
       readonly staleImportFix: string
@@ -449,6 +663,50 @@ export interface Catalog {
       providerOk(provider: string, detail: string): string
       providerMissing(command: string): string
       providerFix(provider: string): string
+      /** An API provider with its model and the key found (`source` is already translated). No request is made (RNF-01). */
+      providerApiOk(provider: string, model: string, keyName: string, source: string): string
+      /** A compatible server that needs no key and has none. `keyName` is the stored key it would use. */
+      providerApiKeyOptional(provider: string, model: string, keyName: string): string
+      providerApiNoKey(provider: string, keyName: string): string
+      /** `keyName` is the argument of `msum secret set`. */
+      providerApiNoKeyFix(keyName: string, envNames: string): string
+      providerApiNoModel(provider: string): string
+      providerApiNoModelFix(provider: string): string
+      /** A CLI provider after `verify` (RF-49): found, with its version, and the flags of the hardening are all there. */
+      cliVerified(provider: string, version: string | null): string
+      /** `--help` does not list a flag the hardening relies on: this version cannot be run without tools. */
+      cliMissingFlags(provider: string, flags: string): string
+      cliMissingFlagsFix(provider: string): string
+      cliUnrunnable(provider: string): string
+      cliUnrunnableFix(provider: string): string
+      /** A preset shipped disabled: its documentation has no way to run it without tools that can be verified. */
+      cliDisabled(provider: string): string
+      cliDisabledFix(provider: string): string
+      /** The generic CLI without `acknowledgeRisk`: refused. */
+      readonly genericNotAcknowledged: string
+      readonly genericNotAcknowledgedFix: string
+      /** The generic CLI with the risk acknowledged: it runs, and this is said every time. */
+      genericRisk(command: string): string
+      readonly genericRiskFix: string
+      /** The command has `{{prompt}}`: the chat is in the arguments, which other local users can read with `ps`. */
+      readonly genericPromptInArgv: string
+      readonly genericPromptInArgvFix: string
+      /** RNF-02: a provider that sends the chats out with no recorded consent. A warning, never a block. */
+      consentMissing(provider: string, hosts: string): string
+      consentMissingFix(provider: string): string
+      /** Ollama at an address that is not this machine: the chats go to a server of the user's, but out of this computer. */
+      ollamaRemote(origin: string): string
+      readonly ollamaRemoteFix: string
+      /** The configured Ollama has the model (a call to the user's own server, `/api/tags`, with a short timeout). */
+      ollamaModelOk(model: string): string
+      /** Ollama answers and has no such model: the digests would fail with it. */
+      ollamaModelMissing(model: string): string
+      ollamaModelMissingFix(model: string): string
+      /** The list of models could not be read (a warning: the server answered the reachability check). */
+      ollamaModelUnknown(reason: string): string
+      readonly ollamaModelUnknownFix: string
+      /** After the providers: the way to try them for real, which `doctor` never does (RNF-01). */
+      readonly providerTestHint: string
       readonly providerNone: string
       readonly whatsappOk: string
       readonly whatsappNone: string
@@ -784,6 +1042,9 @@ export interface WebTexts {
     }
     /** What each provider costs and does with the text of the chats (RF-41, RNF-02): shown before it is used. */
     readonly disclosure: {
+      readonly sendsLabel: string
+      /** What is sent, in the words of `msum provider use` (`DISCLOSURE_SENDS`): the text `CONSENT_TEXT_VERSION` stands for. */
+      readonly sends: string
       readonly costLabel: string
       readonly leavesLabel: string
       readonly whoLabel: string

@@ -6,10 +6,43 @@ import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
 import type { Catalog, Language } from '../infrastructure/i18n/index.js'
 import { LANGUAGES } from '../infrastructure/i18n/index.js'
+import {
+  ANTHROPIC_EFFORTS,
+  type AnthropicEffort,
+  DEFAULT_ANTHROPIC_MAX_TOKENS,
+  DEFAULT_MAX_TOTAL_MS,
+  DEFAULT_RETRY_BUDGET,
+  OPENAI_BASE_URL,
+  type StructuredOutputMode,
+} from '../infrastructure/llm/api/index.js'
+import { genericCommandProblem } from '../infrastructure/llm/cli/index.js'
 import { isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
+import { DEFAULT_TRANSCRIPTION_TIMEOUT_MS, LANGUAGE_PATTERN } from '../infrastructure/transcription/index.js'
 
-export const PROVIDERS = ['claude-cli', 'ollama'] as const
+export const PROVIDERS = [
+  'claude-cli',
+  'gemini-cli',
+  'codex-cli',
+  'generic-cli',
+  'ollama',
+  'openai',
+  'anthropic',
+  'gemini',
+] as const
 export type ProviderKind = (typeof PROVIDERS)[number]
+/** The providers that call an HTTP API with a key. They are external: "local only" chats never reach them (RF-43). */
+export const API_PROVIDERS = ['openai', 'anthropic', 'gemini'] as const
+export type ApiProviderKind = (typeof API_PROVIDERS)[number]
+/** True when the primary or the backup is the generic CLI, which gets a warning wherever it is about to run (RF-49). */
+export const usesGenericCli = (config: { readonly provider: Pick<ProviderConfig, 'primary' | 'backup'> }): boolean =>
+  config.provider.primary === 'generic-cli' || config.provider.backup === 'generic-cli'
+export const isApiProvider = (kind: ProviderKind): kind is ApiProviderKind =>
+  (API_PROVIDERS as readonly string[]).includes(kind)
+const STRUCTURED_OUTPUT_MODES = [
+  'json_schema',
+  'json_object',
+  'prompt',
+] as const satisfies readonly StructuredOutputMode[]
 
 export interface ClaudeCliConfig {
   readonly command: string
@@ -26,12 +59,93 @@ export interface OllamaConfig {
   readonly timeoutMs: number
 }
 
+/**
+ * The API providers have no default model (model names change often: a stale default would fail later), so `model` is
+ * required when one is used. The key is never here: it goes in secrets.json or the environment (RNF-04).
+ */
+export interface OpenAiConfig {
+  /** Any server with the Chat Completions API (LM Studio, OpenRouter...). */
+  readonly baseUrl: string
+  readonly model: string | null
+  readonly timeoutMs: number
+  readonly structuredOutput: StructuredOutputMode
+}
+
+export interface AnthropicConfig {
+  readonly model: string | null
+  readonly timeoutMs: number
+  readonly maxTokens: number
+  /** Null: the model default. */
+  readonly effort: AnthropicEffort | null
+}
+
+export interface GeminiConfig {
+  readonly model: string | null
+  readonly timeoutMs: number
+}
+
+/** RF-46: what one call may wait for a rate limit, per conversation. Shared by the API providers. */
+export interface RetryConfig {
+  readonly maxRetries: number
+  readonly maxWaitMs: number
+  /** The deadline of the whole call, attempts and waits together. */
+  readonly maxTotalMs: number
+}
+
+/**
+ * `gemini-cli` and `codex-cli` are shipped disabled (RF-49: their documentation offers no way to run them without tools
+ * that can be verified), so the section only holds what a future enabled preset needs. `doctor` says they are disabled.
+ */
+export interface VendorCliConfig {
+  readonly command: string
+  readonly model: string | null
+  readonly timeoutMs: number
+}
+
+/** RF-47, generic mode: any command that takes the prompt and prints text. Refused unless the risk is acknowledged. */
+export interface GenericCliConfig {
+  /** The program and its arguments, with no shell. `{{prompt}}` as a whole element receives the prompt; else stdin. */
+  readonly command: readonly string[] | null
+  readonly timeoutMs: number
+  /** True when the user accepted that the command may run tools on text written by third parties. */
+  readonly acknowledgeRisk: boolean
+}
+
 export interface ProviderConfig {
   /** Null until the user chooses one (RF-41: there is no default provider). */
   readonly primary: ProviderKind | null
   readonly backup: ProviderKind | null
   readonly claudeCli: ClaudeCliConfig
   readonly ollama: OllamaConfig
+  readonly openai: OpenAiConfig
+  readonly anthropic: AnthropicConfig
+  readonly gemini: GeminiConfig
+  readonly retry: RetryConfig
+  readonly geminiCli: VendorCliConfig
+  readonly codexCli: VendorCliConfig
+  readonly genericCli: GenericCliConfig
+}
+
+/**
+ * Local transcription of audios (RF-15, RF-20..23). Off by default. Turning it on with the program or the model missing is
+ * not an error: the audios stay untranscribed and `doctor` says what is missing (RF-21).
+ */
+export interface TranscriptionConfig {
+  readonly enabled: boolean
+  /** The whisper.cpp program. */
+  readonly whisperCommand: string
+  /** Converts the audio before whisper reads it. */
+  readonly ffmpegCommand: string
+  /** A path to a ggml model, or the name of one in the models directory of the installation (`base`, `small.en`...). */
+  readonly model: string | null
+  /** `auto` detects the language of each audio; otherwise an ISO 639 code such as `es` (RF-23). */
+  readonly language: string
+  /** Total time for one audio. */
+  readonly timeoutMs: number
+  /** RF-15: audios of the history sync from the last N days are downloaded too (older ones stay untranscribed). */
+  readonly historyAudioDays: number
+  /** The most the downloaded audios of an account may take together, in MB. Past it new downloads are refused. */
+  readonly maxMediaMb: number
 }
 
 /** The local web (RNF-03). Only the installation's config.json sets it: an account cannot. */
@@ -66,17 +180,23 @@ export interface AppConfig {
   /** Cron expressions (RF-60). */
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
+  readonly transcription: TranscriptionConfig
   readonly web: WebConfig
   readonly logs: LogsConfig
 }
 
 export type ConfigIssueCode =
   | SettingsIssueCode
+  | 'invalidLanguage'
   | 'invalidJson'
   | 'unknownOption'
   | 'notOneOf'
   | 'required'
   | 'invalidTimezone'
+  /** An API key written in config.json, which must not hold secrets. */
+  | 'secretInConfig'
+  /** `provider.genericCli.command` has no program, a placeholder as the program, or one inside an element. */
+  | 'invalidCommandTemplate'
   | 'invalidPort'
   /** A number under the smallest accepted (`logs.maxBytes`). */
   | 'belowMinimum'
@@ -117,14 +237,44 @@ const TOP_LEVEL = new Set([
   'concurrency',
   'schedules',
   'provider',
+  'transcription',
   'web',
   'logs',
 ])
-const PROVIDER_KEYS = new Set(['primary', 'backup', 'claudeCli', 'ollama'])
+const TRANSCRIPTION_KEYS = new Set([
+  'enabled',
+  'whisperCommand',
+  'ffmpegCommand',
+  'model',
+  'language',
+  'timeoutMs',
+  'historyAudioDays',
+  'maxMediaMb',
+])
+const PROVIDER_KEYS = new Set([
+  'primary',
+  'backup',
+  'claudeCli',
+  'geminiCli',
+  'codexCli',
+  'genericCli',
+  'ollama',
+  'openai',
+  'anthropic',
+  'gemini',
+  'retry',
+])
+const GENERIC_CLI_KEYS = new Set(['command', 'timeoutMs', 'acknowledgeRisk'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
 const WEB_KEYS = new Set(['enabled', 'host', 'port'])
 const LOGS_KEYS = new Set(['maxBytes'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
+const OPENAI_KEYS = new Set(['baseUrl', 'model', 'timeoutMs', 'structuredOutput'])
+const ANTHROPIC_KEYS = new Set(['model', 'timeoutMs', 'maxTokens', 'effort'])
+const GEMINI_KEYS = new Set(['model', 'timeoutMs'])
+const RETRY_KEYS = new Set(['maxRetries', 'maxWaitMs', 'maxTotalMs'])
+/** Names under which a key could be put in the section of an API provider: refused, with a pointer to `msum secret`. */
+const SECRET_KEY_NAMES = ['apiKey', 'api_key', 'apikey', 'key', 'token', 'secret']
 
 /** Options of the installation's config.json that an account's file cannot set. */
 const INSTALLATION_ONLY = ['web', 'logs'] as const
@@ -206,6 +356,23 @@ export function parseConfig(
     return v
   }
 
+  /** Like `section`, for an API provider: a key written there is refused (RNF-04) instead of being "an unknown option". */
+  const apiSection = (parent: Obj, key: string, path: string, known: Set<string>): Obj => {
+    const v = parent[key]
+    if (isObject(v)) {
+      for (const name of SECRET_KEY_NAMES) if (name in v) add(`${path}.${name}`, 'secretInConfig')
+    }
+    return section(parent, key, path, new Set([...known, ...SECRET_KEY_NAMES]))
+  }
+  const nonNegativeInt = (obj: Obj, key: string, path: string, fallback: number): number | undefined => {
+    const v = obj[key]
+    if (v === undefined) return fallback
+    if (typeof v !== 'number') return add(path, 'notNumber')
+    if (!Number.isInteger(v)) return add(path, 'notInteger')
+    if (v < 0) return add(path, 'notPositive')
+    return v
+  }
+
   unknownKeys(input, TOP_LEVEL, '')
 
   const settings = parseDigestSettings(input)
@@ -260,6 +427,119 @@ export function parseConfig(
   const ollamaKeepAlive = text(ollamaObj, 'keepAlive', 'provider.ollama.keepAlive')
   const ollamaTimeout = positiveInt(ollamaObj, 'timeoutMs', 'provider.ollama.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
 
+  const openaiObj = apiSection(providerObj, 'openai', 'provider.openai', OPENAI_KEYS)
+  const openaiBaseUrl = text(openaiObj, 'baseUrl', 'provider.openai.baseUrl')
+  const openaiModel = text(openaiObj, 'model', 'provider.openai.model')
+  const openaiTimeout = positiveInt(openaiObj, 'timeoutMs', 'provider.openai.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
+  const openaiStructured = choice(
+    openaiObj,
+    'structuredOutput',
+    'provider.openai.structuredOutput',
+    STRUCTURED_OUTPUT_MODES,
+  ) as StructuredOutputMode | null | undefined
+
+  const anthropicObj = apiSection(providerObj, 'anthropic', 'provider.anthropic', ANTHROPIC_KEYS)
+  const anthropicModel = text(anthropicObj, 'model', 'provider.anthropic.model')
+  const anthropicTimeout = positiveInt(
+    anthropicObj,
+    'timeoutMs',
+    'provider.anthropic.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+  const anthropicMaxTokens = positiveInt(
+    anthropicObj,
+    'maxTokens',
+    'provider.anthropic.maxTokens',
+    DEFAULT_ANTHROPIC_MAX_TOKENS,
+  )
+  const anthropicEffort = choice(anthropicObj, 'effort', 'provider.anthropic.effort', ANTHROPIC_EFFORTS) as
+    | AnthropicEffort
+    | null
+    | undefined
+
+  const geminiObj = apiSection(providerObj, 'gemini', 'provider.gemini', GEMINI_KEYS)
+  const geminiModel = text(geminiObj, 'model', 'provider.gemini.model')
+  const geminiTimeout = positiveInt(geminiObj, 'timeoutMs', 'provider.gemini.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
+
+  const geminiCliObj = section(providerObj, 'geminiCli', 'provider.geminiCli', CLAUDE_CLI_KEYS)
+  const geminiCliCommand = text(geminiCliObj, 'command', 'provider.geminiCli.command')
+  const geminiCliModel = text(geminiCliObj, 'model', 'provider.geminiCli.model')
+  const geminiCliTimeout = positiveInt(
+    geminiCliObj,
+    'timeoutMs',
+    'provider.geminiCli.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+  const codexCliObj = section(providerObj, 'codexCli', 'provider.codexCli', CLAUDE_CLI_KEYS)
+  const codexCliCommand = text(codexCliObj, 'command', 'provider.codexCli.command')
+  const codexCliModel = text(codexCliObj, 'model', 'provider.codexCli.model')
+  const codexCliTimeout = positiveInt(
+    codexCliObj,
+    'timeoutMs',
+    'provider.codexCli.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+
+  const genericObj = section(providerObj, 'genericCli', 'provider.genericCli', GENERIC_CLI_KEYS)
+  const genericTimeout = positiveInt(
+    genericObj,
+    'timeoutMs',
+    'provider.genericCli.timeoutMs',
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  )
+  const genericAcknowledged = ((): boolean | undefined => {
+    const v = genericObj.acknowledgeRisk
+    if (v === undefined) return false
+    if (typeof v !== 'boolean') return add('provider.genericCli.acknowledgeRisk', 'notBoolean')
+    return v
+  })()
+  const genericCommand = ((): readonly string[] | null | undefined => {
+    const v = genericObj.command
+    if (v === undefined) return null
+    if (!Array.isArray(v)) return add('provider.genericCli.command', 'notArray')
+    if (!v.every((element) => typeof element === 'string')) return add('provider.genericCli.command', 'notStringList')
+    if (genericCommandProblem(v as string[]) !== null) {
+      return add('provider.genericCli.command', 'invalidCommandTemplate')
+    }
+    return [...(v as string[])]
+  })()
+
+  const retryObj = section(providerObj, 'retry', 'provider.retry', RETRY_KEYS)
+  const retryTotal = positiveInt(retryObj, 'maxTotalMs', 'provider.retry.maxTotalMs', DEFAULT_MAX_TOTAL_MS)
+  const retryMax = nonNegativeInt(retryObj, 'maxRetries', 'provider.retry.maxRetries', DEFAULT_RETRY_BUDGET.maxRetries)
+  const retryWait = nonNegativeInt(
+    retryObj,
+    'maxWaitMs',
+    'provider.retry.maxWaitMs',
+    DEFAULT_RETRY_BUDGET.maxTotalWaitMs,
+  )
+
+  const transcriptionObj = section(input, 'transcription', 'transcription', TRANSCRIPTION_KEYS)
+  const transcriptionEnabled = ((): boolean | undefined => {
+    const v = transcriptionObj.enabled
+    if (v === undefined) return false
+    if (typeof v !== 'boolean') return add('transcription.enabled', 'notBoolean')
+    return v
+  })()
+  const whisperCommand = text(transcriptionObj, 'whisperCommand', 'transcription.whisperCommand')
+  const ffmpegCommand = text(transcriptionObj, 'ffmpegCommand', 'transcription.ffmpegCommand')
+  const transcriptionModel = text(transcriptionObj, 'model', 'transcription.model')
+  const transcriptionLanguage = ((): string | undefined => {
+    const v = transcriptionObj.language
+    if (v === undefined) return 'auto'
+    if (typeof v !== 'string') return add('transcription.language', 'notString')
+    if (!LANGUAGE_PATTERN.test(v)) return add('transcription.language', 'invalidLanguage')
+    return v
+  })()
+  const transcriptionTimeout = positiveInt(
+    transcriptionObj,
+    'timeoutMs',
+    'transcription.timeoutMs',
+    DEFAULT_TRANSCRIPTION_TIMEOUT_MS,
+  )
+  const historyAudioDays = positiveInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
+  const maxMediaMb = positiveInt(transcriptionObj, 'maxMediaMb', 'transcription.maxMediaMb', 500)
+
   const webObj = section(input, 'web', 'web', WEB_KEYS)
   const webEnabled = ((): boolean | undefined => {
     const v = webObj.enabled
@@ -289,6 +569,14 @@ export function parseConfig(
   const usesOllama =
     primary === 'ollama' || backup === 'ollama' || (localOnlyPatterns !== undefined && localOnlyPatterns.length > 0)
   if (usesOllama && ollamaModel === null) add('provider.ollama.model', 'required')
+  // No API provider has a default model: choosing one without a model is a configuration error, not a failure later.
+  const chosen = [primary, backup]
+  if (chosen.includes('openai') && openaiModel === null) add('provider.openai.model', 'required')
+  if (chosen.includes('anthropic') && anthropicModel === null) add('provider.anthropic.model', 'required')
+  if (chosen.includes('gemini') && geminiModel === null) add('provider.gemini.model', 'required')
+  // The generic CLI has no default command: the user brings it. (The acknowledgment is checked when it runs, and by
+  // `doctor`, so that `doctor` can show the warning instead of the configuration being refused whole.)
+  if (chosen.includes('generic-cli') && genericCommand === null) add('provider.genericCli.command', 'required')
 
   if (
     issues.length > 0 ||
@@ -309,6 +597,36 @@ export function parseConfig(
     ollamaNumCtx === undefined ||
     ollamaKeepAlive === undefined ||
     ollamaTimeout === undefined ||
+    openaiBaseUrl === undefined ||
+    openaiModel === undefined ||
+    openaiTimeout === undefined ||
+    openaiStructured === undefined ||
+    anthropicModel === undefined ||
+    anthropicTimeout === undefined ||
+    anthropicMaxTokens === undefined ||
+    anthropicEffort === undefined ||
+    geminiModel === undefined ||
+    geminiTimeout === undefined ||
+    retryMax === undefined ||
+    retryTotal === undefined ||
+    retryWait === undefined ||
+    geminiCliCommand === undefined ||
+    geminiCliModel === undefined ||
+    geminiCliTimeout === undefined ||
+    codexCliCommand === undefined ||
+    codexCliModel === undefined ||
+    codexCliTimeout === undefined ||
+    genericTimeout === undefined ||
+    genericAcknowledged === undefined ||
+    genericCommand === undefined ||
+    transcriptionEnabled === undefined ||
+    whisperCommand === undefined ||
+    ffmpegCommand === undefined ||
+    transcriptionModel === undefined ||
+    transcriptionLanguage === undefined ||
+    transcriptionTimeout === undefined ||
+    historyAudioDays === undefined ||
+    maxMediaMb === undefined ||
     webEnabled === undefined ||
     webHost === undefined ||
     webPort === undefined ||
@@ -335,6 +653,33 @@ export function parseConfig(
         keepAlive: ollamaKeepAlive ?? '1m',
         timeoutMs: ollamaTimeout,
       },
+      openai: {
+        baseUrl: openaiBaseUrl ?? OPENAI_BASE_URL,
+        model: openaiModel,
+        timeoutMs: openaiTimeout,
+        structuredOutput: openaiStructured ?? 'json_schema',
+      },
+      anthropic: {
+        model: anthropicModel,
+        timeoutMs: anthropicTimeout,
+        maxTokens: anthropicMaxTokens,
+        effort: anthropicEffort ?? null,
+      },
+      gemini: { model: geminiModel, timeoutMs: geminiTimeout },
+      retry: { maxRetries: retryMax, maxWaitMs: retryWait, maxTotalMs: retryTotal },
+      geminiCli: { command: geminiCliCommand ?? 'gemini', model: geminiCliModel, timeoutMs: geminiCliTimeout },
+      codexCli: { command: codexCliCommand ?? 'codex', model: codexCliModel, timeoutMs: codexCliTimeout },
+      genericCli: { command: genericCommand, timeoutMs: genericTimeout, acknowledgeRisk: genericAcknowledged },
+    },
+    transcription: {
+      enabled: transcriptionEnabled,
+      whisperCommand: whisperCommand ?? 'whisper-cli',
+      ffmpegCommand: ffmpegCommand ?? 'ffmpeg',
+      model: transcriptionModel,
+      language: transcriptionLanguage,
+      timeoutMs: transcriptionTimeout,
+      historyAudioDays,
+      maxMediaMb,
     },
     web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort },
     logs: { maxBytes: logsMaxBytes },
@@ -389,12 +734,27 @@ export function mergeConfigJson(base: Obj, overrides: Obj): Obj {
   const overrideProvider = overrides.provider
   if (isObject(baseProvider) && isObject(overrideProvider)) {
     const provider: Obj = { ...baseProvider, ...overrideProvider }
-    for (const key of ['claudeCli', 'ollama']) {
+    for (const key of [
+      'claudeCli',
+      'geminiCli',
+      'codexCli',
+      'genericCli',
+      'ollama',
+      'openai',
+      'anthropic',
+      'gemini',
+      'retry',
+    ]) {
       const baseSection = baseProvider[key]
       const overrideSection = overrideProvider[key]
       if (isObject(baseSection) && isObject(overrideSection)) provider[key] = { ...baseSection, ...overrideSection }
     }
     merged.provider = provider
+  }
+  const baseTranscription = base.transcription
+  const overrideTranscription = overrides.transcription
+  if (isObject(baseTranscription) && isObject(overrideTranscription)) {
+    merged.transcription = { ...baseTranscription, ...overrideTranscription }
   }
   return merged
 }
@@ -531,6 +891,12 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.required(issue.option)
     case 'invalidTimezone':
       return texts.invalidTimezone(issue.option)
+    case 'invalidLanguage':
+      return texts.invalidLanguage(issue.option)
+    case 'secretInConfig':
+      return texts.secretInConfig(issue.option)
+    case 'invalidCommandTemplate':
+      return texts.invalidCommandTemplate(issue.option)
     case 'invalidPort':
       return texts.invalidPort(issue.option)
     case 'belowMinimum':
@@ -561,11 +927,16 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
     concurrency: DEFAULT_CONCURRENCY,
     // No "schedules": the times of the digests are set with `msum schedule add` (they live in the database).
     provider: {
-      // RF-41: there is no default provider. Set "claude-cli" or "ollama" here.
+      // RF-41: there is no default provider. Set "claude-cli", "ollama", "openai", "anthropic" or "gemini" here. The
+      // API providers need "provider.<name>.model" (no default) and a key saved with `msum secret set <name>`: keys
+      // never go in this file.
       primary: null,
       backup: null,
       claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS },
     },
+    // Local transcription of audios (off). To turn it on: `msum whisper download base`, then set "enabled": true and
+    // "model": "base" (see the README).
+    transcription: { enabled: false, whisperCommand: 'whisper-cli', ffmpegCommand: 'ffmpeg', language: 'auto' },
   }
   return `${JSON.stringify(config, null, 2)}\n`
 }

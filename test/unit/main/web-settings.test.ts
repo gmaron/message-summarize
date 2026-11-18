@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ok } from '../../../src/domain/result.js'
 import { makeSchedule } from '../../../src/domain/schedule.js'
 import { nextRunOf } from '../../../src/infrastructure/scheduling/croner-scheduler.js'
+import { PROVIDERS } from '../../../src/main/config.js'
 import { disposeHarnesses, FakeSummarizer, SUMMARY, seedMessages, until, waitFor } from '../../support/cli-harness.js'
 import { BASE, disposeWorlds, type World, world } from '../../support/web-world.js'
 
@@ -157,7 +158,8 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
         { option: 'language', code: 'notOneOf', allowed: ['es', 'en'] },
         { option: 'maxCharsPerConversation', code: 'notPositive' },
         { option: 'concurrency', code: 'notPositive' },
-        { option: 'provider.primary', code: 'notOneOf', allowed: ['claude-cli', 'ollama'] },
+        // Every provider the configuration knows (the web only offers some of them: see `WEB_PROVIDERS`).
+        { option: 'provider.primary', code: 'notOneOf', allowed: [...PROVIDERS] },
         { option: 'provider.ollama.model', code: 'emptyString' },
         { option: 'ownerName', code: 'emptyString' },
       ]),
@@ -508,5 +510,31 @@ describe('a change of the settings applies to the running unit without reconnect
     expect(reply.body.issues).toEqual([{ option: 'provider.ollama.baseUrl', code: 'invalidUrl' }])
     const lan = await w.api('PUT', url('alpha'), { provider: { ollama: { baseUrl: 'http://192.168.1.20:11434' } } })
     expect(lan.status).toBe(200)
+  })
+})
+
+describe('the providers of the table that the web cannot set up yet (RNF-02)', () => {
+  const remoteKind = ['openai', 'anthropic', 'gemini', 'generic-cli', 'gemini-cli', 'codex-cli']
+
+  it('are not chosen from the settings: no provider that sends the chats out is activated without its consent', async () => {
+    const w = await world({ accounts: ['alpha'] })
+    for (const kind of remoteKind) {
+      for (const role of ['primary', 'backup']) {
+        expect((await w.api('PUT', url('alpha'), { provider: { [role]: kind } })).status, `${role} ${kind}`).toBe(400)
+      }
+    }
+    expect(existsSync(accountFile(w, 'alpha'))).toBe(false)
+  })
+
+  it('a provider the file already holds stays visible, and saving it again is fine (it keeps working)', async () => {
+    const w = await world({
+      accounts: ['alpha'],
+      config: { ...BASE, provider: { primary: 'openai', openai: { model: 'm' } } },
+    })
+    const reply = await w.api('GET', url('alpha'))
+    expect(reply.body.options).toEqual({ providers: ['claude-cli', 'ollama', 'openai'], languages: ['es', 'en'] })
+    expect((await w.api('PUT', url('alpha'), { provider: { primary: 'openai' }, unreadOnly: true })).status).toBe(200)
+    // ...but the web does not move it to another provider it cannot set up
+    expect((await w.api('PUT', url('alpha'), { provider: { primary: 'anthropic' } })).status).toBe(400)
   })
 })

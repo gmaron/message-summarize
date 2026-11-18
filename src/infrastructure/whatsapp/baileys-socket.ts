@@ -1,8 +1,16 @@
 import './console-guard.js'
-import makeWASocket, { type AuthenticationState, type BaileysEventMap, Browsers } from 'baileys'
+import type { Readable } from 'node:stream'
+import makeWASocket, {
+  type AuthenticationState,
+  type BaileysEventMap,
+  Browsers,
+  DEF_MEDIA_HOST,
+  downloadContentFromMessage,
+} from 'baileys'
 import { loadSecureAuthState } from './auth-state.js'
 import type { SocketFactory, WhatsAppSocket } from './connection.js'
 import { normalizeJid, selfChatJid } from './jid.js'
+import { type AudioDescriptor, isSafeDirectPath } from './media.js'
 import type {
   WaChat,
   WaContact,
@@ -57,6 +65,24 @@ async function sendTextToSelf(socket: BaileysSocket, text: string): Promise<void
   await socket.sendMessage(jid, { text, linkPreview: null })
 }
 
+/**
+ * Opens the audio of a received message as a stream of its decrypted bytes (RF-15). It is a download from WhatsApp's
+ * media servers: nothing is sent to anyone. No download context is given on purpose: with one, Baileys answers a media
+ * that has expired by asking the sender to upload it again, which is a message out (RNF-17). Without it an expired
+ * media is just an error, and the audio is left untranscribed.
+ */
+async function openAudio(descriptor: AudioDescriptor): Promise<Readable> {
+  // Baileys builds the address from the `url` and `directPath` of the message, which the SENDER writes: left alone, a
+  // sender could make this program fetch any host or LAN address (and learn that we did). So the host is fixed here to
+  // WhatsApp's own media host (`DEF_MEDIA_HOST`, "mmg.whatsapp.net", in baileys/lib/Utils/messages-media.js), the `url`
+  // is never given (only `directPath` and the key), and the path must be a plain path. The fetcher checks the same
+  // before it gets here; this is the second lock.
+  if (!isSafeDirectPath(descriptor.directPath)) throw new Error('invalid-media-path')
+  return downloadContentFromMessage({ mediaKey: descriptor.mediaKey, directPath: descriptor.directPath }, 'audio', {
+    host: DEF_MEDIA_HOST,
+  })
+}
+
 /** The LID Baileys has STORED for a phone-number JID, from the auth state on disk. Never asks WhatsApp. */
 async function storedLid(state: AuthenticationState, pn: string): Promise<string | null> {
   const user = normalizeJid(pn).split('@')[0] ?? ''
@@ -86,6 +112,7 @@ export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
     end: (error) => socket.end(error),
     sendTextToSelf: (text) => sendTextToSelf(socket, text),
     groupMetadata: (jid) => socket.groupMetadata(jid),
+    openAudio,
     signalRepository: {
       lidMapping: {
         // LOCAL lookup (RNF-01, RNF-17): `_getPNsForLIDsImpl` (baileys/lib/Signal/lid-mapping.js) reads its memory cache and

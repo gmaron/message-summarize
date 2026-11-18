@@ -1,4 +1,6 @@
 import type { CaptureMessages } from '../application/capture-messages.js'
+import type { DownloadOutcome } from '../application/download-audios.js'
+import type { SocketFactory } from '../infrastructure/whatsapp/connection.js'
 import type { DaemonConnection } from './daemon.js'
 import type { Runtime } from './runtime.js'
 
@@ -11,8 +13,16 @@ export interface ManagedConnection extends DaemonConnection {
 export interface ConnectionHooks {
   /** A fixed code for something that went wrong inside the adapter. Never chat content (RNF-04). */
   onWarning(code: string): void
+  /** Told about every audio download attempt (a fixed word), for logs. Never anything of the audio. */
+  readonly onDownload?: (outcome: DownloadOutcome) => void
   /** Replaces the capture use case of the runtime (`link` counts events to know when the history is in). */
   readonly capture?: CaptureMessages
+  /**
+   * False: the connection only captures and queues the audios, and never downloads or transcribes one (`msum link`:
+   * the daemon's worker downloads them later, so there is one whisper per installation and the link stays short).
+   * Default true.
+   */
+  readonly downloadAudios?: boolean
 }
 
 export type ConnectionFactory = (runtime: Runtime, hooks: ConnectionHooks) => Promise<ManagedConnection>
@@ -21,15 +31,39 @@ export type ConnectionFactory = (runtime: Runtime, hooks: ConnectionHooks) => Pr
  * The real WhatsApp connection of the runtime's account. The adapter (and Baileys with it) is loaded here and only
  * when a command needs a connection, so `digest`, `status` and `doctor` start fast and never touch the network.
  */
-export const createWhatsAppConnectionFor: ConnectionFactory = async (runtime, hooks) => {
-  const { createWhatsAppConnection } = await import('../infrastructure/whatsapp/index.js')
-  return createWhatsAppConnection({
-    authDir: runtime.layout.authDir,
-    language: runtime.config.language,
-    capture: hooks.capture ?? runtime.capture,
-    clock: runtime.clock,
-    ownIds: runtime.ownIds,
-    storedConversationName: async (id) => (await runtime.repository.findConversation(id))?.name,
-    onWarning: hooks.onWarning,
-  })
-}
+export const createWhatsAppConnectionFor: ConnectionFactory = (runtime, hooks) =>
+  connectionFactoryWith(undefined)(runtime, hooks)
+
+/**
+ * The same, over another socket (a fake one, for tests): everything else, including the audio download worker and its
+ * wiring to the runtime, is the real one.
+ */
+export const connectionFactoryWith =
+  (socketFactory: SocketFactory | undefined): ConnectionFactory =>
+  async (runtime, hooks) => {
+    const { createWhatsAppConnection } = await import('../infrastructure/whatsapp/index.js')
+    return createWhatsAppConnection({
+      ...(socketFactory === undefined ? {} : { socketFactory }),
+      authDir: runtime.layout.authDir,
+      language: runtime.config.language,
+      capture: hooks.capture ?? runtime.capture,
+      clock: runtime.clock,
+      ownIds: runtime.ownIds,
+      storedConversationName: async (id) => (await runtime.repository.findConversation(id))?.name,
+      onWarning: hooks.onWarning,
+      // Audios are downloaded only when something will transcribe them (RF-15, RF-21). The queue is the account database.
+      ...(runtime.transcription.enabled
+        ? {
+            media: {
+              mediaDir: runtime.layout.mediaDir,
+              queue: runtime.downloadQueue,
+              ...(hooks.downloadAudios === false ? { worker: false } : {}),
+              maxDirBytes: runtime.config.transcription.maxMediaMb * 1024 * 1024,
+              // A file that was stored joins the transcription queue: the daemon's transcription starts at once.
+              onDownloaded: () => runtime.transcription.kick(),
+              ...(hooks.onDownload === undefined ? {} : { onOutcome: hooks.onDownload }),
+            },
+          }
+        : {}),
+    })
+  }

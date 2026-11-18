@@ -4,6 +4,8 @@ import type { Conversation, Message, Participant } from '../domain/model.js'
 import { resolveConversationName, unmaskedName } from '../domain/names.js'
 import type {
   ConversationMetadata,
+  MediaFailed,
+  MediaQueued,
   MessageEdited,
   MessageOrigin,
   MessageReceived,
@@ -53,6 +55,10 @@ export interface CaptureMessages {
   /** RF-13. Always stored, for the same reason. */
   participantInfo(event: ParticipantInfo): Promise<void>
   transcriptReady(event: TranscriptReady): Promise<void>
+  /** RF-15. The audio joins the durable download queue, with how to download it. */
+  queueMedia(event: MediaQueued): Promise<void>
+  /** RF-15. Recorded on the message; the audio shows as not transcribed. */
+  mediaFailed(event: MediaFailed): Promise<void>
 }
 
 /**
@@ -149,10 +155,14 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       if (excludedNow(facts, id, conversationName) || deps.ownConversationIds().includes(id)) {
         return { stored: false, isNew: false, downloadAudio: false }
       }
-      const { isNew, hasTranscript } = await repository.insertMessage(message, { isGroup }, effect)
+      const { isNew, hasTranscript, mediaHandled } = await repository.insertMessage(message, { isGroup }, effect)
 
       const recent = origin === 'live' || message.timestamp >= clock.now() - audioHistoryDays * DAY_MS
-      return { stored: true, isNew, downloadAudio: message.kind === 'audio' && !hasTranscript && recent }
+      return {
+        stored: true,
+        isNew,
+        downloadAudio: message.kind === 'audio' && !hasTranscript && !mediaHandled && recent,
+      }
     },
 
     async editMessage({ message, editedAt, isGroup, conversationName, sender }) {
@@ -205,6 +215,16 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
     async transcriptReady({ conversationId, isGroup, conversationName, messageId, transcript }) {
       if (await dropped(conversationId, isGroup, conversationName)) return
       await repository.setTranscript(conversationId, messageId, transcript)
+    },
+
+    async queueMedia({ conversationId, isGroup, conversationName, messageId, descriptor }) {
+      if (await dropped(conversationId, isGroup, conversationName)) return
+      await repository.queueDownload(conversationId, messageId, descriptor)
+    },
+
+    async mediaFailed({ conversationId, isGroup, conversationName, messageId, reason }) {
+      if (await dropped(conversationId, isGroup, conversationName)) return
+      await repository.setMediaFailure(conversationId, messageId, reason)
     },
   }
 }

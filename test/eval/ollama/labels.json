@@ -1,0 +1,344 @@
+{
+  "rule": "Labelling rule: see test/eval/ollama/README.md",
+  "labels": [
+    {
+      "id": "c01",
+      "chat": "Marta Ibáñez",
+      "needsReply": true,
+      "reason": "Asks whether Thursday dinner works and says 'avisame cuando puedas'."
+    },
+    {
+      "id": "c02",
+      "chat": "Ana Gómez",
+      "needsReply": true,
+      "reason": "Asks if the catering budget was seen, needs it today, 'me avisás'."
+    },
+    {
+      "id": "c03",
+      "chat": "Rosa Molina",
+      "needsReply": true,
+      "reason": "Owner only promised to confirm later; Rosa still waits and adds 'avisame si traés el proyector'."
+    },
+    {
+      "id": "c04",
+      "chat": "Luis Ferreyra",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "Owner already answered 'lo firmo y te lo devuelvo'; what is left is an action (sign), not a reply."
+    },
+    {
+      "id": "c05",
+      "chat": "Edificio Torre Sur",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "Building notices; 'hay que confirmar asistencia' is addressed to everyone, not to the owner."
+    },
+    { "id": "c06", "chat": "Carlos Díaz", "needsReply": false, "reason": "Memes and a goodbye, nothing asked." },
+    {
+      "id": "c07",
+      "chat": "Club de Ajedrez",
+      "needsReply": false,
+      "reason": "Tournament news, nobody asks the owner anything."
+    },
+    {
+      "id": "c08",
+      "chat": "Tienda Luz ( +5491155550113 )",
+      "needsReply": false,
+      "reason": "Order ready for pickup, only information."
+    },
+    {
+      "id": "c09",
+      "chat": "Grupo sin nombre",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "The only question ('¿alguien sabe a qué hora cortan la luz?') is open to the whole group."
+    },
+    {
+      "id": "c10",
+      "chat": "Ana Gómez",
+      "needsReply": true,
+      "reason": "Asks if the owner comes to the party and needs to know today."
+    },
+    {
+      "id": "c11",
+      "chat": "Mati ( +5491155550115 )",
+      "needsReply": false,
+      "reason": "Tenant informs a deposit was made; no question."
+    },
+    {
+      "id": "c12",
+      "chat": "+5491155550114",
+      "needsReply": true,
+      "doubtful": true,
+      "reason": "Asks the owner to send a photo of the ID in this chat by Friday: a reply is awaited."
+    },
+    {
+      "id": "c13",
+      "chat": "Nico ( +5491155550112 )",
+      "needsReply": true,
+      "reason": "Asks for the electrician's contact, urgent."
+    },
+    {
+      "id": "c14",
+      "chat": "Lola Vega",
+      "needsReply": true,
+      "reason": "Asks to confirm tomorrow's appointment before 18."
+    },
+    {
+      "id": "c15",
+      "chat": "Beto Sosa",
+      "needsReply": false,
+      "reason": "Small talk already closed with 'gracias por avisar'."
+    },
+    {
+      "id": "c16",
+      "chat": "Cora Beltrán",
+      "needsReply": false,
+      "reason": "Her question was answered; she closes with 'ahí estaré'."
+    },
+    {
+      "id": "c17",
+      "chat": "Eli Paz",
+      "needsReply": false,
+      "reason": "Owner answered; Eli closes with 'entiendo, gracias'."
+    },
+    { "id": "c18", "chat": "Fede Luna", "needsReply": false, "reason": "Owner answered; Fede closes with 'ah, ok'." },
+    { "id": "c19", "chat": "Marcos Acosta", "needsReply": false, "reason": "A repeated reminder, no question." },
+    { "id": "c20", "chat": "Lucía Benítez", "needsReply": false, "reason": "A notice about a water cut, no question." },
+    {
+      "id": "c21",
+      "chat": "Consorcio Los Aromos",
+      "needsReply": false,
+      "reason": "Greeting, a reminder and thanks; nothing asked."
+    },
+    {
+      "id": "c22",
+      "chat": "Vecinos del 3°",
+      "needsReply": false,
+      "reason": "Notices to the group, nothing asked of the owner."
+    },
+    {
+      "id": "c23",
+      "chat": "Feria de Plaza Sur",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "Open question to the group at the start ('¿alguien va a la feria?'), then the chat moved on."
+    },
+    {
+      "id": "c24",
+      "chat": "Comisión de Obras",
+      "needsReply": false,
+      "reason": "Notices and reminders, nothing asked."
+    },
+    {
+      "id": "c25",
+      "chat": "Ágata Fuentes",
+      "needsReply": true,
+      "reason": "Owner said she will look at the tickets today; Ágata answers 'dale, avisame': an explicit ask to be told back."
+    },
+    {
+      "id": "c26",
+      "chat": "Diego Iglesias",
+      "needsReply": false,
+      "reason": "Pickup time agreed; the last messages are confirmations."
+    },
+    {
+      "id": "c27",
+      "chat": "Elena Juárez",
+      "needsReply": true,
+      "doubtful": true,
+      "reason": "Asks for help moving ('a las 9, si podés ayudar') and the owner has not said yes."
+    },
+    {
+      "id": "c28",
+      "chat": "Fabián Kramer",
+      "needsReply": false,
+      "reason": "He only passes the course program and start date."
+    },
+    {
+      "id": "c29",
+      "chat": "Equipo de Fútbol 5",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "'¿Hay lugar para uno más?' is a group question, not addressed to the owner."
+    },
+    {
+      "id": "c30",
+      "chat": "Irene Navarro",
+      "needsReply": true,
+      "reason": "Asks for the gas fitter's contact and now the plumber's."
+    },
+    {
+      "id": "c31",
+      "chat": "Gonzalo Peña",
+      "needsReply": false,
+      "jsonOnly": true,
+      "reason": "Synthetic filler tokens (truncation test), no real message."
+    },
+    {
+      "id": "c32",
+      "chat": "Hilda Ríos",
+      "needsReply": false,
+      "jsonOnly": true,
+      "reason": "Synthetic filler tokens (truncation test), no real message."
+    },
+    {
+      "id": "c33",
+      "chat": "Ana Torres",
+      "needsReply": false,
+      "jsonOnly": true,
+      "reason": "Synthetic filler tokens (truncation test), no real message."
+    },
+    {
+      "id": "c34",
+      "chat": "Omar Vega",
+      "needsReply": false,
+      "jsonOnly": true,
+      "reason": "Synthetic filler tokens (truncation test), no real message."
+    },
+    {
+      "id": "c35",
+      "chat": "Marina Cruz",
+      "needsReply": false,
+      "jsonOnly": true,
+      "reason": "Synthetic filler tokens (truncation test), no real message."
+    },
+    {
+      "id": "c36",
+      "chat": "Emi Díaz",
+      "needsReply": false,
+      "jsonOnly": true,
+      "reason": "Synthetic filler tokens (truncation test), no real message."
+    },
+    {
+      "id": "c37",
+      "chat": "Lucía Paredes",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "Owner promised to confirm tonight and Lucía closed with 'genial, gracias'."
+    },
+    {
+      "id": "c38",
+      "chat": "Mateo Rinaldi",
+      "needsReply": true,
+      "doubtful": true,
+      "reason": "Two untranscribed audios: content unknown, the safe reading is that he expects an answer."
+    },
+    {
+      "id": "c39",
+      "chat": "Julia Soto",
+      "needsReply": false,
+      "reason": "Owner answered by audio and promised to call tomorrow."
+    },
+    {
+      "id": "c40",
+      "chat": "Valentín Cruz",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "The only transcribed audio has no request; the other two are unknown."
+    },
+    {
+      "id": "c41",
+      "chat": "Nuevo Vecino ( +5491155550205 )",
+      "needsReply": true,
+      "reason": "Asks if the owner has the bike room key."
+    },
+    {
+      "id": "c42",
+      "chat": "Cumple de Tía Marta",
+      "needsReply": false,
+      "reason": "Party logistics; the open question was answered by others."
+    },
+    { "id": "c43", "chat": "Vecinos del 5to", "needsReply": false, "reason": "Water cut notice and thanks." },
+    {
+      "id": "c44",
+      "chat": "Bruno Acosta",
+      "needsReply": true,
+      "reason": "His question about the match is unanswered in the visible text; an unseen reply is not assumed."
+    },
+    {
+      "id": "c45",
+      "chat": "Familia Rey",
+      "needsReply": false,
+      "reason": "Plans for Sunday lunch, nothing asked of the owner."
+    },
+    { "id": "c46", "chat": "Camila Ortiz", "needsReply": false, "reason": "She will send photos later; no question." },
+    { "id": "c47", "chat": "Club de Lectura", "needsReply": false, "reason": "Announcement of the monthly book." },
+    {
+      "id": "c48",
+      "chat": "Marcos ( +5491155550213 )",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "Introduction by an unknown contact; no explicit question."
+    },
+    { "id": "c49", "chat": "Diego Molina", "needsReply": true, "reason": "Asks if the owner has the charger he lent." },
+    {
+      "id": "c50",
+      "chat": "Gabriela Núñez",
+      "needsReply": true,
+      "reason": "Asks for an opinion on the contract today."
+    },
+    {
+      "id": "c51",
+      "chat": "Hernán Vidal",
+      "needsReply": true,
+      "reason": "Asks if the owner goes to the parents' meeting and says 'avisame'."
+    },
+    { "id": "c52", "chat": "Irene Sosa", "needsReply": true, "reason": "Asks to borrow the drill this weekend." },
+    { "id": "c53", "chat": "Joaquín Bravo", "needsReply": false, "reason": "Sends a materials list; no question." },
+    {
+      "id": "c54",
+      "chat": "Karina Lugo",
+      "needsReply": false,
+      "reason": "A reminder to bring documents, no reply expected."
+    },
+    { "id": "c55", "chat": "Leandro Paz", "needsReply": false, "reason": "A photo and a comment about the sky." },
+    { "id": "c56", "chat": "Club de Jardinería", "needsReply": false, "reason": "Instructions to the group." },
+    { "id": "c57", "chat": "Mara Ledesma", "needsReply": false, "reason": "Late birthday wishes." },
+    {
+      "id": "c58",
+      "chat": "Nora Giménez",
+      "needsReply": true,
+      "reason": "Asks the owner to confirm the summary is right."
+    },
+    { "id": "c59", "chat": "Omar Ríos", "needsReply": false, "reason": "A reminder about car insurance." },
+    { "id": "c60", "chat": "Pablo Duarte", "needsReply": false, "reason": "Greetings from the coast." },
+    { "id": "c61", "chat": "Quique Salas", "needsReply": false, "reason": "A reminder to pick up a parcel." },
+    { "id": "c62", "chat": "Rita Cano", "needsReply": true, "reason": "Asks to be called." },
+    { "id": "c63", "chat": "Sergio Cano", "needsReply": true, "reason": "Asks to be called." },
+    { "id": "c64", "chat": "Tina Cano", "needsReply": true, "reason": "Asks to be called." },
+    { "id": "c65", "chat": "Ugo Cano", "needsReply": false, "reason": "A reminder to pay the car tax." },
+    { "id": "c66", "chat": "Xavier Roldán", "needsReply": true, "reason": "Asks to confirm the 10 o'clock visit." },
+    { "id": "c67", "chat": "Bea Cortés", "needsReply": false, "reason": "Keys left at the doorman; no question." },
+    { "id": "c68", "chat": "Yago Sanz", "needsReply": true, "reason": "Asks if they have lunch today." },
+    { "id": "c69", "chat": "Carlos Díaz", "needsReply": false, "reason": "He will send a report later." },
+    { "id": "c70", "chat": "Ana Gómez", "needsReply": true, "reason": "Asks if the parcel arrived." },
+    { "id": "c71", "chat": "Dina Funes", "needsReply": true, "reason": "Asks for the monthly invoice." },
+    {
+      "id": "c72",
+      "chat": "Ofelia Quiroga",
+      "needsReply": true,
+      "reason": "Asks if the owner saw the bank's email about updating data."
+    },
+    { "id": "c73", "chat": "Pedro Aguirre", "needsReply": true, "reason": "Invites to play padel on Saturday." },
+    {
+      "id": "c74",
+      "chat": "Rubén Mansilla",
+      "needsReply": false,
+      "doubtful": true,
+      "reason": "Sends a quote and the number of installments; no explicit question."
+    },
+    { "id": "c75", "chat": "Tomás Herrera", "needsReply": true, "reason": "Asks for the electrician's number." },
+    { "id": "c76", "chat": "Úrsula Vega", "needsReply": false, "reason": "She announces she will come by tomorrow." },
+    { "id": "c77", "chat": "Víctor Lamas", "needsReply": false, "reason": "Thanks only." },
+    {
+      "id": "c78",
+      "chat": "Peña de Amigos",
+      "needsReply": false,
+      "reason": "Barbecue logistics, nothing asked of the owner."
+    },
+    { "id": "c79", "chat": "Wanda Pinto", "needsReply": true, "reason": "Asks if the owner completed the form." },
+    { "id": "c80", "chat": "Ximena Ocampo", "needsReply": true, "reason": "Asks for the address." },
+    { "id": "c81", "chat": "Vecinos del 2do", "needsReply": false, "reason": "A notice about cleaning the water tank." }
+  ]
+}

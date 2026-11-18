@@ -1,15 +1,29 @@
 import type { Catalog } from '../../infrastructure/i18n/index.js'
+import { KEY_PROVIDERS } from '../../infrastructure/secrets/index.js'
 import {
   type AccountArg,
   type ArgError,
   type Command,
   type DigestArgs,
   type ImportArgs,
+  PROVIDER_KIND_NAMES,
   parseCommandLine,
 } from './args.js'
 
 /** The `schedule` command with its subcommand. */
 export type ScheduleCommand = Extract<Command, { name: 'schedule' }>
+
+/** The `whisper` command with its subcommand. */
+export type WhisperCommand = Extract<Command, { name: 'whisper' }>
+
+/** The `secret` command with its subcommand. */
+export type SecretCommand = Extract<Command, { name: 'secret' }>
+
+/** The `provider` command with its subcommand. */
+export type ProviderCommand = Extract<Command, { name: 'provider' }>
+
+/** The `ollama` command with its subcommand. */
+export type OllamaCommand = Extract<Command, { name: 'ollama' }>
 
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
@@ -25,12 +39,16 @@ export interface CliHandlers {
   daemon(args: { readonly retry: boolean } & AccountArg): Promise<number>
   digest(args: DigestArgs): Promise<number>
   status(args: AccountArg): Promise<number>
-  doctor(args: AccountArg): Promise<number>
+  doctor(args: { readonly skipModelCheck?: true } & AccountArg): Promise<number>
   retry(args: AccountArg): Promise<number>
   import(args: ImportArgs): Promise<number>
   accounts(): Promise<number>
   open(args: { readonly print: boolean }): Promise<number>
   schedule(command: ScheduleCommand): Promise<number>
+  whisper(command: WhisperCommand): Promise<number>
+  secret(command: SecretCommand): Promise<number>
+  provider(command: ProviderCommand): Promise<number>
+  ollama(command: OllamaCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -61,6 +79,10 @@ export function describeArgError(texts: Catalog['cli'], error: ArgError): string
       return messages.invalidTime(error.value)
     case 'invalidDays':
       return messages.invalidDays(error.value)
+    case 'unknownProvider':
+      return messages.unknownProvider(KEY_PROVIDERS.join(', '))
+    case 'unknownProviderKind':
+      return messages.unknownProviderKind(error.value, PROVIDER_KIND_NAMES)
     case 'conflictingOptions':
       return messages.conflictingOptions(error.value)
   }
@@ -81,7 +103,7 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
     case 'status':
       return handlers.status({ account: command.account })
     case 'doctor':
-      return handlers.doctor({ account: command.account })
+      return handlers.doctor(command)
     case 'retry':
       return handlers.retry({ account: command.account })
     case 'import':
@@ -92,6 +114,14 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.open({ print: command.print })
     case 'schedule':
       return handlers.schedule(command)
+    case 'whisper':
+      return handlers.whisper(command)
+    case 'secret':
+      return handlers.secret(command)
+    case 'provider':
+      return handlers.provider(command)
+    case 'ollama':
+      return handlers.ollama(command)
   }
 }
 

@@ -1,4 +1,5 @@
 import type { Catalog } from './catalog.js'
+import { DISCLOSURE_SENDS } from './disclosure.js'
 import { webEn } from './web-en.js'
 
 const chats = (n: number): string => (n === 1 ? 'chat' : 'chats')
@@ -128,8 +129,30 @@ Commands:
   schedule [ls|add|rm] [--account <id>]  When the digests run: ls lists them with the next run,
                                       add --time HH:MM [--days daily|weekdays|weekends|mon,wed|mon-fri], rm <id>
   status [--account <id>]             Shows the state: accounts, last digest, pending deliveries and next schedules
-  doctor [--account <id>]             Checks that everything is in order and explains how to fix it
+  doctor [--skip-model-check] [--account <id>]  Checks that everything is in order and explains how to fix it
+                                      (with Ollama it also asks your Ollama server which models it has, unless skipped)
   accounts                            Lists the accounts of this installation and their state
+  whisper models                     Lists the whisper.cpp models (to transcribe audios locally) with their sizes
+  whisper download <name>             Downloads a model into the data directory and checks its SHA-256, from
+                                      huggingface.co. The program downloads models only when you ask for it
+                                      (whisper download, ollama pull)
+  secret set <provider> [--account <id>]  Saves the API key of openai, openai-compatible (any other server
+                                      behind provider.openai.baseUrl), anthropic or gemini, read from the input (hidden on
+                                      a terminal, or piped); never as an argument. Not in config.json
+  secret rm <provider> [--account <id>]   Removes a saved key
+  secret ls [--account <id>]          Shows which providers have a key and where it comes from, never the key
+  provider ls [--account <id>]        Lists the providers: what each costs, whether your chats leave the machine, where to,
+                                      its data policy, and whether it is configured and usable here (no network call)
+  provider use <name> [--model <m>] [--backup] [--base-url <url>] [--yes] [--account <id>]
+                                      Chooses the primary (or backup) provider and its model in the config.json of the
+                                      account. Before one that sends your chats out it says what it receives and asks
+  provider test [--backup] [--kind <name>] [--account <id>]
+                                      Tries the provider with ONE real call and a made-up conversation (never your messages)
+  ollama recommend [--all]            Lists the small local models that fit the RAM of this machine, best evaluated first, for you
+                                      to choose (--all also shows the ones that need more RAM). Nothing is picked or written
+  ollama pull <tag> [--allow-remote] [--account <id>]
+                                      Asks the configured Ollama to download a model (only the tag is sent, with a progress
+                                      line). Refuses an Ollama that is not on this machine unless --allow-remote
   open [--print]                      Opens the local web in the browser, already signed in (the daemon serves it).
                                       --print only prints the address
   help                                Shows this help
@@ -156,6 +179,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidDays: (value) =>
         `The days ${JSON.stringify(value)} are not valid: use daily, weekdays, weekends, or day names like mon,wed or mon-fri (also in Spanish: lun, mar, mie, jue, vie, sab, dom).`,
       invalidDate: (option) => `The value of ${option} must look like "YYYY-MM-DD HH:MM" (a valid date and time).`,
+      unknownProviderKind: (value, allowed) => `"${value}" is not a provider. Use one of: ${allowed}.`,
+      unknownProvider: (allowed) => `That provider does not take an API key. Use one of: ${allowed}.`,
     },
     config: {
       heading: 'The configuration has problems:',
@@ -166,6 +191,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       required: (option) => `The option "${option}" is missing.`,
       invalidTimezone: (option) =>
         `The option "${option}" is not a valid time zone (for example "America/Argentina/Buenos_Aires").`,
+      invalidLanguage: (option) =>
+        `The option "${option}" must be "auto" (detect the language) or a language code such as "es" or "en".`,
       invalidPort: (option) => `The option "${option}" must be a port number between 1 and 65535.`,
       belowMinimum: (option) => `The option "${option}" is too small: the minimum is 1048576 (1 MB).`,
       invalidUrl: (option) =>
@@ -174,8 +201,198 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       installationOnly: (option) =>
         `The option "${option}" can only be set in the config.json of the data directory, not in an account's.`,
       noProvider:
-        'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli" or "ollama") in the configuration.',
+        'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" or "gemini") in the configuration.',
       promptFile: (path) => `The prompt file (promptFile) could not be read: ${path}`,
+      invalidCommandTemplate: (option) =>
+        `"${option}" must be a list of texts whose first element is the program; "{{prompt}}" may be an argument on its own, never the program and never part of a longer text.`,
+      genericCliWarning: (acknowledged) =>
+        acknowledged
+          ? 'Warning: the generic CLI provider runs a command that may use tools on chat text written by third parties (prompt injection). You accepted this risk (provider.genericCli.acknowledgeRisk).'
+          : 'Warning: the generic CLI provider is NOT run: its command may use tools on chat text written by third parties (prompt injection). To accept that risk set provider.genericCli.acknowledgeRisk to true.',
+      secretInConfig: (option) =>
+        `"${option}" looks like an API key, and config.json does not hold secrets. Remove it and run "msum secret set <provider>" (or set the environment variable of the provider).`,
+    },
+    provider: {
+      descriptions: {
+        'claude-cli': 'Claude Code, with the plan you already have (no API key)',
+        'gemini-cli': 'Gemini CLI (disabled: it cannot be verified to run without tools)',
+        'codex-cli': 'Codex CLI (disabled: it cannot be verified to run without tools)',
+        'generic-cli': 'Any command that takes the prompt and prints the answer (you accept the risk)',
+        ollama: 'Ollama, a model on your own machine',
+        openai: 'OpenAI API (api.openai.com)',
+        'openai-compatible': 'An OpenAI-compatible server of your own or a third party (LM Studio, OpenRouter...)',
+        anthropic: 'Anthropic API',
+        gemini: 'Gemini API (Google)',
+      },
+      charge: {
+        'pay-per-use': 'it charges per use (API)',
+        'your-plan': 'it uses the plan you already have',
+        'free-local': 'free, it runs on your machine',
+        depends: 'depends on the server or the command',
+      },
+      dataLeaves: 'the text of your chats leaves your machine',
+      dataStays: 'your chats stay on your machine',
+      hostsNone: 'none',
+      hostsYourServer: 'the server in provider.openai.baseUrl',
+      hostsYourCommand: 'whatever your command contacts',
+      hostsDisabled: 'none: it is disabled and nothing is run',
+      policyNone: 'none: ask whoever runs it',
+      roles: { primary: 'primary', backup: 'backup', none: 'not configured' },
+      ls: {
+        title: (account) => `Providers for the account "${account}" (no network call is made):`,
+        kind: (kind, description) => `\n${kind}: ${description}`,
+        info: (charge, data, hosts, policy) =>
+          `  Charge: ${charge}.\n  Data: ${data}.\n  Connects to: ${hosts}.\n  Data policy: ${policy}`,
+        state: (role, key, usable) => `  Here: ${role}. Key: ${key}. Usable now: ${usable}`,
+        keyFrom: (name, source) => `"${name}" from ${source}`,
+        keyMissing: (name) => `no "${name}" key`,
+        keyNotNeeded: 'not needed',
+        keyOptional: (name) => `no "${name}" key (this server may not need one)`,
+        usableYes: 'yes',
+        usableNoModel: 'no: there is no model (provider.<name>.model)',
+        usableNoKey: (name) => `no: there is no "${name}" key (msum secret set ${name})`,
+        usableDisabled: 'no: disabled (its tools cannot be turned off in a way we can verify)',
+        usableNoCommand: 'no: there is no command (provider.genericCli.command)',
+        usableNotAcknowledged: 'no: provider.genericCli.acknowledgeRisk is not true',
+        usableNotChecked: 'not checked here (it needs a call: msum provider test)',
+        usableVerifyFailed: (detail) => `no: ${detail}`,
+        consent: (date) => `  Consent to send your chats: recorded on ${date}.`,
+        consentNone: '  Consent to send your chats: none recorded (review it with "msum provider use <name>").',
+        ollamaRemote: (origin) =>
+          `  Your Ollama is at ${origin}, which is NOT this machine: your chats go to that server. ("Local only" means "your Ollama server": use a loopback URL such as http://127.0.0.1:11434 if it must be on this machine.)`,
+        footer:
+          '\nChoose one with "msum provider use <name>", save its key with "msum secret set <name>" and try it with "msum provider test".',
+      },
+      use: {
+        baseUrlRequired: 'openai-compatible needs --base-url <url> (the server to use).',
+        baseUrlIsOpenAi: 'That is OpenAI itself: use "msum provider use openai" instead.',
+        baseUrlOnlyCompatible: '--base-url is only for openai-compatible.',
+        modelNotForGeneric: 'generic-cli has no model: its command says everything. --model is not accepted.',
+        noModelHint: 'Pass the model with --model <name>: there is no default model, as model names change often.',
+        notWritten: (file) => `Nothing was written (${file} is as it was).`,
+        fileNotJson: (file) => `${file} is not a JSON object. It was not touched: fix or delete it, then try again.`,
+        disclosureTitle: (provider) => `Before activating ${provider}, this is what it receives:`,
+        // The same words as the disclosure of the web (one source: `disclosure.ts`).
+        disclosureSends: `  - ${DISCLOSURE_SENDS.en}`,
+        disclosureHosts: (hosts) => `  - It goes to: ${hosts}.`,
+        disclosureCommand: (command) =>
+          `  - It goes to this command, which decides where the text goes: ${command} (the prompt is its last input; {{prompt}} stays as written). Changing the command asks for a new consent.`,
+        changedWhileEditing: (file) =>
+          `${file} changed while it was being edited, so nothing was written: run it again.`,
+        disclosurePolicy: (url) => `  - What it does with it: ${url}`,
+        disclosureNoPolicy: '  - What it does with it: ask whoever runs it; there is no vendor policy to link.',
+        disclosureLocalOnly:
+          '  - Nothing else is sent. Your messages and digests stay in the data directory of this machine.',
+        genericExplain:
+          'The generic CLI runs a command that may use tools (read files, run programs) on chat text written by third parties, which could try to make it do so (prompt injection). That is why provider.genericCli.acknowledgeRisk must be set to true by you, in config.json: this command never sets it, and until then the generic CLI refuses to run.',
+        confirm: (provider) => `Activate ${provider}? [y/N] `,
+        noTerminal: 'There is no terminal to ask on. Read the above and run it again with --yes if you accept.',
+        cancelled: 'Cancelled. Nothing was written.',
+        wrote: (file, role, provider) => `Done: ${provider} is now the ${role} provider. Written in ${file}.`,
+        keyReminder: (name) =>
+          `It needs an API key: run "msum secret set ${name}" (it is read from the input, never from an argument).`,
+        genericNotAcknowledged:
+          'The generic CLI is chosen but NOT acknowledged yet: it will not run until you set provider.genericCli.acknowledgeRisk to true.',
+        testReminder: 'Try it with "msum provider test".',
+      },
+      test: {
+        noneConfigured: (role) =>
+          `There is no ${role} provider configured: choose one with "msum provider use <name>".`,
+        noModel: (kind) => `There is no model for ${kind}: set it with "msum provider use ${kind} --model <name>".`,
+        noticeExternal: (hosts) =>
+          `One call will be made to ${hosts} with a made-up conversation (invented names). Nothing of yours is sent.`,
+        noticeLocal: (url) => `One call will be made to ${url} (your machine) with a made-up conversation.`,
+        running: (kind) => `Testing ${kind}...`,
+        ok: (kind, ms, needsReply, priority) =>
+          `OK: ${kind} answered in ${ms} ms with a valid summary (needs a reply: ${needsReply}; priority: ${priority}).`,
+        failed: (kind, reason) => `FAILED: ${kind}: ${reason}`,
+        yes: 'yes',
+        no: 'no',
+        priorities: { high: 'high', medium: 'medium', low: 'low' },
+        hints: {
+          missingKey: (name) => `There is no API key. Save it with "msum secret set ${name}".`,
+          authFailed:
+            'The provider refused the key (401/403): check that it is the right one, that it has not expired and that the account can use this model.',
+          unknownModel:
+            'The provider does not know that model: check the name in provider.<name>.model (model names change often).',
+          rateLimit:
+            'The provider answered "too many requests" and the wait was over the budget. Try again later; a free plan has low limits.',
+          noCredit:
+            'The API account has no credit left or reached its spending limit. Add credit in the provider console (an API account is billed separately from a chat subscription); waiting does not help.',
+          timeout: 'The provider did not answer in time. Check the connection, or raise provider.<name>.timeoutMs.',
+          disabled: 'This provider is disabled: nothing was run. See "msum provider ls" and the README.',
+          verifyFailed:
+            'The CLI could not be verified to run without tools (RF-49), or was not found: see "msum doctor".',
+          unreachable: 'It could not be reached: check that it is running and the address in the configuration.',
+          redirect: 'The server answered with a redirect, which is never followed: check the address (baseUrl).',
+          geminiSchemaShape:
+            'Gemini refused the shape of the request (the structured-output fields). This request shape could not be checked against a real answer when it was written: please report it with the message above.',
+          generic: 'See the message above; "msum doctor" checks the configuration without calling anything.',
+        },
+      },
+    },
+    secret: {
+      keyPrompt: (provider) => `API key for ${provider} (what you type is not shown): `,
+      emptyKey: 'No key was given. Nothing was saved.',
+      invalidKey: 'A key has no spaces or line breaks inside. Nothing was saved.',
+      stored: (provider, file) => `The key of ${provider} was saved in ${file} (only you can read it).`,
+      envWins: (names) => `Note: ${names} is set in the environment and takes precedence over the saved key.`,
+      removed: (provider, file) => `The key of ${provider} was removed from ${file}.`,
+      notStored: (provider, file) => `There is no key of ${provider} in ${file}. Nothing changed.`,
+      invalidFile: (file) => `${file} is not a JSON object. It was not touched: fix it or delete it, then try again.`,
+      header: 'API keys (the values are never shown):',
+      row: (provider, source) => `  ${provider}  ${source}`,
+      precedence:
+        'A key is taken from the environment first, then from accounts/<id>/secrets.json, then from secrets.json. "openai" (OPENAI_API_KEY) is only used for https://api.openai.com; any other provider.openai.baseUrl uses "openai-compatible" (MSUM_OPENAI_API_KEY).',
+      sourceEnv: (name) => `environment (${name})`,
+      sourceAccountFile: (file) => `account file (${file})`,
+      sourceFile: (file) => `file (${file})`,
+      sourceNone: 'no key',
+    },
+    whisper: {
+      modelsHeader: 'whisper.cpp models (ggml format). Bigger ones transcribe better and slower:',
+      modelRow: (name, size, installed) => `  ${name}  ${size}  ${installed ? '[downloaded]' : ''}`.trimEnd(),
+      modelsHint: (dir) =>
+        `Download one with "msum whisper download <name>" (into ${dir}). "base" or "small" is a good start for voice notes.`,
+      downloading: (name, size, from) => `Downloading the model "${name}" (${size}) from ${from}`,
+      progress: (percent, received, total) => `  ${percent}%  (${received} of ${total})`,
+      done: (name, path) => `The model "${name}" was downloaded and its SHA-256 checksum is right: ${path}`,
+      alreadyThere: (name, path) => `The model "${name}" is already there and its checksum is right: ${path}`,
+      enableHint: (name) =>
+        `To use it, set "transcription": { "enabled": true, "model": "${name}" } in config.json (see the README).`,
+      unknownModel: (name, known) => `"${name}" is not a known model. Known models: ${known}.`,
+      httpError: (status) => `The server answered with an error (HTTP ${status}). Nothing was saved.`,
+      networkError: 'The connection failed or stopped. Nothing was saved; try again.',
+      sizeError: 'The file does not have the expected size. Nothing was saved.',
+      checksumError: 'The checksum of the downloaded file is not the expected one. The file was discarded.',
+      writeError: (dir) => `The model could not be written in ${dir}. Nothing was saved.`,
+    },
+    ollama: {
+      ramLine: (gb) => `This machine has about ${gb} GB of RAM.`,
+      candidatesHeader:
+        'Models of 3 to 8 billion parameters that fit this machine, those that passed the evaluation first (tag, download, minimum RAM, evaluation):',
+      candidateRow: (tag, size, ram, fits, evaluation) =>
+        `  ${tag}  ${size}  ${ram} RAM  ${evaluation}${fits ? '' : '  [needs more RAM than this machine has]'}`,
+      evaluationNone: 'not evaluated',
+      evaluationDone: (date, validJson, agreement, latency, passed) =>
+        `${passed ? 'PASSED' : 'FAILED'} the evaluation of ${date}: valid JSON ${validJson}, "needs reply" ${agreement} on the clear cases, ${latency} per summary (RF-45 asks for 100% and 90%)`,
+      hidden: (count) =>
+        `${count} more ${count === 1 ? 'candidate needs' : 'candidates need'} more RAM than this machine has and ${count === 1 ? 'is' : 'are'} hidden: "msum ollama recommend --all" shows them.`,
+      noneFits: (minGb) =>
+        `No candidate fits in this machine's RAM (the smallest needs about ${minGb} GB). Use an API provider or the CLI of one instead ("msum provider ls").`,
+      choose:
+        'You choose: nothing is picked or written for you. To use one, download it with "msum ollama pull <tag>" and set it with "msum provider use ollama --model <tag>" (or "provider.ollama.model" in config.json). Models marked "not evaluated" can be measured with "npm run eval:ollama -- --models <tag>" (see "Choosing a local model" in the README).',
+      invalidTag: (tag) => `"${tag}" does not look like an Ollama model tag (for example qwen3:4b).`,
+      remoteRefused: (origin) =>
+        `The configured Ollama is at ${origin}, which is not this machine. Nothing was downloaded. Pull the model there, or repeat with --allow-remote if you really want this server to download it.`,
+      pulling: (tag, origin) =>
+        `Asking the Ollama at ${origin} to download "${tag}". No chat text is sent, only the tag.`,
+      progress: (percent, received, total) => `  ${percent}%  (${received} of ${total})`,
+      status: (status) => `  ${status}`,
+      done: (tag) => `The model "${tag}" was downloaded.`,
+      doneHint: (tag) =>
+        `Choose it with "msum provider use ollama --model ${tag}" and try it with "msum provider test".`,
+      failed: (reason) => `The download failed: ${reason}`,
     },
     unexpectedError: (code) => `Something went wrong (${code}).`,
     cannotCreateDataDir: (path) => `The data directory could not be created: ${path}`,
@@ -432,7 +649,39 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         whatsapp: 'WhatsApp',
         accounts: 'Accounts',
         schedules: 'Schedules',
+        transcription: 'Transcription',
+        whisper: 'whisper.cpp',
+        ffmpeg: 'ffmpeg',
+        whisperModel: 'Whisper model',
+        mediaFiles: 'Audio files',
+        secrets: 'API keys file',
       },
+      mediaFull: (usedMb, capMb) =>
+        `the downloaded audios take ${usedMb} MB of the ${capMb} MB allowed: new audios are refused until some are transcribed`,
+      mediaFullFix:
+        'audios are deleted once transcribed, so a full folder means they are piling up: check that whisper, ffmpeg and the model work (see above), or raise "transcription.maxMediaMb".',
+      transcriptionOff: 'off: audios show as "(audio not transcribed)" and everything else works',
+      transcriptionOn: (language) => `on (language: ${language === 'auto' ? 'detected for each audio' : language})`,
+      whisperOk: (version) => (version === null ? 'found' : `found (${version})`),
+      whisperMissing: (command) => `could not run "${command}"`,
+      whisperFix:
+        'install whisper.cpp (it provides "whisper-cli") or set "transcription.whisperCommand" to its path. Until then audios stay untranscribed.',
+      ffmpegOk: (version) => (version === null ? 'found' : `found (${version})`),
+      ffmpegMissing: (command) => `could not run "${command}"`,
+      ffmpegFix:
+        'install ffmpeg (it converts the audios) or set "transcription.ffmpegCommand" to its path. Until then audios stay untranscribed.',
+      modelNone: 'no model chosen',
+      modelNoneFix: 'run "msum whisper download base" and set "transcription.model" to "base" in config.json.',
+      modelMissing: (path) => `the file does not exist: ${path}`,
+      modelMissingFix:
+        'run "msum whisper download <name>" (see "msum whisper models"), or fix "transcription.model". Until then audios stay untranscribed.',
+      modelVerified: (path) => `${path} (checksum right)`,
+      modelUnverified: (path) => `${path} (no checksum to compare it with)`,
+      modelUnverifiedFix:
+        'it is not one of the known models, so it could not be verified: make sure it is the file you meant.',
+      modelBadChecksum: (path) =>
+        `${path} does not match the checksum of its model: the file is damaged or was changed`,
+      modelBadChecksumFix: 'delete the file and download it again with "msum whisper download <name>".',
       staleImport: (names) =>
         `directories of imports that did not finish are left in accounts/: ${names}. Each holds a copy of a WhatsApp session and of messages`,
       staleImportFix:
@@ -475,6 +724,56 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         provider === 'ollama'
           ? 'start Ollama ("ollama serve") and check "provider.ollama.baseUrl".'
           : 'install Claude Code, sign in with "claude" and check "provider.claudeCli.command".',
+      providerApiOk: (provider, model, keyName, source) =>
+        `${provider} (model ${model}; uses the "${keyName}" key, from ${source})`,
+      providerApiKeyOptional: (provider, model, keyName) =>
+        `${provider} (model ${model}; no "${keyName}" key, which this server may not need; the "openai" key is never sent to it)`,
+      providerApiNoKey: (provider, keyName) => `no "${keyName}" API key for ${provider}`,
+      providerApiNoKeyFix: (keyName, envNames) =>
+        `run "msum secret set ${keyName}" (the key is read from the input, never from the command line) or set ${envNames} in the environment.`,
+      secretsLoose: (file, mode) => `${file} has permissions ${mode}: other users can read the API keys in it`,
+      secretsLooseFix: (file) => `run "chmod 600 ${file}".`,
+      providerApiNoModel: (provider) => `no model chosen for ${provider}`,
+      cliVerified: (provider, version) =>
+        `${provider}${version === null ? '' : ` (${version})`}; its --help lists every flag that turns the tools off`,
+      cliMissingFlags: (provider, flags) =>
+        `this version of ${provider} cannot be run without tools: its --help does not list ${flags}`,
+      cliMissingFlagsFix: (provider) =>
+        `update ${provider} to a version that has those flags. It is not used until then (the chats are written by third parties and must not reach a program with tools).`,
+      cliUnrunnable: (provider) => `could not check ${provider}: "${provider} --help" did not run`,
+      cliUnrunnableFix: (provider) => `run "${provider} --help" yourself and fix what it says.`,
+      cliDisabled: (provider) =>
+        `${provider} is disabled: its documentation offers no way to run it without tools that can be verified`,
+      cliDisabledFix: (provider) =>
+        `choose another provider. If you accept the risk, "generic-cli" can run ${provider} with your own arguments (see the README).`,
+      genericNotAcknowledged: 'generic-cli is refused: its command may use tools on chat text written by third parties',
+      genericNotAcknowledgedFix:
+        'if you accept that risk, set "provider.genericCli.acknowledgeRisk" to true in config.json. Otherwise choose another provider.',
+      genericRisk: (command) =>
+        `running "${command}": it may use tools on chat text written by third parties (prompt injection); you accepted this`,
+      genericPromptInArgv:
+        'the command uses {{prompt}}: the chat goes in the arguments, where other users of this machine can read it (ps), and a long chat can exceed the size limit of arguments',
+      consentMissing: (provider, hosts) =>
+        `no recorded consent for sending chats to ${hosts} (${provider}); the digests are not blocked`,
+      ollamaRemote: (origin) =>
+        `Ollama is at ${origin}, which is not this machine: your chats go to that server (also the "local only" ones, which go to your Ollama server)`,
+      ollamaRemoteFix:
+        'if it must be on this machine, point "provider.ollama.baseUrl" at a loopback address such as http://127.0.0.1:11434; otherwise this is as you set it.',
+      ollamaModelOk: (model) => `the model "${model}" is installed in that Ollama`,
+      ollamaModelMissing: (model) => `Ollama does not have the model "${model}": the digests would fail with it`,
+      ollamaModelMissingFix: (model) =>
+        `download it with "msum ollama pull ${model}" (or choose another with "msum ollama recommend"). To skip this check: "msum doctor --skip-model-check".`,
+      ollamaModelUnknown: (reason) => `could not read the list of models of Ollama (${reason})`,
+      ollamaModelUnknownFix: 'try again, or skip this check with "msum doctor --skip-model-check".',
+      consentMissingFix: (provider) =>
+        `review it with "msum provider use ${provider}": it shows what is sent and records your answer. (A configuration written by hand works without it; this is only a reminder.)`,
+      providerTestHint:
+        'doctor makes no call to the providers: to test the connection for real, with a made-up conversation, run "msum provider test" (and "msum provider test --backup" for the backup).',
+      genericPromptInArgvFix:
+        'if the program can read the prompt from stdin, remove {{prompt}} from "provider.genericCli.command": stdin is the private default.',
+      genericRiskFix: 'prefer a provider that runs without tools (claude-cli, an API, or Ollama).',
+      providerApiNoModelFix: (provider) =>
+        `set "provider.${provider}.model" in config.json: there is no default model, as model names change often.`,
       providerNone: 'no provider chosen',
       whatsappOk: 'account linked',
       whatsappNone: 'no account linked',

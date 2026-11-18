@@ -2,6 +2,7 @@ import { DEFAULT_ACCOUNT_ID, isValidAccountId } from '../domain/account-id.js'
 import {
   CONSENT_TEXT_VERSION,
   consentKeyFor,
+  EXTERNAL_PROVIDERS,
   isEarlier,
   isSetupStep,
   nextStep,
@@ -12,18 +13,19 @@ import {
 import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
 import type { SetupRecord } from '../infrastructure/persistence/sqlite/index.js'
 import { HttpError, type Route, type RouteResult } from '../interfaces/http/router.js'
-import { type AppConfig, DEFAULT_LANGUAGE, isObject, PROVIDERS, type ProviderKind, readConfigObject } from './config.js'
+import { type AppConfig, DEFAULT_LANGUAGE, isObject, type ProviderKind, readConfigObject } from './config.js'
 import {
   serialized,
   type UpdateAccountConfigResult,
   updateAccountConfig,
   updateInstallationLanguage,
 } from './config-writer.js'
+import { consentStateOfKey, recordConsentOfKey } from './consent.js'
 import { type CommandContext, hasSession } from './context.js'
 import { accountLayoutOf, unsafeAccountPath } from './paths.js'
 import { TEST_TIMEOUT_MS, testProvider } from './provider-test.js'
 import { type AccountRoutesSource, knownAccount } from './web-routes.js'
-import { issueViews } from './web-settings.js'
+import { issueViews, WEB_PROVIDERS } from './web-settings.js'
 
 export interface SetupRoutesSource extends AccountRoutesSource {
   readonly ctx: Pick<CommandContext, 'layout' | 'env' | 'web' | 'clock'>
@@ -61,7 +63,9 @@ function readProvider(body: Record<string, unknown>): {
   patch: Record<string, unknown>
 } {
   const { provider, options } = body
-  if (typeof provider !== 'string' || !(PROVIDERS as readonly string[]).includes(provider)) {
+  // Only what the wizard can set today (see `WEB_PROVIDERS`): the others need a model, a key or a command that the wizard
+  // has no field for, and are chosen with `msum provider use`.
+  if (typeof provider !== 'string' || !(WEB_PROVIDERS as readonly string[]).includes(provider)) {
     throw new HttpError(400, 'invalidRequest')
   }
   if (options !== undefined && !isObject(options)) throw new HttpError(400, 'invalidRequest')
@@ -135,6 +139,16 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     return (LANGUAGES as readonly unknown[]).includes(language) ? (language as Language) : DEFAULT_LANGUAGE
   }
 
+  /**
+   * The consent keys the account has given and that still cover what its configuration says (the same rule as `doctor` and
+   * `provider ls`: the kind, the current text, the hosts). The wizard only uses it to tick the box that is already agreed.
+   */
+  const givenConsents = async (account: string): Promise<string[]> => {
+    const resolved = await resolveConfig(account, {})
+    if (!resolved.ok) return []
+    return EXTERNAL_PROVIDERS.filter((key) => consentStateOfKey(setup, account, key, resolved.config) === 'given')
+  }
+
   const view = async (record?: SetupRecord): Promise<SetupView> => {
     const stored = record ?? (await current())
     const account = stored.account
@@ -144,13 +158,7 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
       account,
       linked: account === null ? false : await linkedOf(account),
       language: await languageOf(),
-      consents:
-        account === null
-          ? []
-          : setup
-              .consents(account)
-              .filter((consent) => consent.textVersion >= CONSENT_TEXT_VERSION)
-              .map((consent) => consent.provider),
+      consents: account === null ? [] : await givenConsents(account),
     }
   }
 
@@ -243,11 +251,12 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     const resolved = await resolveConfig(id, patch)
     if (!resolved.ok) return resolved.result
     const key = consentKeyFor(provider, resolved.config.provider.ollama.baseUrl)
-    const agreed = key === null || setup.hasConsent(id, key, CONSENT_TEXT_VERSION)
-    if (key !== null && !agreed && body.consent !== true) {
+    // The consent is for what the configuration would be after this step (the kind and the hosts it discloses).
+    const missing = key !== null && consentStateOfKey(setup, id, key, resolved.config) === 'missing'
+    if (key !== null && missing && body.consent !== true) {
       return { status: 409, body: { error: 'consentRequired', provider: key } }
     }
-    if (key !== null && !agreed) setup.recordConsent(id, key, CONSENT_TEXT_VERSION)
+    if (key !== null && missing) recordConsentOfKey(setup, id, key, resolved.config)
     const failed = await writeAccount(id, patch)
     if (failed !== null) return failed
     await host.reloadConfig(id)
@@ -324,7 +333,7 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
           const config = resolved.config
           // The text of the test goes to the recipient: only with the consent given (ticked or recorded).
           const key = consentKeyFor(provider, config.provider.ollama.baseUrl)
-          if (key !== null && data.consent !== true && !setup.hasConsent(id, key, CONSENT_TEXT_VERSION)) {
+          if (key !== null && data.consent !== true && consentStateOfKey(setup, id, key, config) === 'missing') {
             return { status: 409, body: { error: 'consentRequired', provider: key } }
           }
           const limit = Math.min(ctx.web?.providerTestTimeoutMs ?? TEST_TIMEOUT_MS[provider], TEST_TIMEOUT_MS[provider])
@@ -351,11 +360,19 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     {
       method: 'POST',
       path: '/api/accounts/:id/consents',
-      handler: ({ params, body }) => {
+      handler: async ({ params, body }) => {
         const id = knownAccount(source, params)
-        const { provider } = object(body)
+        const { provider, baseUrl } = object(body)
         if (typeof provider !== 'string' || !providerNeedsConsent(provider)) throw new HttpError(400, 'invalidRequest')
-        setup.recordConsent(id, provider, CONSENT_TEXT_VERSION)
+        if (baseUrl !== undefined && typeof baseUrl !== 'string') throw new HttpError(400, 'invalidRequest')
+        // What is recorded is what the configuration discloses: for an Ollama that is not on this machine, the origin of
+        // its address. The page sends the address it is about to save (the settings ask for the consent first).
+        const resolved = await resolveConfig(
+          id,
+          typeof baseUrl === 'string' && baseUrl.trim() !== '' ? { 'provider.ollama.baseUrl': baseUrl.trim() } : {},
+        )
+        if (!resolved.ok) return resolved.result
+        if (!recordConsentOfKey(setup, id, provider, resolved.config)) throw new HttpError(400, 'invalidRequest')
         return { status: 201, body: { provider, textVersion: CONSENT_TEXT_VERSION } }
       },
     },

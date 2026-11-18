@@ -162,6 +162,10 @@ export class PreviewService {
               env: ctx.env,
               clock: ctx.clock,
               ...(ctx.summarizer === undefined ? {} : { summarizer: ctx.summarizer }),
+              // No unit runs this account, so nothing here transcribes for it: a preview must not start a whisper that no
+              // unit owns (RNF-09), and what is already transcribed is what the preview shows. (With a unit, the preview
+              // runs on the unit's runtime and goes through its transcription and its slot, as a scheduled digest does.)
+              transcriber: null,
             })
             temporary = runtime
             this.temporary.add(temporary)

@@ -2,7 +2,11 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Clock } from '../application/ports/clock.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
+import type { Transcriber } from '../application/ports/transcriber.js'
+import type { Result } from '../domain/result.js'
 import { type Catalog, getCatalog } from '../infrastructure/i18n/index.js'
+import type { CliVerification } from '../infrastructure/llm/index.js'
+import type { WhisperModel } from '../infrastructure/transcription/index.js'
 import type { CliIo } from '../interfaces/cli/run.js'
 import { type AppConfig, describeConfigIssue, languageHint, loadEffectiveConfig } from './config.js'
 import type { Logger } from './logger.js'
@@ -33,12 +37,31 @@ export const DEFAULT_LINK_TIMING: LinkTiming = {
   pollMs: 500,
 }
 
+/** What running `<command> <arguments>` for a probe said. */
+export interface CommandProbe {
+  /** False when the program could not be started (it is not installed, or not executable). */
+  readonly started: boolean
+  /** True when it exited with code 0. */
+  readonly ok: boolean
+  /** The first non-empty line of what it printed (standard output, else standard error), or null. */
+  readonly line: string | null
+}
+
 /** What `doctor` asks of the outside world. Tests replace them. */
 export interface DoctorProbes {
   /** The output of `<command> --version`, or null when it could not be run. */
   commandVersion(command: string, env: NodeJS.ProcessEnv): Promise<string | null>
+  /** Runs `<command> <args>` and reports how it went. For programs that have no `--version` (whisper.cpp). */
+  commandProbe(command: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<CommandProbe>
+  /**
+   * RF-49: whether this Claude Code can be run without tools. Runs `<command> --help` (never a model call) and checks
+   * that every flag of the hardening is listed.
+   */
+  verifyCli(command: string, env: NodeJS.ProcessEnv): Promise<CliVerification>
   /** Whether an Ollama server answers at this base URL. */
   ollamaReachable(baseUrl: string): Promise<boolean>
+  /** The names of the models that Ollama server has (`/api/tags`, short timeout), or why they could not be read. */
+  ollamaModels(baseUrl: string): Promise<Result<string[], string>>
 }
 
 /** What the daemon uses to start the local web, over the configuration. For tests: they ask for a free port. */
@@ -65,6 +88,11 @@ export interface CommandContext {
   readonly connectionFactory: ConnectionFactory
   /** Asks a yes/no question. Without a terminal it answers no. */
   confirm(question: string): Promise<boolean>
+  /**
+   * Reads a secret (an API key) from the input: on a terminal the typing is not echoed and `prompt` is shown; piped, the
+   * whole input is read. Never from the arguments (`ps`, shell history). Returns what was read, possibly empty.
+   */
+  readSecret(prompt: string): Promise<string>
   /** Resolves when the process is asked to stop (SIGINT, SIGTERM). */
   waitForShutdown(): Promise<void>
   readonly probes: DoctorProbes
@@ -74,6 +102,21 @@ export interface CommandContext {
   readonly linkTiming: LinkTiming
   /** Replaces the configured providers. For tests. */
   readonly summarizer?: Summarizer | null
+  /** Replaces the transcriber built from the configuration (null: none). For tests. */
+  readonly transcriber?: Transcriber | null
+  /** How long `msum digest` waits for pending audios and how often it looks while observing a daemon. For tests. */
+  readonly transcriptionTiming?: { readonly waitMs?: number; readonly pollMs?: number }
+  /**
+   * Other hosts for the providers that have a fixed one, for `msum provider test`. For tests, which point them at fake
+   * servers: the product only ever contacts the real hosts (RNF-01).
+   */
+  readonly providerBaseUrls?: { readonly anthropic?: string; readonly gemini?: string }
+  /** Replaces `fetch` for the download of whisper models and of Ollama models, so tests never reach the network. */
+  readonly fetch?: typeof fetch
+  /** Replaces the RAM of this machine (`os.totalmem()`) for `msum ollama recommend`. For tests. */
+  readonly totalMemBytes?: number
+  /** Replaces the table of pinned whisper models (sizes and checksums). For tests, which cannot produce a 77 MB file. */
+  readonly whisperModels?: readonly WhisperModel[]
   /** Called right after `link`, `unlink`, `retry` or `import` takes the lock of an account. For tests: they widen that window. */
   readonly afterLock?: () => void | Promise<void>
   /** Called after each step of an import (session, database, config, built, renamed). For tests: they interrupt it. */

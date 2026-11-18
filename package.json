@@ -18,7 +18,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build": "tsc -p tsconfig.build.json && npm run build:web",
-    "build:web": "vite build --config vite.web.config.ts"
+    "build:web": "vite build --config vite.web.config.ts",
+    "eval:ollama": "node test/eval/run.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",

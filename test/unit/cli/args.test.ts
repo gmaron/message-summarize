@@ -59,6 +59,70 @@ describe('parseCommandLine', () => {
     expect(parse('link', '--account')).toEqual({ ok: false, error: { kind: 'missingValue', value: '--account' } })
   })
 
+  it('parses ollama recommend and pull, and doctor --skip-model-check', () => {
+    expect(parse('ollama')).toEqual({ ok: true, value: { name: 'ollama', action: 'recommend', all: false } })
+    expect(parse('ollama', 'recommend')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'recommend', all: false },
+    })
+    expect(parse('ollama', 'recommend', '--all')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'recommend', all: true },
+    })
+    expect(parse('ollama', 'pull', 'a', '--all')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--all' },
+    })
+    expect(parse('ollama', 'recommend', '--allow-remote')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--allow-remote' },
+    })
+    expect(parse('ollama', 'recommend', 'x')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'x' } })
+    expect(parse('ollama', 'recommend', '--account', 'a')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--account' },
+    })
+    expect(parse('ollama', 'pull', 'qwen3:4b')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'pull', tag: 'qwen3:4b', allowRemote: false, account: null },
+    })
+    expect(parse('ollama', 'pull', 'qwen3:4b', '--allow-remote', '--account', 'work')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'pull', tag: 'qwen3:4b', allowRemote: true, account: 'work' },
+    })
+    expect(parse('ollama', 'pull')).toEqual({ ok: false, error: { kind: 'missingValue', value: '<tag>' } })
+    expect(parse('ollama', 'pull', 'a', 'b')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'b' } })
+    expect(parse('ollama', 'nope')).toEqual({ ok: false, error: { kind: 'unknownSubcommand', value: 'nope' } })
+    expect(parse('doctor', '--skip-model-check')).toEqual({
+      ok: true,
+      value: { name: 'doctor', skipModelCheck: true, account: null },
+    })
+    expect(parse('status', '--skip-model-check')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--skip-model-check' },
+    })
+  })
+
+  it('parses whisper: the list of models by default, and download with a model name', () => {
+    expect(parse('whisper')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
+    expect(parse('whisper', 'models')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
+    expect(parse('whisper', 'download', 'base')).toEqual({
+      ok: true,
+      value: { name: 'whisper', action: 'download', model: 'base' },
+    })
+    expect(parse('whisper', 'download')).toEqual({ ok: false, error: { kind: 'missingValue', value: '<name>' } })
+    expect(parse('whisper', 'download', 'base', 'small')).toEqual({
+      ok: false,
+      error: { kind: 'unexpectedArgument', value: 'small' },
+    })
+    expect(parse('whisper', 'models', 'x')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'x' } })
+    expect(parse('whisper', 'remove')).toEqual({ ok: false, error: { kind: 'unknownSubcommand', value: 'remove' } })
+    expect(parse('whisper', 'models', '--account', 'x')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--account' },
+    })
+  })
+
   it('refuses an account id that is not safe as a directory name', () => {
     const bad = ['', 'Work', '-a', 'a b', '../x', 'a/b', 'a.b', '.', '..', 'a'.repeat(33), 'ñandú', 'a\nb']
     for (const id of bad) {
@@ -190,6 +254,10 @@ describe('runCli', () => {
     schedule: handler('schedule'),
     retry: handler('retry'),
     import: handler('import'),
+    whisper: handler('whisper'),
+    secret: handler('secret'),
+    provider: handler('provider'),
+    ollama: handler('ollama'),
     open: handler('open'),
   }
   const texts = getCatalog('en').cli

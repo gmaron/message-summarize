@@ -27,10 +27,10 @@ const tables = (db: ReturnType<typeof openAppDatabase>): string[] =>
     .filter((name) => !name.startsWith('sqlite_'))
 
 describe('the app.db migration of the setup state (RF-70, RNF-02)', () => {
-  it('is the third version, and a fresh database has the two new tables', () => {
-    expect(APP_MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2, 3])
+  it('is the third version (the fourth keys the consents by hosts), and a fresh database has the two tables', () => {
+    expect(APP_MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2, 3, 4])
     const db = openAppDatabase(pathOf())
-    expect(currentVersion(db)).toBe(3)
+    expect(currentVersion(db)).toBe(4)
     expect(tables(db)).toEqual(['accounts', 'consents', 'schedules', 'schema_version', 'setup'])
     db.close()
   })
@@ -46,7 +46,7 @@ describe('the app.db migration of the setup state (RF-70, RNF-02)', () => {
     old.close()
 
     const upgraded = openAppDatabase(path)
-    expect(currentVersion(upgraded)).toBe(3)
+    expect(currentVersion(upgraded)).toBe(4)
     expect(upgraded.prepare('SELECT id FROM accounts').all()).toEqual([{ id: 'alpha' }])
     expect(upgraded.prepare('SELECT time FROM schedules').all()).toEqual([{ time: '09:00' }])
     const setup = new SqliteSetupRepository(upgraded)
@@ -112,15 +112,16 @@ describe('SqliteSetupRepository', () => {
     const { db, repo, registry } = open()
     registry.register('alpha')
     registry.register('beta')
-    expect(repo.hasConsent('alpha', 'claude-cli', 1)).toBe(false)
+    expect(repo.hasConsent('alpha', 'claude-cli', '', 1)).toBe(false)
     expect(repo.recordConsent('alpha', 'claude-cli', 1)).toBe(true)
     expect(repo.recordConsent('alpha', 'claude-cli', 1)).toBe(false)
-    expect(repo.hasConsent('alpha', 'claude-cli', 1)).toBe(true)
-    expect(repo.hasConsent('alpha', 'claude-cli', 2)).toBe(false)
-    expect(repo.hasConsent('beta', 'claude-cli', 1)).toBe(false)
-    expect(repo.hasConsent('alpha', 'other', 1)).toBe(false)
+    expect(repo.hasConsent('alpha', 'claude-cli', '', 1)).toBe(true)
+    // the text is the current one or the consent does not count: a newer text asks again
+    expect(repo.hasConsent('alpha', 'claude-cli', '', 2)).toBe(false)
+    expect(repo.hasConsent('beta', 'claude-cli', '', 1)).toBe(false)
+    expect(repo.hasConsent('alpha', 'other', '', 1)).toBe(false)
     expect(repo.consents('alpha')).toEqual([
-      { provider: 'claude-cli', textVersion: 1, givenAt: expect.stringMatching(/^2026-11-17T/) },
+      { provider: 'claude-cli', textVersion: 1, hosts: '', givenAt: expect.stringMatching(/^2026-11-17T/) },
     ])
     db.close()
   })

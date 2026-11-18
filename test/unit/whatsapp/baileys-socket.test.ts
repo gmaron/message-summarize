@@ -12,6 +12,8 @@ const made = vi.hoisted(() => ({
   messages: [] as unknown[][],
   /** The authenticated user the full socket reports. */
   user: undefined as { id: string; lid?: string } | undefined,
+  /** Arguments of every call to Baileys' media download. */
+  downloads: [] as unknown[][],
 }))
 vi.mock('baileys', async (importOriginal) => {
   const actual = await importOriginal<typeof import('baileys')>()
@@ -55,8 +57,19 @@ vi.mock('baileys', async (importOriginal) => {
       readMessages: () => made.sent.push('readMessages'),
     }
   }
-  return { ...actual, default: makeWASocket, makeWASocket }
+  const downloadContentFromMessage = async (...args: unknown[]) => {
+    made.downloads.push(args)
+    return 'the stream'
+  }
+  return { ...actual, default: makeWASocket, makeWASocket, downloadContentFromMessage }
 })
+
+const DESCRIPTOR = {
+  directPath: '/v/t62.7117-24/1_2_n.enc?ccb=11-4',
+  mediaKey: new Uint8Array(32).fill(8),
+  mimetype: 'audio/ogg; codecs=opus',
+  fileLength: 10,
+}
 
 const { BAILEYS_SOCKET_OPTIONS, baileysSocketFactory } = await import(
   '../../../src/infrastructure/whatsapp/baileys-socket.js'
@@ -70,6 +83,7 @@ afterEach(() => {
   made.options.length = 0
   made.sent.length = 0
   made.messages.length = 0
+  made.downloads.length = 0
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -122,6 +136,32 @@ describe('the Baileys socket configuration', () => {
     expect(logger.level).toBe('silent')
   })
 
+  it('opens an audio with no download context, so an expired media is never re-requested from the sender (RNF-17)', async () => {
+    const { session } = await create()
+    expect(await session.socket.openAudio(DESCRIPTOR)).toBe('the stream')
+    // The fourth argument of a download with a context is `reuploadRequest`: there is none, and only three are given.
+    expect(made.downloads).toHaveLength(1)
+    expect(made.downloads[0]?.[1]).toBe('audio')
+    expect(made.downloads[0]).toHaveLength(3)
+    expect(made.sent).toEqual([])
+  })
+
+  it('fixes the media host to the one of WhatsApp, and gives Baileys only the path and the key: never a url', async () => {
+    const { session } = await create()
+    await session.socket.openAudio(DESCRIPTOR)
+    // Baileys' own default: DEF_MEDIA_HOST in node_modules/baileys/lib/Utils/messages-media.js
+    expect(made.downloads[0]?.[2]).toEqual({ host: 'mmg.whatsapp.net' })
+    expect(made.downloads[0]?.[0]).toEqual({ mediaKey: DESCRIPTOR.mediaKey, directPath: DESCRIPTOR.directPath })
+  })
+
+  it('refuses to open an audio with no plain directPath, without calling Baileys (second lock, after the fetcher)', async () => {
+    const { session } = await create()
+    for (const directPath of ['', '@evil.example/x', '//evil.example/x', '/v/../x', 'https://evil.example/x']) {
+      await expect(session.socket.openAudio({ ...DESCRIPTOR, directPath })).rejects.toThrow('invalid-media-path')
+    }
+    expect(made.downloads).toEqual([])
+  })
+
   it('hands Baileys the secure auth state and exposes only the narrow socket', async () => {
     const { session, options } = await create()
     expect(options.auth).toBeDefined()
@@ -131,6 +171,7 @@ describe('the Baileys socket configuration', () => {
       'end',
       'ev',
       'groupMetadata',
+      'openAudio',
       'sendTextToSelf',
       'signalRepository',
       'user',
@@ -207,7 +248,7 @@ describe('the LID mapping of the narrow socket (RNF-01, RNF-17)', () => {
     const mapping = session.socket.signalRepository?.lidMapping
     expect(Object.keys(mapping ?? {}).sort()).toEqual(['getPNForLID', 'storedLidForPN'])
     expect(Object.keys(session.socket).sort()).toEqual(
-      ['end', 'ev', 'groupMetadata', 'sendTextToSelf', 'signalRepository', 'user'].sort(),
+      ['end', 'ev', 'groupMetadata', 'openAudio', 'sendTextToSelf', 'signalRepository', 'user'].sort(),
     )
   })
 

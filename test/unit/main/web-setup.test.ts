@@ -13,10 +13,12 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { CONSENT_TEXT_VERSION } from '../../../src/domain/setup.js'
+import { CONSENT_TEXT_VERSION, consentHostsKey } from '../../../src/domain/setup.js'
+import { PROVIDER_INFO } from '../../../src/infrastructure/llm/index.js'
 import { openInstallation } from '../../../src/main/accounts.js'
 import { TEST_TRANSCRIPT } from '../../../src/main/provider-test.js'
 import { disposeHarnesses, until } from '../../support/cli-harness.js'
+import { CLAUDE_HELP } from '../../support/fake-cli.js'
 import { allowSubprocess } from '../../support/network-guard.js'
 import { BASE, disposeWorlds, type World, world } from '../../support/web-world.js'
 
@@ -64,6 +66,10 @@ function fakeClaude(initial: Mode = 'ok') {
     file,
     `#!/usr/bin/env node
 const fs = require('node:fs')
+// RF-49: the daemon runs the CLI only after checking with --help that it has the flags that turn the tools off.
+const first = process.argv[2]
+if (first === '--help') { process.stdout.write(${JSON.stringify(CLAUDE_HELP)}); process.exit(0) }
+if (first === '--version') { process.stdout.write('claude 9.9.9 (fake)\\n'); process.exit(0) }
 let stdin = ''
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', (d) => (stdin += d))
@@ -456,7 +462,15 @@ describe('the whole wizard, and resuming it', () => {
     if (!reopened.ok) throw new Error('could not reopen')
     try {
       expect(reopened.installation.setup.get()).toMatchObject({ step: 'link', account: 'alpha', completedAt: null })
-      expect(reopened.installation.setup.hasConsent('alpha', 'claude-cli', CONSENT_TEXT_VERSION)).toBe(true)
+      // Recorded with what was disclosed (the hosts of Claude Code) and the current text.
+      expect(
+        reopened.installation.setup.hasConsent(
+          'alpha',
+          'claude-cli',
+          consentHostsKey(PROVIDER_INFO['claude-cli'].hosts),
+          CONSENT_TEXT_VERSION,
+        ),
+      ).toBe(true)
     } finally {
       reopened.installation.close()
     }
@@ -721,8 +735,38 @@ describe('an Ollama that is not on this machine needs the consent too (RNF-02)',
     // Local addresses and unrelated edits go through.
     expect((await w.api('PUT', url, { provider: { ollama: { baseUrl: 'http://127.0.0.1:1234' } } })).status).toBe(200)
     expect((await w.api('PUT', url, { unreadOnly: true })).status).toBe(200)
-    expect((await w.api('POST', '/api/accounts/alpha/consents', { provider: 'ollama-remote' })).status).toBe(201)
+    // The consent is for the server that is disclosed: with the address the page is about to save. Without it the address
+    // in force is a local one, and there is nothing to record.
+    expect((await w.api('POST', '/api/accounts/alpha/consents', { provider: 'ollama-remote' })).status).toBe(400)
+    expect(w.installation.setup.consents('alpha')).toEqual([])
+    expect(
+      (await w.api('POST', '/api/accounts/alpha/consents', { provider: 'ollama-remote', baseUrl: REMOTE })).status,
+    ).toBe(201)
+    // Recorded under the kind of the table, with the origin that was disclosed.
+    expect(w.installation.setup.consents('alpha')).toMatchObject([
+      { provider: 'ollama', hosts: new URL(REMOTE).origin, textVersion: CONSENT_TEXT_VERSION },
+    ])
     expect((await w.api('PUT', url, remote)).status).toBe(200)
+    // Another server needs its own consent.
+    expect((await w.api('PUT', url, { provider: { ollama: { baseUrl: 'http://192.168.1.99:11434' } } })).body).toEqual({
+      error: 'consentRequired',
+      provider: 'ollama-remote',
+    })
+  })
+
+  it('the wizard offers only the providers it can set up: the rest of the table is chosen with `msum provider use`', async () => {
+    const w = await world({ accounts: [] })
+    await toProvider(w)
+    for (const provider of ['openai', 'anthropic', 'gemini', 'generic-cli', 'gemini-cli', 'codex-cli', 'nope']) {
+      expect(await put(w, { from: 'provider', provider, consent: true })).toEqual({
+        status: 400,
+        body: { error: 'invalidRequest' },
+      })
+      expect((await w.api('POST', '/api/setup/test-provider', { provider, consent: true })).status).toBe(400)
+    }
+    // nothing was chosen and nothing was recorded, and the wizard is still on its step
+    expect((await get(w)).body).toMatchObject({ step: 'provider', consents: [] })
+    expect(w.installation.setup.consents('alpha')).toEqual([])
   })
 
   it('does not ask while Ollama is not one of the providers in use', async () => {

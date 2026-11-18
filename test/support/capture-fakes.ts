@@ -1,10 +1,13 @@
 import type {
   CaptureRepository,
   ConversationHint,
+  DownloadDescriptor,
   EditOutcome,
   InsertResult,
   UnreadEffect,
 } from '../../src/application/ports/capture-repository.js'
+import type { DownloadQueue, PendingDownload, RetryOutcome } from '../../src/application/ports/download-queue.js'
+import type { PendingAudio, TimeRange, TranscriptionStore } from '../../src/application/ports/transcription-store.js'
 import {
   type Conversation,
   MESSAGE_KINDS,
@@ -20,7 +23,7 @@ import { InMemorySource } from './application-fakes.js'
  * read port. It follows the contract of the port (test/contract/capture-repository.contract.ts), so a use case test
  * cannot pass because this fake is more lenient than the SQLite adapter.
  */
-export class InMemoryCaptureRepository implements CaptureRepository {
+export class InMemoryCaptureRepository implements CaptureRepository, TranscriptionStore, DownloadQueue {
   /** Where the data lives, and the read port over it. */
   readonly source = new InMemorySource()
   private readonly editedAt = new Map<string, number>()
@@ -122,7 +125,11 @@ export class InMemoryCaptureRepository implements CaptureRepository {
     const isNew = this.upsertRow(message, hint, null)
     if (isNew) await this.applyEffect(message.conversationId, effectIfNew, hint)
     const stored = this.messages[this.indexOf(message.conversationId, message.id)]
-    return { isNew, hasTranscript: stored?.transcript != null }
+    return {
+      isNew,
+      hasTranscript: stored?.transcript != null,
+      mediaHandled: this.media.has(this.key(message.conversationId, message.id)),
+    }
   }
 
   private async applyEffect(conversationId: string, effect: UnreadEffect, hint: ConversationHint): Promise<void> {
@@ -158,7 +165,186 @@ export class InMemoryCaptureRepository implements CaptureRepository {
     const old = this.messages[index]
     if (old === undefined) return false
     this.setAt(index, { ...old, transcript })
+    const media = this.media.get(this.key(conversationId, messageId))
+    if (media !== undefined) {
+      this.media.set(this.key(conversationId, messageId), { ...media, status: 'done', descriptor: null })
+    }
     return true
+  }
+
+  /** Per audio: its file and where it is in the transcription queue, like the columns of the SQLite adapter. */
+  readonly media = new Map<
+    string,
+    {
+      ref: string | null
+      status: 'download_pending' | 'pending' | 'done' | 'failed'
+      error: string | null
+      /** The download descriptor, only while the status is 'download_pending'. */
+      descriptor: DownloadDescriptor | null
+      attempts: number
+      /** When a download that failed for a moment is due again (epoch ms). Absent: due now. */
+      nextAttemptAt?: number
+    }
+  >()
+
+  async queueDownload(conversationId: string, messageId: string, descriptor: DownloadDescriptor): Promise<boolean> {
+    const old = this.messages[this.indexOf(conversationId, messageId)]
+    const key = this.key(conversationId, messageId)
+    if (old === undefined || old.kind !== 'audio' || old.transcript !== null || this.media.has(key)) return false
+    this.media.set(key, { ref: null, status: 'download_pending', error: null, descriptor, attempts: 0 })
+    return true
+  }
+
+  async setMedia(conversationId: string, messageId: string, mediaRef: string): Promise<boolean> {
+    const old = this.messages[this.indexOf(conversationId, messageId)]
+    if (old === undefined || old.kind !== 'audio') return false
+    this.media.set(this.key(conversationId, messageId), {
+      ref: mediaRef,
+      status: old.transcript === null ? 'pending' : 'done',
+      error: null,
+      descriptor: null,
+      attempts: 0,
+    })
+    return true
+  }
+
+  async setMediaFailure(conversationId: string, messageId: string, reason: string): Promise<boolean> {
+    const old = this.messages[this.indexOf(conversationId, messageId)]
+    if (old === undefined || old.kind !== 'audio' || old.transcript !== null) return false
+    const known = this.media.get(this.key(conversationId, messageId))
+    this.media.set(this.key(conversationId, messageId), {
+      ref: known?.ref ?? null,
+      status: 'failed',
+      error: reason,
+      descriptor: null,
+      attempts: 0,
+    })
+    return true
+  }
+
+  // ---- DownloadQueue: the durable download queue, over the same data ---------------------------------------------
+
+  async nextDownload(now: number): Promise<PendingDownload | null> {
+    let best: { message: Message; descriptor: DownloadDescriptor } | null = null
+    for (const message of this.messages) {
+      const media = this.media.get(this.key(message.conversationId, message.id))
+      if (media?.status !== 'download_pending' || media.descriptor === null) continue
+      if (media.nextAttemptAt !== undefined && media.nextAttemptAt > now) continue
+      if (best === null || message.timestamp < best.message.timestamp) best = { message, descriptor: media.descriptor }
+    }
+    if (best === null) return null
+    return {
+      conversationId: best.message.conversationId,
+      messageId: best.message.id,
+      timestamp: best.message.timestamp,
+      descriptor: best.descriptor,
+    }
+  }
+
+  async countDownloads(): Promise<number> {
+    return [...this.media.values()].filter((media) => media.status === 'download_pending').length
+  }
+
+  async completeDownload(conversationId: string, messageId: string, mediaRef: string): Promise<boolean> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status !== 'download_pending') return false
+    this.media.set(key, { ref: mediaRef, status: 'pending', error: null, descriptor: null, attempts: 0 })
+    return true
+  }
+
+  async failDownload(conversationId: string, messageId: string, reason: string): Promise<void> {
+    const key = this.key(conversationId, messageId)
+    if (this.media.get(key)?.status === 'download_pending') {
+      this.media.set(key, { ref: null, status: 'failed', error: reason, descriptor: null, attempts: 0 })
+    }
+  }
+
+  async retryDownload(
+    conversationId: string,
+    messageId: string,
+    maxAttempts: number,
+    nextAttemptAt: (attempts: number) => number,
+  ): Promise<RetryOutcome> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status !== 'download_pending') return 'retry'
+    const attempts = media.attempts + 1
+    if (attempts >= maxAttempts) {
+      await this.failDownload(conversationId, messageId, 'download-failed')
+      return 'failed'
+    }
+    this.media.set(key, { ...media, attempts, nextAttemptAt: nextAttemptAt(attempts) })
+    return 'retry'
+  }
+
+  async sweepDownloads(now: number, maxAgeMs: number): Promise<{ invalid: number; expired: number }> {
+    let invalid = 0
+    let expired = 0
+    for (const message of this.messages) {
+      const key = this.key(message.conversationId, message.id)
+      const media = this.media.get(key)
+      if (media?.status !== 'download_pending') continue
+      const fail = (reason: string): void => {
+        this.media.set(key, { ref: null, status: 'failed', error: reason, descriptor: null, attempts: 0 })
+      }
+      if (media.descriptor === null || media.descriptor.directPath === '' || media.descriptor.mediaKey.length === 0) {
+        fail('invalid-media')
+        invalid += 1
+      } else if (message.timestamp < now - maxAgeMs) {
+        fail('expired')
+        expired += 1
+      }
+    }
+    return { invalid, expired }
+  }
+
+  // ---- TranscriptionStore: the queue, over the same data --------------------------------------------------------
+
+  /** The pending audios of the range, oldest first, ties in the order they were stored. */
+  private pendingIn(range?: TimeRange): { message: Message; ref: string }[] {
+    const found: { message: Message; ref: string }[] = []
+    for (const message of this.messages) {
+      const media = this.media.get(this.key(message.conversationId, message.id))
+      if (media?.status !== 'pending' || media.ref === null) continue
+      if (range?.from !== undefined && message.timestamp < range.from) continue
+      if (range?.until !== undefined && message.timestamp >= range.until) continue
+      found.push({ message, ref: media.ref })
+    }
+    return found.sort((a, b) => a.message.timestamp - b.message.timestamp) // stable: ties keep insertion order
+  }
+
+  async nextPending(range?: TimeRange): Promise<PendingAudio | null> {
+    const first = this.pendingIn(range)[0]
+    if (first === undefined) return null
+    return {
+      conversationId: first.message.conversationId,
+      messageId: first.message.id,
+      mediaRef: first.ref,
+      timestamp: first.message.timestamp,
+    }
+  }
+
+  async countPending(range?: TimeRange): Promise<number> {
+    return this.pendingIn(range).length
+  }
+
+  async complete(conversationId: string, messageId: string, transcript: string): Promise<boolean> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status !== 'pending') return false
+    const index = this.indexOf(conversationId, messageId)
+    const old = this.messages[index]
+    if (old === undefined) return false
+    this.setAt(index, { ...old, transcript })
+    this.media.set(key, { ...media, status: 'done', error: null })
+    return true
+  }
+
+  async fail(conversationId: string, messageId: string, reason: string): Promise<void> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status === 'pending') this.media.set(key, { ...media, status: 'failed', error: reason.slice(0, 500) })
   }
 
   async markReadThrough(conversationId: string, messageIds: readonly string[]): Promise<void> {

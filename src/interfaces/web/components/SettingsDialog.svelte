@@ -117,7 +117,10 @@
     saving = true
     failure = null
     try {
-      await api.recordConsent(accountId, key)
+      // The consent is for what is disclosed: for an Ollama that is not on this machine, the address it is reached at.
+      const typed = String(draft['provider.ollama.baseUrl'] ?? '').trim()
+      const baseUrl = typed === '' ? loaded?.values.provider.ollama.baseUrl : typed
+      await api.recordConsent(accountId, key, key === 'claude-cli' ? undefined : baseUrl)
     } catch (error) {
       failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
       saving = false

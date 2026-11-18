@@ -1,4 +1,4 @@
-import { isSetupStep, type SetupStep } from '../../../domain/setup.js'
+import { consentCovers, isSetupStep, type SetupStep } from '../../../domain/setup.js'
 import type { Database } from './database.js'
 
 /** The state of the setup wizard (RF-70). */
@@ -13,6 +13,8 @@ export interface SetupRecord {
 export interface ConsentRecord {
   readonly provider: string
   readonly textVersion: number
+  /** The hosts that were disclosed, as `consentHostsKey` writes them. Empty for a consent recorded before they were kept. */
+  readonly hosts: string
   /** ISO 8601, UTC. */
   readonly givenAt: string
 }
@@ -75,32 +77,47 @@ export class SqliteSetupRepository {
       .run(at, at)
   }
 
-  /** Records that the user agreed to send the text of the chats of `account` to `provider`. False when it was recorded already. */
-  recordConsent(account: string, provider: string, textVersion: number): boolean {
+  /**
+   * Records that the user agreed to send the text of the chats of `account` to `provider` (a kind of the provider table),
+   * as disclosed in `textVersion` of the text and for `hosts` (see `consentHostsKey`). The ONE way a consent is recorded:
+   * the wizard, the settings and `msum provider use` all come here. False when it was recorded already (its date is kept).
+   */
+  recordConsent(account: string, provider: string, textVersion: number, hosts = ''): boolean {
     const result = this.db
       .prepare(
-        'INSERT INTO consents (account_id, provider, text_version, given_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+        'INSERT INTO consents (account_id, provider, text_version, hosts, given_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
       )
-      .run(account, provider, textVersion, this.stamp())
+      .run(account, provider, textVersion, hosts, this.stamp())
     return Number(result.changes) > 0
   }
 
-  /** True when `account` agreed to `provider` for this version of the text or a newer one. */
-  hasConsent(account: string, provider: string, minVersion: number): boolean {
-    return (
-      this.db
-        .prepare('SELECT 1 FROM consents WHERE account_id = ? AND provider = ? AND text_version >= ?')
-        .get(account, provider, minVersion) !== undefined
-    )
+  /**
+   * The consent that covers what is configured now, or null (see `consentCovers`: same kind, the current text, the same
+   * hosts, or none recorded for a kind with fixed hosts). When more than one covers it, the latest.
+   */
+  findConsent(account: string, provider: string, hostsKey: string, currentVersion: number): ConsentRecord | null {
+    const found = this.consents(account)
+      .filter((consent) => consentCovers(consent, provider, hostsKey, currentVersion))
+      .at(-1)
+    return found ?? null
   }
 
+  /** True when `findConsent` finds one. */
+  hasConsent(account: string, provider: string, hostsKey: string, currentVersion: number): boolean {
+    return this.findConsent(account, provider, hostsKey, currentVersion) !== null
+  }
+
+  /** Every consent of the account, oldest first. */
   consents(account: string): ConsentRecord[] {
     const rows = this.db
-      .prepare('SELECT provider, text_version, given_at FROM consents WHERE account_id = ? ORDER BY given_at, provider')
-      .all(account) as { provider: string; text_version: number; given_at: string }[]
+      .prepare(
+        'SELECT provider, text_version, hosts, given_at FROM consents WHERE account_id = ? ORDER BY given_at, provider, hosts',
+      )
+      .all(account) as { provider: string; text_version: number; hosts: string; given_at: string }[]
     return rows.map((row) => ({
       provider: row.provider,
       textVersion: Number(row.text_version),
+      hosts: row.hosts,
       givenAt: row.given_at,
     }))
   }

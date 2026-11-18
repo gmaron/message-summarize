@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { Readable } from 'node:stream'
 import type { CaptureMessages } from '../../src/application/capture-messages.js'
 import type { WhatsAppSocket } from '../../src/infrastructure/whatsapp/connection.js'
 import type { SocketFactory, SocketSession } from '../../src/infrastructure/whatsapp/index.js'
@@ -34,6 +35,8 @@ export function recordingCapture(): { capture: CaptureMessages; calls: RecordedC
     conversationMetadata: record('conversationMetadata'),
     participantInfo: record('participantInfo'),
     transcriptReady: record('transcriptReady'),
+    queueMedia: record('queueMedia'),
+    mediaFailed: record('mediaFailed'),
   }
   return { capture, calls }
 }
@@ -59,7 +62,15 @@ export const FORBIDDEN_SOCKET_METHODS = [
 ] as const
 
 /** What the adapter is allowed to touch on a socket. */
-const ALLOWED_SOCKET_MEMBERS = new Set(['ev', 'user', 'end', 'groupMetadata', 'signalRepository', 'sendTextToSelf'])
+const ALLOWED_SOCKET_MEMBERS = new Set([
+  'ev',
+  'user',
+  'end',
+  'groupMetadata',
+  'signalRepository',
+  'sendTextToSelf',
+  'openAudio',
+])
 
 export interface FakeSocket {
   /** The object handed to the adapter: a proxy that records every member read, allowed or not. */
@@ -80,6 +91,12 @@ export interface FakeSocket {
   sent: { to: string; text: string }[]
   /** Makes `sendTextToSelf` reject, as a failed send does. */
   sendFails: boolean
+  /** What `openAudio` streams. Null: the media is gone and the download fails. */
+  audioBytes: Buffer | null
+  /** The descriptors `openAudio` was asked to open. */
+  audioRequests: unknown[]
+  /** When set, `openAudio` throws it (a Boom with a status, for instance). */
+  audioFailure: unknown
   listenerCount(): number
 }
 
@@ -103,6 +120,9 @@ export function fakeSocket(): FakeSocket {
     groupQueries: [],
     sent: [],
     sendFails: false,
+    audioBytes: Buffer.from('fake ogg bytes'),
+    audioRequests: [],
+    audioFailure: undefined,
     listenerCount: () => ev.eventNames().reduce((sum, name) => sum + ev.listenerCount(name), 0),
   }
   const target: Record<string, unknown> = {
@@ -115,6 +135,13 @@ export function fakeSocket(): FakeSocket {
       const subject = state.groupSubjects[jid]
       if (subject === undefined) throw new Error('not found')
       return { subject }
+    },
+    // What the audio download gives: a stream of the bytes in `audioBytes` (or an error when it is null).
+    openAudio: async (message: unknown) => {
+      state.audioRequests.push(message)
+      if (state.audioFailure !== undefined) throw state.audioFailure
+      if (state.audioBytes === null) throw new Error('media gone')
+      return Readable.from([state.audioBytes])
     },
     // Like the real wrapper: the destination comes from `user`, never from the caller.
     sendTextToSelf: async (text: string) => {

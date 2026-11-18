@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises'
+import type { DownloadOutcome } from '../application/download-audios.js'
 import { exactIdOf, hasIdPattern, idPattern } from '../domain/exclusion.js'
 import { mergeByTime, scheduleToCron } from '../domain/schedule.js'
 import { getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
@@ -12,7 +13,14 @@ import {
   WEB_RETRY_MIN_WAIT_MS,
   writeBlocked,
 } from './blocked.js'
-import { type AppConfig, configStamp, describeConfigIssue, loadEffectiveConfig, readConfigObject } from './config.js'
+import {
+  type AppConfig,
+  configStamp,
+  describeConfigIssue,
+  loadEffectiveConfig,
+  readConfigObject,
+  usesGenericCli,
+} from './config.js'
 import { editAccountPrivacyLists, type PrivacyEdit } from './config-writer.js'
 import { type CommandContext, hasSession } from './context.js'
 import { type CountingCapture, countingCapture } from './counting-capture.js'
@@ -392,6 +400,16 @@ export class DaemonHost {
       }
       this.invalidConfigs.delete(id)
       const next = this.withPendingMarks(id, loaded.value)
+      // The transcriber, the queue, the history days and the download worker of the connection are wired when the unit
+      // starts: `reconfigure` does not rebuild them. A change of `transcription` therefore restarts the unit, with the full
+      // release of a stop (no whisper, no download, no open handle) and a start on the next look; everything else is live.
+      if (JSON.stringify(next.transcription) !== JSON.stringify(unit.runtime.config.transcription)) {
+        logger.info('account.restarting', { reason: 'transcription' })
+        this.languages.set(id, loaded.value.language)
+        await this.stopUnit(id, 'restart')
+        this.notifyChange()
+        return
+      }
       if (JSON.stringify(next) !== JSON.stringify(unit.runtime.config)) {
         this.languages.set(id, loaded.value.language)
         unit.daemon.applyConfig(next)
@@ -946,6 +964,10 @@ export class DaemonHost {
       return
     }
     this.idleReasons.delete(id)
+    // RF-49: the generic CLI can run tools on chat text written by third parties: said when the account starts.
+    if (this.ctx.summarizer === undefined && usesGenericCli(config)) {
+      this.ctx.io.err(texts.config.genericCliWarning(config.provider.genericCli.acknowledgeRisk))
+    }
     this.configStamps.set(id, stamp)
     this.invalidConfigs.delete(id)
     // A unit is being started, so nothing is blocked: whatever the host remembered of an earlier block is dropped, and
@@ -954,19 +976,13 @@ export class DaemonHost {
 
     let runtime: Runtime | null = null
     try {
-      runtime =
-        adopted?.runtime ??
-        createRuntime({
-          layout: account,
-          config,
-          env: this.ctx.env,
-          clock: this.ctx.clock,
-          ...(this.ctx.summarizer === undefined ? {} : { summarizer: this.ctx.summarizer }),
-        })
+      runtime = adopted?.runtime ?? this.openRuntime(account, config)
       const connection =
         adopted?.connection ??
         (await this.ctx.connectionFactory(runtime, {
           onWarning: (code) => logger.warn('adapter.warning', { code }),
+          // Only a fixed word: never the audio, its key or its path.
+          onDownload: this.onDownload(logger),
         }))
       const guarded = this.guard(id, connection, adopted !== undefined)
       const unitRuntime = runtime
@@ -1045,6 +1061,7 @@ export class DaemonHost {
         return connection.status
       },
       selfChat: () => connection.selfChat(),
+      kickDownloads: () => connection.kickDownloads?.(),
       onStatus: (listener) =>
         connection.onStatus((status) => {
           try {
@@ -1252,9 +1269,12 @@ export class DaemonHost {
       this.linkSnapshots.set(id, { state: 'waitingQr' })
       this.setState(id, 'linking')
       const counted = countingCapture(runtime.capture)
+      // The daemon is the one process of the installation, so the audios of the history are downloaded here (and the
+      // socket, with its worker, is handed over to the unit): one transcription at a time through the process slot.
       const connection = await this.ctx.connectionFactory(runtime, {
         capture: counted.capture,
         onWarning: (code) => logger.warn('adapter.warning', { code }),
+        onDownload: this.onDownload(logger),
       })
       // The block is forgotten only now that the link has a connection: a start that fails before it keeps it.
       removedBlock = this.blocks.get(id)
@@ -1308,14 +1328,27 @@ export class DaemonHost {
     }
   }
 
+  /** The runtime of an account as this host builds it, for a unit and for a link alike (the transcription is the same). */
   private openRuntime(account: ReturnType<typeof accountLayoutOf>, config: AppConfig): Runtime {
+    const logger = scopedLogger(this.ctx.logger, { account: account.id })
     return createRuntime({
       layout: account,
       config,
       env: this.ctx.env,
       clock: this.ctx.clock,
       ...(this.ctx.summarizer === undefined ? {} : { summarizer: this.ctx.summarizer }),
+      ...(this.ctx.transcriber === undefined ? {} : { transcriber: this.ctx.transcriber }),
+      onTranscription: (outcome) =>
+        (outcome === 'transcribed' ? logger.info : logger.warn).call(logger, 'transcription.audio', {
+          reason: outcome,
+        }),
     })
+  }
+
+  /** What the log says of an audio download: a fixed word, never the audio, its key or its path. */
+  private onDownload(logger: ReturnType<typeof scopedLogger>): (outcome: DownloadOutcome) => void {
+    return (outcome) =>
+      (outcome === 'downloaded' ? logger.info : logger.warn).call(logger, 'media.download', { reason: outcome })
   }
 
   private makeFlow(id: string, runtime: Runtime, connection: ManagedConnection, counted: CountingCapture): LinkFlow {

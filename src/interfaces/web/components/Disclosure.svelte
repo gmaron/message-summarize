@@ -25,6 +25,8 @@
 </script>
 
 <dl class="disclosure">
+  <dt>{d.sendsLabel}</dt>
+  <dd>{d.sends}</dd>
   <dt>{d.costLabel}</dt>
   <dd>{info.cost}</dd>
   <dt>{d.leavesLabel}</dt>

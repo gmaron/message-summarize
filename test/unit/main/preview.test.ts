@@ -29,6 +29,7 @@ async function setup(
   await seedMessages(seeded, [{ id: 'm1', text: 'hello Ana', timestamp: Date.now() - 3_600_000 }])
   seeded.close()
   const opened: Runtime[] = []
+  const seen: Parameters<typeof createRuntime>[0][] = []
   const closed: Runtime[] = []
   const events: PreviewEvent[] = []
   const service = new PreviewService({
@@ -38,6 +39,7 @@ async function setup(
     accountStamp: options.stamp ?? (() => 'created-1'),
     ...(options.ttlMs === undefined ? {} : { ttlMs: options.ttlMs }),
     openRuntime: (runtimeOptions) => {
+      seen.push(runtimeOptions)
       const runtime = createRuntime(runtimeOptions)
       opened.push(runtime)
       const close = runtime.close
@@ -50,10 +52,19 @@ async function setup(
       }
     },
   })
-  return { h, service, events, opened, closed, summarizer }
+  return { h, service, events, opened, closed, summarizer, seen }
 }
 
 describe('PreviewService', () => {
+  it('never lets the temporary runtime of an account with no unit transcribe: no whisper without a unit that owns it (RNF-09)', async () => {
+    const { service, events, seen, opened } = await setup()
+    expect(await service.start('default')).toEqual({ ok: true })
+    await until(() => events.length === 1, 'the preview')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.transcriber).toBeNull()
+    expect(opened[0]?.transcription.enabled).toBe(false)
+  })
+
   it('opens a temporary runtime for an account with no unit and closes it when the preview ends', async () => {
     const { service, events, opened, closed } = await setup()
     expect(await service.start('default')).toEqual({ ok: true })

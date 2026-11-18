@@ -106,9 +106,15 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     /** The real call of "Test connection": only on a click; `consent` is the ticked box for an external provider. */
     testProvider: (body: { provider: string; options: Record<string, string>; consent?: boolean }) =>
       request<ProviderTestResult>('POST', '/api/setup/test-provider', body),
-    /** Records the consent of an account to an external provider (RNF-02). */
-    recordConsent: (id: string, provider: string) =>
-      request<{ provider: string }>('POST', `/api/accounts/${enc(id)}/consents`, { provider }),
+    /**
+     * Records the consent of an account to an external provider (RNF-02). `baseUrl` is the address of an Ollama that is not
+     * on this machine: the consent is for the server that was disclosed.
+     */
+    recordConsent: (id: string, provider: string, baseUrl?: string) =>
+      request<{ provider: string }>('POST', `/api/accounts/${enc(id)}/consents`, {
+        provider,
+        ...(baseUrl === undefined ? {} : { baseUrl }),
+      }),
     accounts: async () => (await request<{ accounts: AccountView[] }>('GET', '/api/accounts')).accounts,
     createAccount: (id: string) => request<{ id: string }>('POST', '/api/accounts', { id }),
     startLink: (id: string) => request<{ state: string }>('POST', `${account(id)}/link`),

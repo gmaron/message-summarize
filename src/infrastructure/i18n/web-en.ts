@@ -1,4 +1,5 @@
 import type { WebTexts } from './catalog.js'
+import { DISCLOSURE_SENDS } from './disclosure.js'
 
 /** The texts of the web, in a module of their own: the page imports this one and not the whole catalog. */
 export const webEn: WebTexts = {
@@ -396,6 +397,9 @@ export const webEn: WebTexts = {
       generate: 'Generate again',
     },
     disclosure: {
+      sendsLabel: 'What is sent?',
+      // The same words as `msum provider use` (one source: `disclosure.ts`).
+      sends: DISCLOSURE_SENDS.en,
       costLabel: 'Does it cost money?',
       leavesLabel: 'Does data leave this computer?',
       whoLabel: 'To whom?',

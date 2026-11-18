@@ -8,9 +8,13 @@ export interface DataLayout {
   readonly dataDir: string
   /** Installation-wide defaults. An account may override options in its own config.json. */
   readonly configFile: string
+  /** The API keys of the installation (0600, never in config.json): `{ "openai": "...", ... }`. See `msum secret`. */
+  readonly secretsFile: string
   /** The installation database: which accounts exist (and, later, their schedules). */
   readonly appDbFile: string
   readonly accountsDir: string
+  /** The whisper models, shared by every account (`msum whisper download`). Not part of any account: unlink never touches it. */
+  readonly modelsDir: string
   /** Held by the running daemon (host, pid and a heartbeat in its mtime). One daemon per installation. */
   readonly lockFile: string
   /** The single-account layout of the first versions: `account/`. Migrated to `accounts/default/` (see `accounts.ts`). */
@@ -29,12 +33,20 @@ export interface AccountLayout {
   readonly dir: string
   readonly dbFile: string
   readonly authDir: string
+  /** The audios downloaded for transcription (0700, files 0600). It is inside the account: unlink deletes it with the rest. */
+  readonly mediaDir: string
+  /** The models directory of the installation (see `DataLayout.modelsDir`), so a runtime can resolve `transcription.model`. */
+  readonly modelsDir: string
   /** The QR of a link in progress. A pairing credential: written only while linking, deleted after. */
   readonly qrFile: string
   /** Present while the daemon must not use the account (see `blocked.ts`). */
   readonly blockedFile: string
   /** Optional overrides of the installation config.json. */
   readonly configFile: string
+  /** Optional API keys of this account: they win over those of the installation (`secretsFile` of `DataLayout`). */
+  readonly secretsFile: string
+  /** The API keys of the installation, so a runtime can resolve a key without the `DataLayout`. */
+  readonly installationSecretsFile: string
   /** Held by a running `msum link` of this account (pid and heartbeat, like the daemon lock): the daemon leaves the account alone meanwhile. */
   readonly linkLockFile: string
   /** What the daemon last said about the connection of this account (see `unit-state.ts`). */
@@ -71,8 +83,10 @@ export function layoutOf(dataDir: string): DataLayout {
   return {
     dataDir,
     configFile: join(dataDir, 'config.json'),
+    secretsFile: join(dataDir, 'secrets.json'),
     appDbFile: join(dataDir, 'app.db'),
     accountsDir: join(dataDir, 'accounts'),
+    modelsDir: join(dataDir, 'models'),
     lockFile: join(dataDir, 'daemon.pid'),
     legacyAccountDir: join(dataDir, 'account'),
     legacyQrFile: join(dataDir, 'qr.png'),
@@ -93,9 +107,13 @@ export function accountLayoutOf(layout: DataLayout, id: string): AccountLayout {
     dir,
     dbFile: join(dir, 'db.sqlite'),
     authDir: join(dir, 'auth'),
+    mediaDir: join(dir, 'media'),
+    modelsDir: layout.modelsDir,
     qrFile: join(dir, 'qr.png'),
     blockedFile: join(dir, 'blocked.json'),
     configFile: join(dir, 'config.json'),
+    secretsFile: join(dir, 'secrets.json'),
+    installationSecretsFile: layout.secretsFile,
     linkLockFile: join(dir, 'link.lock'),
     stateFile: join(dir, 'state.json'),
   }
@@ -162,7 +180,12 @@ export async function loosePermissions(
 ): Promise<PermissionProblem[]> {
   if (process.platform === 'win32') return []
   const problems: PermissionProblem[] = []
-  const dirs = [layout.dataDir, layout.accountsDir, ...accounts.flatMap((account) => [account.dir, account.authDir])]
+  const dirs = [
+    layout.dataDir,
+    layout.accountsDir,
+    layout.modelsDir,
+    ...accounts.flatMap((account) => [account.dir, account.authDir, account.mediaDir]),
+  ]
   for (const dir of dirs) {
     const info = await stat(dir).catch(() => null)
     if (info === null) continue

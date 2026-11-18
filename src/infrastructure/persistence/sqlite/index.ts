@@ -31,3 +31,4 @@ export { SqliteScheduleRepository, type StoredSchedule } from './schedule-reposi
 export { type ConsentRecord, type SetupRecord, SqliteSetupRepository } from './setup-repository.js'
 export { SqliteDigestSource } from './source.js'
 export { type OutboxEntry, SqliteDigestStore } from './store.js'
+export { SqliteTranscriptionStore } from './transcription-store.js'
