@@ -115,7 +115,7 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
     const w = await world({ accounts: ['alpha'] })
     await w.api('PUT', url('alpha'), {
       hideRest: true,
-      ownerName: 'Gaston Test',
+      ownerName: 'Ana Test',
       provider: { claudeCli: { model: 'opus' } },
     })
     const reply = await w.api('PUT', url('alpha'), {

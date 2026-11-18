@@ -76,7 +76,7 @@ describe('the settings form', () => {
   })
 
   it('an emptied field is null: it gives the value back to the installation (or is "none" for a provider)', () => {
-    const base = view({ ownerName: 'Gaston Test' })
+    const base = view({ ownerName: 'Ana Test' })
     const draft = { ...draftOf(base), ownerName: '', 'provider.primary': '', maxCharsPerConversation: '' }
     expect(buildPatch(base, draft)).toEqual({
       ok: true,
