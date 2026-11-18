@@ -4,7 +4,12 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { OLLAMA_CANDIDATES, passesRf45 } from '../../../src/infrastructure/llm/index.js'
+import {
+  listCandidates,
+  OLLAMA_CANDIDATES,
+  type OllamaCandidate,
+  passesRf45,
+} from '../../../src/infrastructure/llm/index.js'
 import {
   type CaseRecord,
   EVAL_DIR,
@@ -256,11 +261,14 @@ describe('runEval against a fake Ollama', () => {
     expect(table).toMatch(/half\s+\d+\s+100\.0%\s+\d+\.\d%.*FAIL/)
     expect(table).toMatch(/broken\s+\d+\s+0\.0%\s+0\.0%.*FAIL/)
     expect(table).toMatch(/invalid\s+\d+\s+0\.0%\s+0\.0%.*FAIL/)
-    // only the passing model gets the line that says how to record it
-    expect(table).toContain(
-      "good: set  evaluated: true, result: { date: '2026-11-17', validJsonRate: 1, needsReplyAgreement: 1 }",
+    // every model, passing or failing, gets the line that says how to record it
+    expect(table).toMatch(
+      /good: set {2}evaluated: true, result: \{ date: '2026-11-17', validJsonRate: 1, needsReplyAgreement: 1, meanLatencyMs: \d+, passed: true \}/,
     )
-    expect(table).not.toContain('half: set')
+    expect(table).toMatch(
+      /half: set .*validJsonRate: 1, needsReplyAgreement: 0\.\d+, meanLatencyMs: \d+, passed: false \}/,
+    )
+    expect(table).toMatch(/broken: set .*validJsonRate: 0, needsReplyAgreement: 0, .*passed: false \}/)
     expect(readdirSync(h.dir).sort()).toEqual([
       '2026-11-17-broken.json',
       '2026-11-17-good.json',
@@ -342,19 +350,87 @@ describe('runEval against a fake Ollama', () => {
 })
 
 describe('the table of candidates and the committed evaluations', () => {
-  it('marks a candidate as evaluated when a committed results file says it passed', () => {
+  interface ResultFile {
+    date: string
+    model: string
+    validJsonRate: number
+    needsReplyAgreement: number
+    meanLatencyMs: number
+    passed: boolean
+  }
+  /** The latest results file of each model. */
+  const committedResults = (): Map<string, ResultFile> => {
     const resultsDir = join(EVAL_DIR, 'results')
-    if (!existsSync(resultsDir)) return
+    const latest = new Map<string, ResultFile>()
+    if (!existsSync(resultsDir)) return latest
     for (const name of readdirSync(resultsDir).filter((file) => file.endsWith('.json'))) {
-      const result = JSON.parse(readFileSync(join(resultsDir, name), 'utf8')) as {
-        model: string
-        validJsonRate: number
-        needsReplyAgreement: number
-      }
-      const candidate = OLLAMA_CANDIDATES.find((entry) => entry.tag === result.model)
-      if (candidate === undefined || !passesRf45(result)) continue
-      expect(candidate.evaluated, `${result.model} passed in ${name} but the table says it is not evaluated`).toBe(true)
+      const result = JSON.parse(readFileSync(join(resultsDir, name), 'utf8')) as ResultFile
+      const seen = latest.get(result.model)
+      if (seen === undefined || seen.date < result.date) latest.set(result.model, result)
     }
+    return latest
+  }
+
+  it('records every committed result in the table, passing or failing, and nothing else as evaluated', () => {
+    const results = committedResults()
+    expect(results.size).toBeGreaterThan(0)
+    for (const [model, result] of results) {
+      const candidate = OLLAMA_CANDIDATES.find((entry) => entry.tag === model)
+      expect(candidate, `${model} has a results file but is not a candidate`).toBeDefined()
+      expect(candidate?.evaluated, `${model} has a results file but the table says it is not evaluated`).toBe(true)
+      expect(candidate?.result).toEqual({
+        date: result.date,
+        validJsonRate: Number(result.validJsonRate.toFixed(4)),
+        needsReplyAgreement: Number(result.needsReplyAgreement.toFixed(4)),
+        meanLatencyMs: result.meanLatencyMs,
+        passed: result.passed,
+      })
+      expect(result.passed).toBe(passesRf45(result))
+    }
+    for (const entry of OLLAMA_CANDIDATES.filter((candidate) => candidate.evaluated)) {
+      expect(results.has(entry.tag), `${entry.tag} is marked evaluated without a committed results file`).toBe(true)
+    }
+  })
+
+  it('lists the candidates that fit, the ones that passed first, then not evaluated, then failed', () => {
+    const tags = (bytes: number, all = false) => listCandidates(bytes, { all }).map((item) => item.candidate.tag)
+    const sixteen = tags(16 * 1024 ** 3)
+    // passing by agreement (qwen3.5:4b 92.1%, qwen3:8b 90.5%), not evaluated in table order, failing by agreement
+    expect(sixteen).toEqual([
+      'qwen3.5:4b',
+      'qwen3:8b',
+      'qwen2.5:7b',
+      'gemma3:4b',
+      'gemma4:e4b',
+      'llama3.2:3b',
+      'llama3.1:8b',
+      'phi4-mini:3.8b',
+      'qwen2.5:3b',
+      'qwen3:4b',
+    ])
+    // on 8 GB the 16 GB candidates are hidden, and --all shows them marked as not fitting
+    const eight = tags(8 * 1024 ** 3)
+    expect(eight).not.toContain('qwen3:8b')
+    expect(eight).toEqual(['qwen3.5:4b', 'gemma3:4b', 'llama3.2:3b', 'phi4-mini:3.8b', 'qwen2.5:3b', 'qwen3:4b'])
+    const everything = listCandidates(8 * 1024 ** 3, { all: true })
+    expect(everything).toHaveLength(OLLAMA_CANDIDATES.length)
+    expect(everything.find((item) => item.candidate.tag === 'qwen3:8b')?.fits).toBe(false)
+    expect(everything.find((item) => item.candidate.tag === 'qwen3.5:4b')?.fits).toBe(true)
+    expect(tags(4 * 1024 ** 3)).toEqual([])
+  })
+
+  it('breaks a tie on agreement by the smaller download', () => {
+    const entry = (tag: string, downloadGb: number): OllamaCandidate => ({
+      tag,
+      family: 'qwen',
+      parameters: '4B',
+      downloadGb,
+      minRamGb: 8,
+      evaluated: true,
+      result: { date: '2026-11-18', validJsonRate: 1, needsReplyAgreement: 0.95, meanLatencyMs: 1, passed: true },
+    })
+    const listed = listCandidates(16 * 1024 ** 3, { candidates: [entry('big:1b', 5), entry('small:1b', 2)] })
+    expect(listed.map((item) => item.candidate.tag)).toEqual(['small:1b', 'big:1b'])
   })
 
   it('has unique tags of 3 to 8 billion parameters and sensible numbers', () => {
@@ -365,6 +441,7 @@ describe('the table of candidates and the committed evaluations', () => {
       expect(entry.downloadGb).toBeLessThan(8)
       expect([8, 16]).toContain(entry.minRamGb)
       expect(entry.evaluated).toBe(Boolean(entry.result))
+      if (entry.result !== undefined) expect(entry.result.passed).toBe(passesRf45(entry.result))
     }
   })
 })

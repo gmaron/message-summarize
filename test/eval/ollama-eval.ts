@@ -287,9 +287,9 @@ export interface EvalDeps {
   readonly casesDir?: string
 }
 
-/** The one-line instruction to record a passing model in the table of candidates. */
+/** The one-line instruction to record an evaluation, passing or failing, in the table of candidates. */
 const tableLine = (s: ModelScore, date: string): string =>
-  `  ${s.model}: set  evaluated: true, result: { date: '${date}', validJsonRate: ${s.validJsonRate}, needsReplyAgreement: ${Number(s.needsReplyAgreement.toFixed(4))} }  in src/infrastructure/llm/ollama-candidates.ts`
+  `  ${s.model}: set  evaluated: true, result: { date: '${date}', validJsonRate: ${Number(s.validJsonRate.toFixed(4))}, needsReplyAgreement: ${Number(s.needsReplyAgreement.toFixed(4))}, meanLatencyMs: ${s.meanLatencyMs}, passed: ${s.passed} }  in src/infrastructure/llm/ollama-candidates.ts`
 
 /**
  * Runs the evaluation and returns the exit code: 0 when every model passed, 1 when one did not, 2 on wrong usage. A
@@ -337,6 +337,6 @@ export async function runEval(argv: readonly string[], deps: EvalDeps): Promise<
     deps.out(`  written ${file}`)
   }
   deps.out(renderTable(scores))
-  for (const result of scores.filter((s) => s.passed)) deps.out(tableLine(result, date))
+  for (const result of scores) deps.out(tableLine(result, date))
   return scores.every((s) => s.passed) ? 0 : 1
 }

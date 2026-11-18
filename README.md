@@ -167,15 +167,24 @@ Add a second one as the backup with `--backup`, for example `msum provider use o
 
 A small model of 3 to 8 billion parameters can summarize on your own machine. Which one is a question of RAM and of how well it does the job, so the program has a table of candidates and a way to measure them (RF-45).
 
-**The recommendation shipped today is provisional.** No candidate has been evaluated yet against the golden conversations, so `msum ollama recommend` picks the largest candidate that fits your RAM, says so plainly, and marks every candidate "not evaluated". It stops being provisional only when an evaluation that passes is committed (see below).
+**You choose the model; the program does not pick one for you.** It lists the candidates that fit your RAM, shows what was measured for each, and leaves the decision to you. Four candidates have been evaluated so far (81 conversations, 2026-11-18, on a local Ollama); the other six have not:
 
-- **`msum ollama recommend`** reads the RAM of this machine and lists the candidates (tag, parameters, download size, minimum RAM; the ones that fit are marked `*`), then recommends one and the commands to use it. It makes no network call. The table is in `src/infrastructure/llm/ollama-candidates.ts`: tags, parameters and sizes come from the pages of the Ollama library (read on 2026-11-17, listed in that file). The **minimum RAM is an estimate** (download size times 1.25 plus 3 GB), not a number Ollama publishes. The candidates are `qwen3.5:4b`, `qwen3:4b`, `qwen3:8b`, `qwen2.5:3b`, `qwen2.5:7b`, `gemma3:4b`, `gemma4:e4b`, `llama3.2:3b`, `llama3.1:8b` and `phi4-mini:3.8b`; newer tags appear in the library all the time, so check it and edit the table.
+| Model | Valid JSON | Agreement, clear cases | Doubtful cases | Mean per summary | RF-45 |
+|---|---|---|---|---|---|
+| `qwen3.5:4b` | 100% | 92.1% | 66.7% | 3.6 s | passes |
+| `qwen3:8b` | 100% | 90.5% | 41.7% | 4.3 s | passes |
+| `qwen2.5:3b` | 100% | 87.3% | 58.3% | 2.1 s | fails |
+| `qwen3:4b` | 100% | 63.5% | 41.7% | 3.1 s | fails |
+
+So far `qwen3.5:4b` is the best evaluated option: it passed with the highest agreement while being smaller and faster than `qwen3:8b`. It is information, not a default: nothing is configured until you run the commands below. The numbers come from one run each on one machine, with the evaluation set described below; a model not in the table has not been measured, which is not the same as being bad.
+
+- **`msum ollama recommend [--all]`** reads the RAM of this machine and lists the candidates that fit, in this order: the ones that passed the evaluation (best agreement first), then those not evaluated, then those that failed. For each it shows the download size, the minimum RAM and its evaluation, with the numbers. Candidates that need more RAM than you have are hidden (it says how many); `--all` shows them marked. It makes no network call, picks nothing and writes nothing: it ends with the commands to run once you have chosen (`msum ollama pull <tag>`, then `msum provider use ollama --model <tag>`, or `provider.ollama.model` in `config.json`). The table is in `src/infrastructure/llm/ollama-candidates.ts`: tags, parameters and sizes come from the pages of the Ollama library (read on 2026-11-17, listed in that file). The **minimum RAM is an estimate** (download size times 1.25 plus 3 GB), not a number Ollama publishes. The candidates are `qwen3.5:4b`, `qwen3:4b`, `qwen3:8b`, `qwen2.5:3b`, `qwen2.5:7b`, `gemma3:4b`, `gemma4:e4b`, `llama3.2:3b`, `llama3.1:8b` and `phi4-mini:3.8b`; newer tags appear in the library all the time, so check it and edit the table.
 - **`msum ollama pull <tag> [--account <id>]`** asks the Ollama configured in `provider.ollama.baseUrl` to download the model (its `/api/pull`), with a progress line and a check that Ollama finishes with `success`. It sends only the tag, never chat text, and it **only works against an Ollama on this machine** unless you add `--allow-remote` (a model is downloaded to the server that receives the request, so pulling to another computer should be a decision). Errors from the server are shown with key-shaped text removed. Then choose it with `msum provider use ollama --model <tag>` and try it with `msum provider test`.
 - **`msum doctor`** also asks your Ollama for its list of models (`/api/tags`, 3 seconds, no chat text) when Ollama is the primary, the backup or serves your "local only" chats, and fails if the configured model is not installed, with the `msum ollama pull` command to fix it. `msum doctor --skip-model-check` leaves that call out (the check that Ollama answers at all is separate and stays).
 
 ### Evaluating a model
 
-`npm run eval:ollama -- --models qwen3:4b,gemma3:4b [--base-url URL] [--runs N] [--allow-remote]`
+`npm run eval:ollama -- --models qwen3.5:4b,gemma3:4b [--base-url URL] [--runs N] [--allow-remote]`
 
 The evaluation set is in `test/eval/ollama/`: **81 conversations taken from the golden files** (all made up), each with the exact transcript the summarizer receives (`transcripts.json`, produced by `test/eval/extract-cases.mjs`) and a **hand-written label** of whether the owner has to reply, with a one-line reason (`labels.json`, `doubtful` marks the ones a reader could argue). The answers of the previous tool were used only as a cross-check, never as the truth. For every model and case the script calls the real `OllamaSummarizer` with the production prompt and schema and records whether the JSON was valid, whether "needs reply" matches the label (an invalid answer counts as a mismatch), the latency and the error. It prints a table and writes `test/eval/ollama/results/<date>-<model>.json` (ids and numbers, no chat text).
 
@@ -183,7 +192,7 @@ The labelling rule is written in `test/eval/ollama/README.md`. **Valid JSON is j
 
 **A model passes RF-45 with 100% valid JSON and at least 90% agreement on "needs reply" (clear cases).** The script exits with 1 if a model does not pass. It refuses a `--base-url` that is not on this machine unless you pass `--allow-remote`. It needs your own Ollama running with the models already pulled; it never starts one.
 
-To record a passing model, set `evaluated: true` and `result: { date, validJsonRate, needsReplyAgreement }` on its entry in `ollama-candidates.ts` (the script prints the line) and commit it together with the results file; a test fails if a committed result says a model passed and the table does not. From then on `recommend` chooses among the models that passed and no longer calls its choice provisional.
+To record an evaluation, passing or failing, set `evaluated: true` and `result: { date, validJsonRate, needsReplyAgreement, meanLatencyMs, passed }` on its entry in `ollama-candidates.ts` (the script prints the line) and commit it together with the results file; a test fails if a committed results file and the table disagree. Models without a results file stay "not evaluated".
 
 ## What the program connects to
 

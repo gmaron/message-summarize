@@ -142,7 +142,8 @@ Commands:
                                       account. Before one that sends your chats out it says what it receives and asks
   provider test [--backup] [--kind <name>] [--account <id>]
                                       Tries the provider with ONE real call and a made-up conversation (never your messages)
-  ollama recommend                    Recommends a small local model for the RAM of this machine (provisional until it is evaluated)
+  ollama recommend [--all]            Lists the small local models that fit the RAM of this machine, best evaluated first, for you
+                                      to choose (--all also shows the ones that need more RAM). Nothing is picked or written
   ollama pull <tag> [--allow-remote] [--account <id>]
                                       Asks the configured Ollama to download a model (only the tag is sent, with a progress
                                       line). Refuses an Ollama that is not on this machine unless --allow-remote
@@ -351,21 +352,19 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
     },
     ollama: {
       ramLine: (gb) => `This machine has about ${gb} GB of RAM.`,
-      candidatesHeader: 'Candidate models of 3 to 8 billion parameters (tag, parameters, download, minimum RAM):',
-      candidateRow: (tag, parameters, size, ram, fits, evaluation) =>
-        `  ${fits ? '*' : ' '} ${tag}  ${parameters}  ${size}  ${ram} RAM  ${evaluation}`,
+      candidatesHeader:
+        'Models of 3 to 8 billion parameters that fit this machine, those that passed the evaluation first (tag, download, minimum RAM, evaluation):',
+      candidateRow: (tag, size, ram, fits, evaluation) =>
+        `  ${tag}  ${size}  ${ram} RAM  ${evaluation}${fits ? '' : '  [needs more RAM than this machine has]'}`,
       evaluationNone: 'not evaluated',
-      evaluationDone: (date, validJson, agreement, passed) =>
-        `evaluated ${date}: valid JSON ${validJson}, "needs reply" ${agreement} (${passed ? 'passes' : 'does not pass'} RF-45)`,
-      recommended: (tag) => `Recommended: ${tag}`,
-      provisional:
-        'This recommendation is PROVISIONAL: no candidate has been evaluated yet against the golden conversations (RF-45 asks for 100% valid JSON and 90% agreement on "needs reply"). The choice is a guess by size and RAM.',
-      provisionalHint:
-        'To evaluate a model on your Ollama: npm run eval:ollama -- --models <tag> (see "Choosing a local model" in the README).',
+      evaluationDone: (date, validJson, agreement, latency, passed) =>
+        `${passed ? 'PASSED' : 'FAILED'} the evaluation of ${date}: valid JSON ${validJson}, "needs reply" ${agreement} on the clear cases, ${latency} per summary (RF-45 asks for 100% and 90%)`,
+      hidden: (count) =>
+        `${count} more ${count === 1 ? 'candidate needs' : 'candidates need'} more RAM than this machine has and ${count === 1 ? 'is' : 'are'} hidden: "msum ollama recommend --all" shows them.`,
       noneFits: (minGb) =>
         `No candidate fits in this machine's RAM (the smallest needs about ${minGb} GB). Use an API provider or the CLI of one instead ("msum provider ls").`,
-      nextSteps: (tag) =>
-        `Download it with "msum ollama pull ${tag}", then choose it with "msum provider use ollama --model ${tag}".`,
+      choose:
+        'You choose: nothing is picked or written for you. To use one, download it with "msum ollama pull <tag>" and set it with "msum provider use ollama --model <tag>" (or "provider.ollama.model" in config.json). Models marked "not evaluated" can be measured with "npm run eval:ollama -- --models <tag>" (see "Choosing a local model" in the README).',
       invalidTag: (tag) => `"${tag}" does not look like an Ollama model tag (for example qwen3:4b).`,
       remoteRefused: (origin) =>
         `The configured Ollama is at ${origin}, which is not this machine. Nothing was downloaded. Pull the model there, or repeat with --allow-remote if you really want this server to download it.`,

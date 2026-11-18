@@ -37,8 +37,23 @@ describe('parseCommandLine', () => {
   })
 
   it('parses ollama recommend and pull, and doctor --skip-model-check', () => {
-    expect(parse('ollama')).toEqual({ ok: true, value: { name: 'ollama', action: 'recommend' } })
-    expect(parse('ollama', 'recommend')).toEqual({ ok: true, value: { name: 'ollama', action: 'recommend' } })
+    expect(parse('ollama')).toEqual({ ok: true, value: { name: 'ollama', action: 'recommend', all: false } })
+    expect(parse('ollama', 'recommend')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'recommend', all: false },
+    })
+    expect(parse('ollama', 'recommend', '--all')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'recommend', all: true },
+    })
+    expect(parse('ollama', 'pull', 'a', '--all')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--all' },
+    })
+    expect(parse('ollama', 'recommend', '--allow-remote')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--allow-remote' },
+    })
     expect(parse('ollama', 'recommend', 'x')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'x' } })
     expect(parse('ollama', 'recommend', '--account', 'a')).toEqual({
       ok: false,

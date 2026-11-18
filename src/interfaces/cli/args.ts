@@ -83,8 +83,8 @@ export type Command =
       readonly backup: boolean
       readonly kind: ProviderInfoKind | null
     } & AccountArg)
-  /** `msum ollama recommend`: the local model that fits this machine's RAM (RF-45). */
-  | { readonly name: 'ollama'; readonly action: 'recommend' }
+  /** `msum ollama recommend [--all]`: the local models that fit this machine's RAM, for the user to choose (RF-45). */
+  | { readonly name: 'ollama'; readonly action: 'recommend'; readonly all: boolean }
   /** `msum ollama pull <tag>`: download a model into the configured Ollama (RF-45). */
   | ({
       readonly name: 'ollama'
@@ -144,7 +144,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   status: ['account'],
   doctor: ['account', 'skip-model-check'],
   retry: ['account'],
-  ollama: ['account', 'allow-remote'],
+  ollama: ['account', 'allow-remote', 'all'],
   secret: ['account'],
   provider: ['account', 'model', 'backup', 'yes', 'kind', 'base-url'],
   schedule: ['account', 'time', 'days'],
@@ -217,7 +217,11 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
           (flag) => flag === 'account' || (rest[0] === 'add' && ['time', 'days'].includes(flag)),
         )
       : command === 'ollama'
-        ? (FLAGS.ollama ?? []).filter((flag) => rest[0] === 'pull' && ['account', 'allow-remote'].includes(flag))
+        ? (FLAGS.ollama ?? []).filter((flag) =>
+            rest[0] === 'pull'
+              ? ['account', 'allow-remote'].includes(flag)
+              : (rest[0] ?? 'recommend') === 'recommend' && flag === 'all',
+          )
         : command === 'provider'
           ? (FLAGS.provider ?? []).filter(
               (flag) =>
@@ -277,7 +281,7 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     case 'import':
       return parseImport(values, account)
     case 'ollama':
-      return parseOllama(rest, values['allow-remote'] === true, account)
+      return parseOllama(rest, values['allow-remote'] === true, values.all === true, account)
     case 'doctor':
       return ok(
         values['skip-model-check'] === true
@@ -353,12 +357,17 @@ function parseProvider(
 }
 
 /** `msum ollama recommend` and `msum ollama pull <tag> [--allow-remote]`. */
-function parseOllama(rest: readonly string[], allowRemote: boolean, account: string | null): Result<Command, ArgError> {
+function parseOllama(
+  rest: readonly string[],
+  allowRemote: boolean,
+  all: boolean,
+  account: string | null,
+): Result<Command, ArgError> {
   const [action = 'recommend', ...more] = rest
   if (action !== 'recommend' && action !== 'pull') return err({ kind: 'unknownSubcommand', value: action })
   if (action === 'recommend') {
     if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
-    return ok({ name: 'ollama', action: 'recommend' })
+    return ok({ name: 'ollama', action: 'recommend', all })
   }
   const [tag, ...extra] = more
   if (tag === undefined || tag.trim() === '') return err({ kind: 'missingValue', value: '<tag>' })

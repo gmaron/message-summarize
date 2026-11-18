@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -209,44 +210,83 @@ describe('pullOllamaModel', () => {
 })
 
 describe('msum ollama recommend', () => {
-  const recommend = async (bytes: number) => {
+  const recommend = async (bytes: number, ...flags: string[]) => {
     const h = await makeHarness({ config: { language: 'en' } })
     Object.assign(h.ctx, { totalMemBytes: bytes })
+    const before = readFileSync(h.layout.configFile, 'utf8')
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    expect(await run(h, 'ollama', 'recommend')).toBe(0)
+    expect(await run(h, 'ollama', 'recommend', ...flags)).toBe(0)
     expect(fetchSpy).not.toHaveBeenCalled()
+    // nothing is chosen or written
+    expect(readFileSync(h.layout.configFile, 'utf8')).toBe(before)
+    expect(out(h)).not.toContain('Recommended')
     return out(h)
   }
+  const order = (text: string): string[] =>
+    text
+      .split('\n')
+      .filter((line) => /^ {2}\S+:\S+ {2}\d/.test(line))
+      .map((line) => line.trim().split(' ')[0] as string)
 
-  it('recommends by RAM and says the choice is provisional while nothing is evaluated', async () => {
+  it('lists what fits with the evaluated models first, with their numbers, and leaves the choice to the user', async () => {
     const text = await recommend(16 * GB)
     expect(text).toContain('This machine has about 16 GB of RAM.')
-    expect(text).toContain('Recommended: gemma4:e4b')
-    expect(text).toContain('PROVISIONAL')
-    expect(text).toContain('npm run eval:ollama -- --models <tag>')
-    expect(text).toContain('msum ollama pull gemma4:e4b')
-    expect(text).toContain('not evaluated')
-    expect(text).toMatch(/\* qwen3:8b/)
+    expect(order(text)).toEqual([
+      'qwen3.5:4b',
+      'qwen3:8b',
+      'qwen2.5:7b',
+      'gemma3:4b',
+      'gemma4:e4b',
+      'llama3.2:3b',
+      'llama3.1:8b',
+      'phi4-mini:3.8b',
+      'qwen2.5:3b',
+      'qwen3:4b',
+    ])
+    expect(text).toContain(
+      '  qwen3.5:4b  3.3 GB  8 GB RAM  PASSED the evaluation of 2026-11-18: valid JSON 100%, "needs reply" 92% on the clear cases, 3.6 s per summary',
+    )
+    expect(text).toMatch(/qwen3:4b {2}2\.5 GB {2}8 GB RAM {2}FAILED the evaluation of 2026-11-18: .*"needs reply" 63%/)
+    expect(text).toMatch(/gemma3:4b {2}3\.4 GB {2}8 GB RAM {2}not evaluated/)
+    expect(text).toContain('You choose: nothing is picked or written for you.')
+    expect(text).toContain('msum ollama pull <tag>')
+    expect(text).toContain('msum provider use ollama --model <tag>')
+    expect(text).toContain('provider.ollama.model')
+    expect(text).not.toContain('hidden')
   })
 
-  it('recommends a smaller model on 8 GB and only marks the ones that fit', async () => {
-    const text = await recommend(8 * GB)
-    expect(text).toContain('Recommended: gemma3:4b')
-    expect(text).toMatch(/\* gemma3:4b/)
-    expect(text).not.toMatch(/\* qwen3:8b/)
+  it('hides what needs more RAM and says how many, and --all shows it marked', async () => {
+    const hiddenText = await recommend(8 * GB)
+    expect(order(hiddenText)).toEqual([
+      'qwen3.5:4b',
+      'gemma3:4b',
+      'llama3.2:3b',
+      'phi4-mini:3.8b',
+      'qwen2.5:3b',
+      'qwen3:4b',
+    ])
+    expect(hiddenText).toContain('4 more candidates need more RAM than this machine has and are hidden')
+    expect(hiddenText).toContain('msum ollama recommend --all')
+    const allText = await recommend(8 * GB, '--all')
+    expect(order(allText)).toHaveLength(10)
+    expect(allText).toMatch(/qwen3:8b {2}5\.2 GB {2}16 GB RAM .*\[needs more RAM than this machine has\]/)
+    expect(allText).not.toMatch(/qwen3\.5:4b.*\[needs more RAM/)
+    expect(allText).not.toContain('are hidden')
   })
 
   it('says when nothing fits', async () => {
     const text = await recommend(4 * GB)
     expect(text).toContain('No candidate fits')
-    expect(text).not.toContain('Recommended:')
+    expect(order(text)).toEqual([])
+    expect(text).toContain('You choose')
   })
 
   it('speaks Spanish with the language of the configuration', async () => {
     const h = await makeHarness({ config: { language: 'es' } })
     Object.assign(h.ctx, { totalMemBytes: 16 * GB })
     expect(await run(h, 'ollama', 'recommend')).toBe(0)
-    expect(out(h)).toContain('Esta recomendación es PROVISORIA')
+    expect(out(h)).toContain('CUMPLIÓ la evaluación del 2026-11-18')
+    expect(out(h)).toContain('Elegís vos: no se elige ni se escribe nada por vos.')
   })
 })
 

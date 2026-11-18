@@ -1,12 +1,10 @@
 import { totalmem } from 'node:os'
 import {
   bytesToGb,
-  fitsRam,
   isOnMachine,
+  listCandidates,
   OLLAMA_CANDIDATES,
-  passesRf45,
   pullOllamaModel,
-  recommendCandidate,
 } from '../../infrastructure/llm/index.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, type OllamaCommand } from '../../interfaces/cli/run.js'
 import { installationCatalog, isPrepared, prepareAccount } from '../account-command.js'
@@ -31,56 +29,53 @@ export const isValidTag = (tag: string): boolean =>
 /**
  * `msum ollama recommend` and `msum ollama pull <tag>` (RF-45, CLI half).
  *
- * - `recommend` reads the RAM of this machine and picks from the table of candidates (`OLLAMA_CANDIDATES`). While no
- *   candidate that fits has a committed passing evaluation it says plainly that the choice is provisional. It makes no
+ * - `recommend` reads the RAM of this machine and lists the candidates that fit (`OLLAMA_CANDIDATES`; `--all` also the
+ *   others), the ones that passed the evaluation first. The user chooses: nothing is picked or written, and it makes no
  *   network call.
  * - `pull` asks the configured Ollama to download a model. It sends only the tag, never chat text, and only to an
  *   Ollama on this machine unless `--allow-remote` is given. The error text of the server is redacted.
  */
 export async function ollamaCommand(ctx: CommandContext, command: OllamaCommand): Promise<number> {
-  if (command.action === 'recommend') return recommend(ctx)
+  if (command.action === 'recommend') return recommend(ctx, command.all)
   return pull(ctx, command)
 }
 
-async function recommend(ctx: CommandContext): Promise<number> {
+async function recommend(ctx: CommandContext, all: boolean): Promise<number> {
   const texts = (await installationCatalog(ctx)).cli.ollama
   const { io } = ctx
   const totalBytes = ctx.totalMemBytes ?? totalmem()
-  const recommendation = recommendCandidate(totalBytes)
+  const listed = listCandidates(totalBytes, { all })
 
   io.out(texts.ramLine(bytesToGb(totalBytes).toFixed(0)))
-  io.out(texts.candidatesHeader)
-  for (const candidate of OLLAMA_CANDIDATES) {
-    const evaluation =
-      candidate.evaluated && candidate.result !== undefined
-        ? texts.evaluationDone(
-            candidate.result.date,
-            percent(candidate.result.validJsonRate),
-            percent(candidate.result.needsReplyAgreement),
-            passesRf45(candidate.result),
-          )
-        : texts.evaluationNone
-    io.out(
-      texts.candidateRow(
-        candidate.tag,
-        candidate.parameters,
-        `${candidate.downloadGb.toFixed(1)} GB`,
-        `${candidate.minRamGb} GB`,
-        fitsRam(candidate, totalBytes),
-        evaluation,
-      ),
-    )
-  }
-  if (recommendation === null) {
+  if (listed.length === 0) {
     io.out(texts.noneFits(Math.min(...OLLAMA_CANDIDATES.map((candidate) => candidate.minRamGb))))
-    return EXIT_OK
+  } else {
+    io.out(texts.candidatesHeader)
+    for (const { candidate, fits } of listed) {
+      const evaluation =
+        candidate.evaluated && candidate.result !== undefined
+          ? texts.evaluationDone(
+              candidate.result.date,
+              percent(candidate.result.validJsonRate),
+              percent(candidate.result.needsReplyAgreement),
+              `${(candidate.result.meanLatencyMs / 1000).toFixed(1)} s`,
+              candidate.result.passed,
+            )
+          : texts.evaluationNone
+      io.out(
+        texts.candidateRow(
+          candidate.tag,
+          `${candidate.downloadGb.toFixed(1)} GB`,
+          `${candidate.minRamGb} GB`,
+          fits,
+          evaluation,
+        ),
+      )
+    }
   }
-  io.out(texts.recommended(recommendation.candidate.tag))
-  if (recommendation.provisional) {
-    io.out(texts.provisional)
-    io.out(texts.provisionalHint)
-  }
-  io.out(texts.nextSteps(recommendation.candidate.tag))
+  const hidden = all ? 0 : OLLAMA_CANDIDATES.length - listed.length
+  if (hidden > 0) io.out(texts.hidden(hidden))
+  io.out(texts.choose)
   return EXIT_OK
 }
 

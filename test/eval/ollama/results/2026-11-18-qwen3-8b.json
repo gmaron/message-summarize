@@ -1,0 +1,827 @@
+{
+  "date": "2026-11-18",
+  "baseUrl": "http://127.0.0.1:11434",
+  "runs": 1,
+  "cases": 81,
+  "model": "qwen3:8b",
+  "calls": 81,
+  "validJsonRate": 1,
+  "needsReplyAgreement": 0.9047619047619048,
+  "doubtfulAgreement": 0.4166666666666667,
+  "overallAgreement": 0.8266666666666667,
+  "meanLatencyMs": 4299,
+  "errors": 0,
+  "passed": true,
+  "records": [
+    {
+      "id": "c01",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 11317,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c02",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 5375,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c03",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 6293,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c04",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 4438,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c05",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 6488,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c06",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3354,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c07",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4136,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c08",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3615,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c09",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 6342,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c10",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4806,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c11",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3021,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c12",
+      "kind": "doubtful",
+      "expected": true,
+      "latencyMs": 3239,
+      "valid": true,
+      "answered": false,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c13",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3161,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c14",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3529,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c15",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3805,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c16",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 5028,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c17",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3854,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c18",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3090,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c19",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3363,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c20",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3422,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c21",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4487,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c22",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 6443,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c23",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 6057,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c24",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 7327,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c25",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4172,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c26",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4808,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c27",
+      "kind": "doubtful",
+      "expected": true,
+      "latencyMs": 5105,
+      "valid": true,
+      "answered": false,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c28",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3823,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c29",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 3566,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c30",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3636,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c31",
+      "kind": "jsonOnly",
+      "expected": false,
+      "latencyMs": 4973,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c32",
+      "kind": "jsonOnly",
+      "expected": false,
+      "latencyMs": 3838,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c33",
+      "kind": "jsonOnly",
+      "expected": false,
+      "latencyMs": 3496,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c34",
+      "kind": "jsonOnly",
+      "expected": false,
+      "latencyMs": 3542,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c35",
+      "kind": "jsonOnly",
+      "expected": false,
+      "latencyMs": 4005,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c36",
+      "kind": "jsonOnly",
+      "expected": false,
+      "latencyMs": 3786,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c37",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 5284,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c38",
+      "kind": "doubtful",
+      "expected": true,
+      "latencyMs": 2607,
+      "valid": true,
+      "answered": false,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c39",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4914,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c40",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 3934,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c41",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3563,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c42",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 7286,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c43",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4586,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c44",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3327,
+      "valid": true,
+      "answered": false,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c45",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 5997,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c46",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3057,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c47",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3127,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c48",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 3089,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c49",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3271,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c50",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4318,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c51",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4363,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c52",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4183,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c53",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 5206,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c54",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 5074,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c55",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3736,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c56",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 5900,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c57",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4125,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c58",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4440,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c59",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3913,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c60",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 2951,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c61",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4019,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c62",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3256,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c63",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3531,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c64",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3406,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c65",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3510,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c66",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4056,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c67",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3993,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c68",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 2830,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c69",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3204,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c70",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3673,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c71",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3477,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c72",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3878,
+      "valid": true,
+      "answered": false,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c73",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3909,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c74",
+      "kind": "doubtful",
+      "expected": false,
+      "latencyMs": 5226,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c75",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 4029,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c76",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4318,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c77",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 3209,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c78",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 5924,
+      "valid": true,
+      "answered": true,
+      "agrees": false,
+      "error": null
+    },
+    {
+      "id": "c79",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3600,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c80",
+      "kind": "clear",
+      "expected": true,
+      "latencyMs": 3580,
+      "valid": true,
+      "answered": true,
+      "agrees": true,
+      "error": null
+    },
+    {
+      "id": "c81",
+      "kind": "clear",
+      "expected": false,
+      "latencyMs": 4576,
+      "valid": true,
+      "answered": false,
+      "agrees": true,
+      "error": null
+    }
+  ]
+}

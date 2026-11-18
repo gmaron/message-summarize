@@ -7,14 +7,14 @@ export { listOllamaModels, ollamaHasModel, type PullProgress, pullOllamaModel } 
 export {
   bytesToGb,
   fitsRam,
+  type ListedCandidate,
+  listCandidates,
   OLLAMA_CANDIDATES,
   type OllamaCandidate,
   type OllamaEvaluationResult,
   passesRf45,
   REQUIRED_NEEDS_REPLY_AGREEMENT,
   REQUIRED_VALID_JSON_RATE,
-  type Recommendation,
-  recommendCandidate,
 } from './ollama-candidates.js'
 export { type OllamaOptions, OllamaSummarizer } from './ollama-summarizer.js'
 export {

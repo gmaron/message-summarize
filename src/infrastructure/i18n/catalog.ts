@@ -361,28 +361,21 @@ export interface Catalog {
       readonly checksumError: string
       writeError(dir: string): string
     }
-    /** `msum ollama recommend|pull` (RF-45): a small local model chosen by RAM, and its download. */
+    /** `msum ollama recommend|pull` (RF-45): the small local models to choose from, and the download of one. */
     readonly ollama: {
       /** `gb` is already formatted ("16"). */
       ramLine(gb: string): string
       readonly candidatesHeader: string
       /** `size` and `ram` are already formatted; `evaluation` is the text of `evaluationDone` or `evaluationNone`. */
-      candidateRow(
-        tag: string,
-        parameters: string,
-        size: string,
-        ram: string,
-        fits: boolean,
-        evaluation: string,
-      ): string
+      candidateRow(tag: string, size: string, ram: string, fits: boolean, evaluation: string): string
       readonly evaluationNone: string
-      evaluationDone(date: string, validJson: string, agreement: string, passed: boolean): string
-      recommended(tag: string): string
-      /** The shipped table has no committed evaluation for the candidates that fit: the choice is a guess. */
-      readonly provisional: string
-      readonly provisionalHint: string
+      /** `agreement` is on the clear cases; `latency` is already formatted. */
+      evaluationDone(date: string, validJson: string, agreement: string, latency: string, passed: boolean): string
+      /** Candidates that need more RAM than this machine has are hidden unless `--all`. */
+      hidden(count: number): string
       noneFits(minGb: number): string
-      nextSteps(tag: string): string
+      /** The user chooses: nothing is picked or written. The commands to run next. */
+      readonly choose: string
       invalidTag(tag: string): string
       /** Pulling needs an Ollama on this machine, unless `--allow-remote` says otherwise. */
       remoteRefused(origin: string): string

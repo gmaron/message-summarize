@@ -143,7 +143,8 @@ Comandos:
                                       cuenta. Antes de uno que envía tus chats afuera dice qué recibe y pregunta
   provider test [--backup] [--kind <nombre>] [--account <id>]
                                       Prueba el proveedor con UNA llamada real y una conversación inventada (nunca tus mensajes)
-  ollama recommend                    Recomienda un modelo local chico para la RAM de esta máquina (provisorio hasta evaluarlo)
+  ollama recommend [--all]            Lista los modelos locales chicos que entran en la RAM de esta máquina, primero los mejor
+                                      evaluados, para que elijas (--all muestra también los que necesitan más RAM). No se elige ni se escribe nada
   ollama pull <tag> [--allow-remote] [--account <id>]
                                       Le pide al Ollama configurado que descargue un modelo (solo se envía el tag, con una
                                       línea de progreso). Rechaza un Ollama que no está en esta máquina salvo con --allow-remote
@@ -355,21 +356,18 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
     ollama: {
       ramLine: (gb) => `Esta máquina tiene unos ${gb} GB de RAM.`,
       candidatesHeader:
-        'Modelos candidatos de 3 a 8 mil millones de parámetros (tag, parámetros, descarga, RAM mínima):',
-      candidateRow: (tag, parameters, size, ram, fits, evaluation) =>
-        `  ${fits ? '*' : ' '} ${tag}  ${parameters}  ${size}  ${ram} de RAM  ${evaluation}`,
+        'Modelos de 3 a 8 mil millones de parámetros que entran en esta máquina, primero los que pasaron la evaluación (tag, descarga, RAM mínima, evaluación):',
+      candidateRow: (tag, size, ram, fits, evaluation) =>
+        `  ${tag}  ${size}  ${ram} de RAM  ${evaluation}${fits ? '' : '  [necesita más RAM de la que tiene esta máquina]'}`,
       evaluationNone: 'sin evaluar',
-      evaluationDone: (date, validJson, agreement, passed) =>
-        `evaluado ${date}: JSON válido ${validJson}, "necesita respuesta" ${agreement} (${passed ? 'cumple' : 'no cumple'} RF-45)`,
-      recommended: (tag) => `Recomendado: ${tag}`,
-      provisional:
-        'Esta recomendación es PROVISORIA: ningún candidato fue evaluado todavía contra las conversaciones de referencia (RF-45 pide 100% de JSON válido y 90% de coincidencia en "necesita respuesta"). La elección es una estimación por tamaño y RAM.',
-      provisionalHint:
-        'Para evaluar un modelo en tu Ollama: npm run eval:ollama -- --models <tag> (mirá "Elegir un modelo local" en el README).',
+      evaluationDone: (date, validJson, agreement, latency, passed) =>
+        `${passed ? 'CUMPLIÓ' : 'NO CUMPLIÓ'} la evaluación del ${date}: JSON válido ${validJson}, "necesita respuesta" ${agreement} en los casos claros, ${latency} por resumen (RF-45 pide 100% y 90%)`,
+      hidden: (count) =>
+        `${count} ${count === 1 ? 'candidato más necesita' : 'candidatos más necesitan'} más RAM de la que tiene esta máquina y ${count === 1 ? 'está oculto' : 'están ocultos'}: "msum ollama recommend --all" ${count === 1 ? 'lo' : 'los'} muestra.`,
       noneFits: (minGb) =>
         `Ningún candidato entra en la RAM de esta máquina (el más chico necesita unos ${minGb} GB). Usá un proveedor por API o la CLI de uno ("msum provider ls").`,
-      nextSteps: (tag) =>
-        `Descargalo con "msum ollama pull ${tag}" y elegilo con "msum provider use ollama --model ${tag}".`,
+      choose:
+        'Elegís vos: no se elige ni se escribe nada por vos. Para usar uno, descargalo con "msum ollama pull <tag>" y configuralo con "msum provider use ollama --model <tag>" (o "provider.ollama.model" en config.json). Los que dicen "sin evaluar" se pueden medir con "npm run eval:ollama -- --models <tag>" (mirá "Elegir un modelo local" en el README).',
       invalidTag: (tag) => `"${tag}" no parece un tag de modelo de Ollama (por ejemplo qwen3:4b).`,
       remoteRefused: (origin) =>
         `El Ollama configurado está en ${origin}, que no es esta máquina. No se descargó nada. Descargá el modelo allá, o repetí con --allow-remote si de verdad querés que ese servidor lo descargue.`,
