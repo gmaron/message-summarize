@@ -1,6 +1,6 @@
 # message-summarize: requerimientos
 
-Versión 1.2 · 2026-11-05 · Estado: aprobado
+Versión 1.3 · 2026-11-05 · Estado: aprobado
 
 ## 1. Propósito
 
@@ -65,11 +65,11 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
-| RF-10 | Guardar los mensajes entrantes y salientes de todas las conversaciones | v1 | Se guardan texto, imagen, video, audio, documento, sticker, ubicación, contacto, encuesta y evento, con una representación de texto para cada tipo |
+| RF-10 | Guardar los mensajes entrantes y salientes de todas las conversaciones | v1 | Se guardan texto, imagen, video, audio, documento, sticker, ubicación, contacto, encuesta y evento, con una representación de texto para cada tipo. Un mensaje sin texto que no es audio aparece en la transcripción con la representación de su tipo (por ejemplo, "[imagen]"), en grupos y en chats individuales, y nunca hace fallar el digest |
 | RF-11 | Registrar las ediciones de mensajes | v1 | Un mensaje editado reemplaza al original en el digest |
 | RF-12 | Llevar el estado de no leídos por conversación | v1 | El contador refleja lo que muestra el celular: se toma en la sincronización inicial, se actualiza al leer desde cualquier dispositivo, y marcar como no leído en el celular vuelve a incluir el chat. La foto inicial no pisa lo que llegó en vivo |
 | RF-13 | Resolver la identidad de los remitentes | v1 | Se muestra el nombre de la agenda si existe; si no, el nombre público y el número con espacios (para poder tocarlo en WhatsApp Web). Los identificadores internos (LID) se traducen a número cuando es posible |
-| RF-14 | Excluir conversaciones | v1 | Una conversación excluida (por nombre o identificador) no se guarda ni se resume |
+| RF-14 | Excluir conversaciones | v1 | Una conversación excluida (por nombre o identificador) no se guarda ni se resume. Sin exclusiones configuradas no se excluye nada: la falta de la opción no hace fallar ni la captura ni el digest |
 | RF-15 | Descargar los audios para transcribirlos | v1 | Los audios de los últimos N días del historial (configurable, 14 por defecto) y todos los que llegan en vivo se descargan si la transcripción está activa |
 
 ### 4.3 Transcripción de audios
@@ -85,14 +85,14 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
-| RF-30 | Resumir cada conversación con un LLM | v1 | Por cada conversación con mensajes en la ventana se obtiene: resumen, pendientes, si necesita respuesta y prioridad (alta, media, baja), con salida JSON validada contra un esquema |
+| RF-30 | Resumir cada conversación con un LLM | v1 | Por cada conversación con mensajes en la ventana se obtiene: resumen, pendientes, si necesita respuesta y prioridad (alta, media, baja), con salida JSON validada contra un esquema. Una respuesta que no cumple el esquema (por ejemplo, una prioridad fuera de alta, media o baja) se trata como una llamada fallida de esa conversación: se reintenta y pasa al respaldo según RF-42 y RF-48, y si no se puede resumir se cuenta entre las que fallaron. No corta el digest |
 | RF-31 | Resumir solo lo no leído | v1 | Con la opción activa, cada conversación se resume desde su primer mensaje no leído y las ya leídas no aparecen. Los mensajes previos se pasan como contexto, marcados para no resumirlos. Si la fuente no informa qué está leído, la opción no se ofrece y se resume por ventana de tiempo (RF-32) |
-| RF-32 | Ventana de tiempo con puntero | v1 | Cada digest arranca donde terminó el anterior. El puntero nunca retrocede; la vista previa no lo mueve. Se puede pedir una ventana explícita (`--hours`, `--from`, `--to`) |
-| RF-33 | Ignorar mensajes masivos propios | v1 | Un texto propio de 40 caracteres o más que aparece igual en 3 conversaciones o más no se resume, no cuenta como respuesta y no marca la conversación como leída |
+| RF-32 | Ventana de tiempo con puntero | v1 | Cada digest arranca donde terminó el anterior. El puntero nunca retrocede; la vista previa no lo mueve. Se puede pedir una ventana explícita (`--hours`, `--from`, `--to`). Sin puntero ni inicio explícito, la ventana cubre las N horas anteriores a su fin (N configurable, 24 por defecto). La ventana es inválida si una fecha no se puede interpretar, si `--hours` no es un número positivo o si un inicio explícito no es anterior al fin; en ese caso el digest falla con un error que lo explica y el puntero no se mueve. Una ventana válida sin mensajes no es un error, incluido el caso en que el inicio sale del puntero y es posterior al fin pedido |
+| RF-33 | Ignorar mensajes masivos propios | v1 | Un texto propio de 40 caracteres o más que aparece igual en 3 conversaciones o más no se resume, no cuenta como respuesta y no marca la conversación como leída. La longitud se mide en caracteres Unicode (puntos de código), con el mismo criterio al recibir el mensaje y al resumir |
 | RF-34 | Deduplicar avisos repetidos en varios grupos | v1 | El mismo aviso de otra persona en varios grupos se resume una sola vez |
 | RF-35 | Ordenar el digest en secciones | v1 | Orden: contactos sin agendar (opcional, destacados), necesitan respuesta, con pendientes, el resto. Dentro de cada sección, por prioridad y luego por cantidad de mensajes |
 | RF-36 | Ocultar el detalle de "el resto" | v1 | Con la opción activa, el mensaje enviado muestra solo cuántas conversaciones hay en esa sección; el historial guarda el detalle completo |
-| RF-37 | Limitar el tamaño por conversación | v1 | Si una conversación supera el máximo de caracteres (24 000 por defecto), se recortan los mensajes más viejos y se indica |
+| RF-37 | Limitar el tamaño por conversación | v1 | Si una conversación supera el máximo de caracteres (24 000 por defecto), se recortan los mensajes más viejos y se indica. Si la opción falta en la configuración, se usa el valor por defecto |
 | RF-38 | Editar el prompt | v1 | El prompt se edita desde la web, admite la variable `{{name}}` y tiene un botón para volver al original. El esquema de salida no es editable |
 | RF-39 | Idioma del digest | v1 | Español o inglés, configurable por cuenta: afecta títulos de sección, fechas y prompt por defecto |
 
@@ -139,7 +139,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-70 | Asistente de primer uso | v1 | Pasos: idioma → nombre → proveedor (con prueba) → transcripción → QR → sincronización → primer horario. Se puede retomar si se cierra a mitad |
 | RF-71 | Panel | v1 | Estado de cada cuenta, último digest, próxima ejecución, botones de resumir ahora y vista previa |
 | RF-72 | Gestión de conversaciones | v1 | Listar y buscar conversaciones; marcarlas como excluidas o solo locales |
-| RF-73 | Configuración | v1 | Todas las opciones editables (solo no leídos, ocultar el resto, sin agendar destacados, máximo de caracteres, días de audios del historial, idioma) |
+| RF-73 | Configuración | v1 | Todas las opciones editables (solo no leídos, ocultar el resto, sin agendar destacados, máximo de caracteres, días de audios del historial, idioma). La configuración se valida al cargarla y al guardarla: un valor inválido se rechaza con un mensaje que indica la opción y el motivo, y una opción que falta toma su valor por defecto |
 | RF-74 | Historial | v1 | Lista de digests anteriores con su contenido completo, proveedor usado, duración y errores de cada ejecución |
 | RF-75 | Logs | v1 | Ver los últimos logs del daemon, filtrables por cuenta y nivel |
 
@@ -208,7 +208,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-50 a RF-52 | `DeliveryChannel` + `WhatsAppSelfChatDelivery` + `OutboxRepository` + `WhatsAppTextRenderer` | 1 |
 | RF-03, RF-06, RF-60 a RF-66 | Daemon, `CronerScheduler`, `ScheduleRepository`, `app.db`, `import` | 2 |
 | RF-20 a RF-23, RF-40 a RF-47, RF-81 | `infrastructure/llm/api/` (`OpenAISummarizer`, `AnthropicSummarizer`, `GeminiSummarizer`, `OllamaSummarizer`), `infrastructure/llm/cli/` (`CliSummarizer` con presets de Claude Code, Gemini CLI y Codex, más la plantilla genérica; `SandboxedProcessRunner`), `StructuredOutputValidator`, `FallbackSummarizer`, `LocalOnlyRouter`, `RateLimitRetry`, `WhisperCppTranscriber`, `ModelDownloader`, `doctor` | 3 |
-| RF-01, RF-02, RF-04, RF-70 a RF-75, RF-82 | API Fastify + SSE, SPA, autenticación con token | 4 |
+| RF-01, RF-02, RF-04, RF-70 a RF-75, RF-82 | API HTTP con node:http + SSE, SPA, autenticación con token | 4 |
 | RNF-05 a RNF-07, RF-80 (`service`) | Imagen Docker, `install.sh`, `install.ps1`, `ServiceInstaller` | 5 |
 | RNF-15, RNF-18, documentación | CI, licencia, aviso legal, README | 6 |
 
@@ -231,3 +231,5 @@ Cambio respecto del plan original: como WhatsApp es la primera plataforma y no l
 4. **Publicación:** repo público `message-summarize` en la cuenta personal de GitHub del autor, con licencia MIT.
 5. **Idioma:** código, commits y nombres en inglés; README en inglés y español; los documentos de diseño en español hasta la v0.1.0.
 6. **Autoría:** los commits van solo a nombre del autor, sin coautoría de herramientas de IA.
+7. **Fallas de la herramienta anterior:** los casos de `test/golden/README.md` que no se congelaron porque la herramienta se cae o pierde datos ("Legacy failures that are not frozen") no se reproducen. El comportamiento heredado que sí está congelado se mantiene. Un mensaje sin texto que no es audio se muestra por su tipo (RF-10); toda opción del digest tiene un valor por defecto (el proveedor no lo tiene: se elige en el asistente, RF-41) y la configuración se valida al cargarla (RF-14, RF-32, RF-37, RF-73); una ventana inválida no mueve el puntero (RF-32); una prioridad desconocida es un error de esquema (RF-30). Cada caso tiene un test unitario.
+8. **Mensajes masivos propios:** la longitud mínima de un mensaje masivo propio se mide en puntos de código al recibir el mensaje y al resumir (RF-33), como ya hacía la herramienta anterior al resumir (golden 03, caso E39); al recibir medía unidades UTF-16.

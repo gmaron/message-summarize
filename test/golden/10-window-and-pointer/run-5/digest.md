@@ -1,0 +1,6 @@
+*Resumen WhatsApp — lun 04-05, 18:00*
+1 chats con novedades desde lun 04-05, 15:00 · 1 necesitan respuesta
+
+*🔴 Necesitan respuesta*
+• *Dina Funes*: Dina pide la factura del mes.
+   ☐ Enviar la factura del mes a Dina

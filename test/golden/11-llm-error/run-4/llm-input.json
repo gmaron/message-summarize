@@ -1,0 +1,17 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550259@s.whatsapp.net",
+      "chatName": "Ximena Ocampo",
+      "isGroup": false,
+      "userMessage": "Chat con: Ximena Ocampo\n\n[14:00] Ximena Ocampo: Sofi, ¿me mandás la dirección?"
+    },
+    {
+      "jid": "120363000000000132@g.us",
+      "chatName": "Vecinos del 2do",
+      "isGroup": true,
+      "userMessage": "Grupo: Vecinos del 2do\n\n[14:10] Víctor Lamas: Mañana limpian el tanque de agua\n[14:12] Tomás Herrera: Avisen si necesitan algo"
+    }
+  ]
+}

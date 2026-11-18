@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest'
+import { messageBody } from '../../../src/domain/body.js'
+
+describe('messageBody', () => {
+  it('returns the text', () => {
+    expect(messageBody({ kind: 'text', text: 'hi', transcript: null })).toEqual({ type: 'text', text: 'hi' })
+  })
+  it('keeps the caption of an image', () => {
+    expect(messageBody({ kind: 'image', text: 'look', transcript: null })).toEqual({ type: 'text', text: 'look' })
+  })
+  it('returns a placeholder by kind when a non-audio message has no text', () => {
+    expect(messageBody({ kind: 'image', text: null, transcript: null })).toEqual({ type: 'placeholder', kind: 'image' })
+    expect(messageBody({ kind: 'sticker', text: null, transcript: null })).toEqual({
+      type: 'placeholder',
+      kind: 'sticker',
+    })
+  })
+  it('an empty text on a non-audio message counts as no text: placeholder by kind', () => {
+    expect(messageBody({ kind: 'image', text: '', transcript: null })).toEqual({ type: 'placeholder', kind: 'image' })
+    expect(messageBody({ kind: 'text', text: '', transcript: null })).toEqual({ type: 'placeholder', kind: 'text' })
+  })
+  it('returns the transcript of an audio and ignores its caption', () => {
+    expect(messageBody({ kind: 'audio', text: 'caption', transcript: 'spoken' })).toEqual({
+      type: 'audio',
+      transcript: 'spoken',
+    })
+  })
+  it('an empty or missing transcript is the same: none', () => {
+    expect(messageBody({ kind: 'audio', text: 'caption', transcript: '' })).toEqual({ type: 'audio', transcript: null })
+    expect(messageBody({ kind: 'audio', text: null, transcript: null })).toEqual({ type: 'audio', transcript: null })
+  })
+})

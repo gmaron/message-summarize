@@ -1,0 +1,47 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550103@s.whatsapp.net",
+      "chatName": "Marta Ibáñez",
+      "isGroup": false,
+      "userMessage": "Chat con: Marta Ibáñez\n\n[08:10] Marta Ibáñez: ¿Cenamos el jueves?\n[08:12] Marta Ibáñez: Yo propongo ese lugar de pastas de siempre\n[08:15] Marta Ibáñez: Reservo para las 21\n[08:16] Marta Ibáñez: Puede venir también mi hermano\n[08:20] Marta Ibáñez: ¿Te queda bien?\n[08:25] Marta Ibáñez: Avisame cuando puedas"
+    },
+    {
+      "jid": "5491155550101@s.whatsapp.net",
+      "chatName": "Ana Gómez",
+      "isGroup": false,
+      "userMessage": "Chat con: Ana Gómez\n\n[08:30] Ana Gómez: Hola Sofi, ¿pudiste ver el presupuesto del catering?\n[08:31] Ana Gómez: Lo necesito hoy para confirmar con el salón\n[08:45] Ana Gómez: ¿Me avisás cuando puedas?"
+    },
+    {
+      "jid": "5491155550106@s.whatsapp.net",
+      "chatName": "Rosa Molina",
+      "isGroup": false,
+      "userMessage": "Chat con: Rosa Molina\n\n[08:50] Rosa Molina: Sofi, ¿confirmás la reunión del lunes?\n[08:51] Rosa Molina: Necesito saber hoy cuántos van a ser\n[08:55] Sofía [VOS]: Creo que sí, te confirmo más tarde\n[08:58] Rosa Molina: Dale. Mandame también la agenda\n[09:20] Rosa Molina: Y avisame si traés el proyector"
+    },
+    {
+      "jid": "5491155550102@s.whatsapp.net",
+      "chatName": "Luis Ferreyra",
+      "isGroup": false,
+      "userMessage": "Chat con: Luis Ferreyra\n\n[09:00] Luis Ferreyra: Sofi, te paso el contrato revisado\n[09:01] Luis Ferreyra: Falta tu firma en la página 3\n[09:10] Sofía [VOS]: Genial, lo firmo y te lo devuelvo\n[09:15] Luis Ferreyra: Perfecto, quedo atento"
+    },
+    {
+      "jid": "120363000000000001@g.us",
+      "chatName": "Edificio Torre Sur",
+      "isGroup": true,
+      "userMessage": "Grupo: Edificio Torre Sur\n\n[09:30] Vecina del 3B: Buen día, mañana cortan el agua de 9 a 12\n[09:35] Luis Ferreyra: Gracias por avisar\n[09:40] Vecina del 3B: Recuerden pagar las expensas antes del viernes\n[09:45] Sofía [VOS]: Ok, las pago el jueves\n[09:50] Vecina del 3B: La asamblea es el sábado a las 18 en el SUM\n[09:52] Vecina del 3B: Hay que confirmar asistencia"
+    },
+    {
+      "jid": "5491155550104@s.whatsapp.net",
+      "chatName": "Carlos Díaz",
+      "isGroup": false,
+      "userMessage": "Chat con: Carlos Díaz\n\n[10:00] Carlos Díaz: Mirá este meme\n[10:01] Carlos Díaz: Jajaja\n[10:05] Carlos Díaz: Y este otro\n[10:06] Carlos Díaz: El gato del vecino otra vez\n[10:10] Carlos Díaz: Mañana te cuento algo\n[10:20] Carlos Díaz: Nada importante\n[10:25] Carlos Díaz: Buen finde si no hablamos"
+    },
+    {
+      "jid": "120363000000000002@g.us",
+      "chatName": "Club de Ajedrez",
+      "isGroup": true,
+      "userMessage": "Grupo: Club de Ajedrez\n\n[10:30] Carlos Díaz: Resultados del torneo: ganó Pedro\n[10:31] Carlos Díaz: Fue una final muy reñida\n[10:35] Luis Ferreyra: Felicitaciones Pedro\n[10:36] Ana Gómez: Bien ahí\n[10:40] Carlos Díaz: Las fotos las subimos mañana"
+    }
+  ]
+}

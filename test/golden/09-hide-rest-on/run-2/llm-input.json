@@ -1,0 +1,11 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550227@s.whatsapp.net",
+      "chatName": "Mara Ledesma",
+      "isGroup": false,
+      "userMessage": "Chat con: Mara Ledesma\n\n[12:10] Mara Ledesma: Feliz cumple atrasado\n[12:11] Mara Ledesma: Que la hayas pasado genial"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "test", "vitest.config.ts", "vite.web.config.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "src/interfaces/web/main.ts",
+    "src/interfaces/web/svelte.d.ts",
+    "test/golden/scenarios",
+    "test/fixtures/architecture"
+  ]
+}

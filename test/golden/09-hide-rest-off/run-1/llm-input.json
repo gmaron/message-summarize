@@ -1,0 +1,47 @@
+{
+  "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
+  "calls": [
+    {
+      "jid": "5491155550221@s.whatsapp.net",
+      "chatName": "Gabriela Núñez",
+      "isGroup": false,
+      "userMessage": "Chat con: Gabriela Núñez\n\n[08:10] Gabriela Núñez: Sofi, necesito tu opinión sobre el contrato\n[08:12] Gabriela Núñez: ¿Podés revisarlo hoy?"
+    },
+    {
+      "jid": "5491155550222@s.whatsapp.net",
+      "chatName": "Hernán Vidal",
+      "isGroup": false,
+      "userMessage": "Chat con: Hernán Vidal\n\n[08:30] Hernán Vidal: Che, ¿vas a ir a la reunión de padres?\n[08:31] Hernán Vidal: Avisame así reservo lugar"
+    },
+    {
+      "jid": "5491155550223@s.whatsapp.net",
+      "chatName": "Irene Sosa",
+      "isGroup": false,
+      "userMessage": "Chat con: Irene Sosa\n\n[08:50] Irene Sosa: Sofi, ¿me prestás el taladro este finde?\n[08:51] Irene Sosa: Lo necesito para colgar unos estantes"
+    },
+    {
+      "jid": "5491155550224@s.whatsapp.net",
+      "chatName": "Joaquín Bravo",
+      "isGroup": false,
+      "userMessage": "Chat con: Joaquín Bravo\n\n[09:10] Joaquín Bravo: Te paso la lista de materiales para la obra\n[09:12] Joaquín Bravo: Falta pintura y masilla"
+    },
+    {
+      "jid": "5491155550225@s.whatsapp.net",
+      "chatName": "Karina Lugo",
+      "isGroup": false,
+      "userMessage": "Chat con: Karina Lugo\n\n[09:30] Karina Lugo: Acordate de traer los formularios firmados\n[09:31] Karina Lugo: Y la copia del DNI"
+    },
+    {
+      "jid": "5491155550226@s.whatsapp.net",
+      "chatName": "Leandro Paz",
+      "isGroup": false,
+      "userMessage": "Chat con: Leandro Paz\n\n[09:50] Leandro Paz: Mirá esta foto del atardecer\n[09:52] Leandro Paz: Qué lindo cielo"
+    },
+    {
+      "jid": "120363000000000121@g.us",
+      "chatName": "Club de Jardinería",
+      "isGroup": true,
+      "userMessage": "Grupo: Club de Jardinería\n\n[10:10] Leandro Paz: Mañana regamos los canteros\n[10:12] Leandro Paz: Traigan guantes"
+    }
+  ]
+}

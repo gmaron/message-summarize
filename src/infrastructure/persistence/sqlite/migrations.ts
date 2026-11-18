@@ -1,0 +1,207 @@
+import type { Database } from './database.js'
+import { inTransaction } from './transaction.js'
+
+/**
+ * A schema change. `version` starts at 1 and goes up by one. A migration is never edited after a release: a change
+ * is a new migration (RNF-16).
+ */
+export interface Migration {
+  readonly version: number
+  readonly description: string
+  readonly sql: string
+  /**
+   * Set to false for a migration that rebuilds tables (it needs foreign keys off). The runner turns them off before
+   * the transaction, runs `PRAGMA foreign_key_check` before the commit (any violation fails and rolls back) and turns
+   * them on again after. Default: true.
+   */
+  readonly foreignKeys?: boolean
+}
+
+/** Migration 1: everything the digest needs and what capture writes. See the notes on each table. */
+const SCHEMA_V1 = `
+-- Chats. A message cannot exist without its row (foreign key on messages), so "messages with no metadata" cannot
+-- happen: the capture-side writer creates a stub row (no name, individual chat, address = id) when it needs one.
+-- unread_kind/unread_count are the UnreadState of the domain: unknown | markedUnread | count(n).
+CREATE TABLE conversations (
+  id             TEXT PRIMARY KEY,
+  is_group       INTEGER NOT NULL DEFAULT 0 CHECK (is_group IN (0, 1)),
+  name           TEXT,
+  participant_id TEXT,
+  address        TEXT NOT NULL,
+  unread_kind    TEXT NOT NULL DEFAULT 'unknown' CHECK (unread_kind IN ('unknown', 'markedUnread', 'count')),
+  unread_count   INTEGER CHECK (unread_count IS NULL OR unread_count >= 0),
+  -- When the unread state was last set (epoch ms). A live update stamps its own time, a snapshot stamps the time
+  -- the snapshot started, so a snapshot never overwrites something newer (RF-12).
+  unread_updated_at INTEGER,
+  CHECK ((unread_kind = 'count') = (unread_count IS NOT NULL))
+);
+
+-- People. No foreign key points here: a sender or an individual chat may refer to someone the platform never
+-- described, and the digest copes with that (the id is absent from the participants map).
+CREATE TABLE participants (
+  id           TEXT PRIMARY KEY,
+  saved_name   TEXT,
+  public_name  TEXT
+);
+
+-- Messages. seq is insertion order and breaks ties between equal timestamps: it never changes for a message (an
+-- upsert keeps it). The kind is validated by the writer against the domain list, so a new kind needs no migration.
+CREATE TABLE messages (
+  seq             INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id TEXT NOT NULL REFERENCES conversations (id),
+  id              TEXT NOT NULL,
+  sender_id       TEXT,
+  sender_name     TEXT,
+  sender_address  TEXT,
+  from_me         INTEGER NOT NULL CHECK (from_me IN (0, 1)),
+  timestamp       INTEGER NOT NULL,
+  kind            TEXT NOT NULL,
+  text            TEXT,
+  transcript      TEXT,
+  read            INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
+  edited_at       INTEGER,
+  UNIQUE (conversation_id, id)
+);
+-- Which chats have messages in a window: a covering scan of the window, no table access (RNF-11).
+CREATE INDEX messages_by_time ON messages (timestamp, conversation_id);
+-- Messages of one chat in a window, and the context before a timestamp.
+CREATE INDEX messages_by_conversation_time ON messages (conversation_id, timestamp);
+-- The last incoming messages of a chat (unread tail).
+CREATE INDEX messages_incoming ON messages (conversation_id, timestamp) WHERE from_me = 0;
+-- Own messages of the whole history (mass-message detection).
+CREATE INDEX messages_own ON messages (conversation_id) WHERE from_me = 1;
+
+-- End of the previous digest. One row at most.
+CREATE TABLE digest_pointer (
+  id      INTEGER PRIMARY KEY CHECK (id = 1),
+  pointer INTEGER NOT NULL
+);
+
+-- Every digest generated, complete (RF-36).
+CREATE TABLE digests (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  since      INTEGER NOT NULL,
+  until      INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  text       TEXT NOT NULL,
+  summarized INTEGER NOT NULL,
+  failed     INTEGER NOT NULL
+);
+
+-- Parts waiting for delivery (RF-52). sent_at is null until delivered. Order of delivery is id order.
+-- digest_id: the digest the part belongs to (null for a part with no digest).
+CREATE TABLE outbox (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  digest_id  INTEGER REFERENCES digests (id),
+  text       TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  sent_at    INTEGER
+);
+CREATE INDEX outbox_pending ON outbox (id) WHERE sent_at IS NULL;
+`
+
+/**
+ * Migration 2: the account this database belongs to (RF-51). One row at most: the phone-number identifier of the
+ * account that was linked first. The digest is only ever delivered to it, even if another phone is linked later.
+ */
+const SCHEMA_V2 = `
+CREATE TABLE account (
+  id        INTEGER PRIMARY KEY CHECK (id = 1),
+  jid       TEXT NOT NULL CHECK (jid <> ''),
+  linked_at INTEGER NOT NULL
+);
+`
+
+/**
+ * Migration 3: one row per digest run (RF-74), including the ones that failed or had nothing to summarize.
+ * The row is opened when the run starts (finished_at and outcome null) and closed when it ends, so a crash leaves an
+ * open row that the daemon marks as failed with error 'interrupted' on its next start. `providers` is JSON
+ * ({"claude-cli": 12, "ollama": 2}); `failed_conversations` is JSON ([{id, name, reason}]) and holds chat names:
+ * private data that lives in the account's database only. `digest_id` is set in the same transaction that saves the
+ * digest, so a committed digest always has its run.
+ */
+const SCHEMA_V3 = `
+CREATE TABLE digest_runs (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  trigger_kind         TEXT NOT NULL CHECK (trigger_kind IN ('schedule', 'missed', 'manual', 'cli')),
+  started_at           INTEGER NOT NULL,
+  finished_at          INTEGER,
+  outcome              TEXT CHECK (outcome IS NULL OR outcome IN ('committed', 'empty', 'failed')),
+  error                TEXT,
+  summarized           INTEGER NOT NULL DEFAULT 0,
+  failed               INTEGER NOT NULL DEFAULT 0,
+  providers            TEXT NOT NULL DEFAULT '{}',
+  failed_conversations TEXT NOT NULL DEFAULT '[]',
+  digest_id            INTEGER REFERENCES digests (id) ON DELETE SET NULL,
+  since                INTEGER,
+  until                INTEGER,
+  CHECK ((finished_at IS NULL) = (outcome IS NULL))
+);
+CREATE INDEX digest_runs_by_start ON digest_runs (started_at);
+`
+
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
+  { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
+  { version: 3, description: 'Digest runs', sql: SCHEMA_V3 },
+]
+
+/** The highest migration version applied to this database, 0 for a database with none. */
+export function currentVersion(db: Database): number {
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'").get()
+  if (table === undefined) return 0
+  const row = db.prepare('SELECT MAX(version) AS version FROM schema_version').get() as { version: number | null }
+  return row.version ?? 0
+}
+
+export interface MigrateHooks {
+  /** For tests: runs after a migration was found pending and before its transaction starts. */
+  readonly beforeApply?: (migration: Migration) => void
+}
+
+/**
+ * Applies, in order, every migration newer than the database's version. Each one runs in its own transaction
+ * together with the row that records it, so a failed migration leaves the database as it was. The version is read
+ * again inside the transaction, so two processes opening the same file cannot apply a migration twice.
+ * A database from a newer release is refused: the data may not be understood.
+ * A migration with `foreignKeys: false` runs with foreign keys off and is checked with foreign_key_check.
+ */
+export function migrate(db: Database, migrations: readonly Migration[], hooks: MigrateHooks = {}): void {
+  migrations.forEach((m, i) => {
+    if (m.version !== i + 1) {
+      throw new Error(`Migrations must be numbered 1, 2, 3...: found ${m.version} at position ${i}`)
+    }
+  })
+  db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)')
+  const found = currentVersion(db)
+  if (found > migrations.length) {
+    throw new Error(`The database is at schema version ${found}, newer than this program knows (${migrations.length})`)
+  }
+  for (const migration of migrations) {
+    if (migration.version <= found) continue
+    hooks.beforeApply?.(migration)
+    const apply = (): void =>
+      inTransaction(db, () => {
+        if (migration.version <= currentVersion(db)) return
+        db.exec(migration.sql)
+        if (migration.foreignKeys === false) {
+          const violations = db.prepare('PRAGMA foreign_key_check').all()
+          if (violations.length > 0) {
+            throw new Error(`Migration ${migration.version} left ${violations.length} foreign key violation(s)`)
+          }
+        }
+        db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)').run(migration.version, Date.now())
+      })
+    if (migration.foreignKeys === false) {
+      // The pragma does nothing inside a transaction, so it is switched around it.
+      db.exec('PRAGMA foreign_keys = OFF')
+      try {
+        apply()
+      } finally {
+        db.exec('PRAGMA foreign_keys = ON')
+      }
+    } else {
+      apply()
+    }
+  }
+}

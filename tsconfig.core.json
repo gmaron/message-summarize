@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "lib": ["ES2023"]
+  },
+  "include": ["src/domain", "src/application"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}
