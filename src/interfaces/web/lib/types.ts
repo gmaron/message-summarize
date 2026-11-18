@@ -108,3 +108,47 @@ export interface PreviewView {
   readonly failed?: number
   readonly error?: DigestErrorCode
 }
+
+export type MarkSource = 'account' | 'pattern' | null
+
+export interface MarkState {
+  readonly excluded: boolean
+  readonly localOnly: boolean
+  /** 'account': this chat's own mark, removable here. 'pattern': set by another pattern or the installation's lists. */
+  readonly marks: { readonly excluded: MarkSource; readonly localOnly: MarkSource }
+}
+
+export type UnreadView =
+  | { readonly kind: 'unknown' }
+  | { readonly kind: 'markedUnread' }
+  | { readonly kind: 'count'; readonly count: number }
+
+/** A conversation of `GET /api/accounts/:id/conversations`. Every text in it (name, address, id) is third-party data: render it as text only. */
+export interface ConversationItem extends MarkState {
+  readonly id: string
+  readonly name: string
+  readonly isGroup: boolean
+  readonly address: string
+  readonly lastMessageAt: number | null
+  readonly messages: number
+  readonly unread: UnreadView
+}
+
+/** A chat the account marks by id that has nothing stored (an excluded one). */
+export interface UnlistedItem extends MarkState {
+  readonly id: string
+}
+
+export interface ConversationsView {
+  readonly total: number
+  readonly items: readonly ConversationItem[]
+  readonly unlisted: readonly UnlistedItem[]
+  readonly timezone: string
+  /** False when there is no Ollama model: "local only" cannot be turned on. */
+  readonly localAvailable: boolean
+}
+
+export interface MarksResult extends MarkState {
+  readonly id: string
+  readonly deletedMessages: number
+}

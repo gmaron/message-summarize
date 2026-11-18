@@ -1,6 +1,8 @@
 import type {
   AccountView,
+  ConversationsView,
   LinkSnapshot,
+  MarksResult,
   PreviewView,
   SchedulesView,
   ScheduleView,
@@ -31,6 +33,8 @@ export class ApiError extends Error {
     readonly issue?: string,
     /** For a 422 `invalidConfig`: what is wrong with each option. */
     readonly issues?: readonly SettingsIssue[],
+    /** For a 409 `confirmRequired`: how many stored messages the exclusion would delete. */
+    readonly messages?: number,
   ) {
     super(code)
     this.name = 'ApiError'
@@ -55,7 +59,12 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     })
     if (reply.status === 204) return undefined as T
-    const data = (await reply.json().catch(() => ({}))) as { error?: unknown; issue?: unknown; issues?: unknown }
+    const data = (await reply.json().catch(() => ({}))) as {
+      error?: unknown
+      issue?: unknown
+      issues?: unknown
+      messages?: unknown
+    }
     if (!reply.ok) {
       if (reply.status === 401) onUnauthorized()
       throw new ApiError(
@@ -63,6 +72,7 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
         typeof data.error === 'string' ? data.error : 'internal',
         typeof data.issue === 'string' ? data.issue : undefined,
         Array.isArray(data.issues) ? (data.issues as SettingsIssue[]) : undefined,
+        typeof data.messages === 'number' ? data.messages : undefined,
       )
     }
     return data as T
@@ -90,6 +100,19 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     /** `patch` has only the options to change, nested as in config.json; `null` removes the account's own value. */
     saveSettings: (id: string, patch: Record<string, unknown>) =>
       request<SettingsView>('PUT', `${account(id)}/settings`, patch),
+    conversations: (id: string, query: { q?: string; limit?: number; offset?: number }) => {
+      const params = new URLSearchParams()
+      if (query.q !== undefined && query.q.trim() !== '') params.set('q', query.q)
+      if (query.limit !== undefined) params.set('limit', String(query.limit))
+      if (query.offset !== undefined) params.set('offset', String(query.offset))
+      const suffix = params.size === 0 ? '' : `?${params}`
+      return request<ConversationsView>('GET', `${account(id)}/conversations${suffix}`)
+    },
+    setMarks: (
+      id: string,
+      conversationId: string,
+      marks: { excluded?: boolean; localOnly?: boolean; confirmDelete?: boolean },
+    ) => request<MarksResult>('PUT', `${account(id)}/conversations/${enc(conversationId)}/marks`, marks),
     /** Where the image of the current QR is. `version` changes on every `qr` event so the browser asks again. */
     qrUrl: (id: string, version: number) => `${account(id)}/link/qr.svg?v=${version}`,
   }

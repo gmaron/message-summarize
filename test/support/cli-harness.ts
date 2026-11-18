@@ -101,6 +101,31 @@ export class FakeConnection implements ManagedConnection {
     this.calls.push('clearSession')
   }
 
+  /** The ids of one person the "platform" knows (LID and phone number), as `[a, b]`. */
+  readonly aliasPairs: [string, string][] = []
+  private readonly aliasListeners = new Set<(a: string, b: string) => void | Promise<void>>()
+
+  onAlias(listener: (a: string, b: string) => void | Promise<void>): () => void {
+    this.aliasListeners.add(listener)
+    return () => {
+      this.aliasListeners.delete(listener)
+    }
+  }
+
+  knownAliases(): [string, string][] {
+    return [...this.aliasPairs]
+  }
+
+  async aliasesOf(id: string): Promise<string[]> {
+    return this.aliasPairs.flatMap(([a, b]) => (a === id ? [b] : b === id ? [a] : []))
+  }
+
+  /** The platform learns that `a` and `b` are the same person; like the adapter, the listeners finish before it goes on. */
+  async learnAlias(a: string, b: string): Promise<void> {
+    this.aliasPairs.push([a, b])
+    for (const listener of [...this.aliasListeners]) await listener(a, b)
+  }
+
   /** Where the events of the socket go while it is open: the capture use case. */
   capture: CaptureMessages | null = null
 

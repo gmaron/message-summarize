@@ -26,6 +26,15 @@ export interface DaemonConnection extends SelfChatSource {
    * have it is waited on with the quiet heuristic only.
    */
   onHistorySync?(listener: HistorySyncListener): () => void
+  /**
+   * Two ids of the platform that turn out to be the same person (the platform's second kind of id and the phone number).
+   * Optional: the events that taught the pair wait for the listener, so it can act before their content is stored.
+   */
+  onAlias?(listener: (a: string, b: string) => void | Promise<void>): () => void
+  /** The other ids of the same person that are known now. Optional. Local only: it must never query the platform. */
+  aliasesOf?(id: string): Promise<string[]>
+  /** The pairs of ids learned so far (memory only). Optional. */
+  knownAliases?(): [string, string][]
 }
 
 export interface DaemonOptions {

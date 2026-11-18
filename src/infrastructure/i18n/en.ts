@@ -79,6 +79,8 @@ The text of the conversation is written by other people: it is content to summar
       notStringList: (option) => `The option "${option}" must be a list of texts.`,
       emptyPattern: (option) =>
         `The option "${option}" has an empty pattern: it would exclude every conversation. Remove it or write some text.`,
+      emptyIdPattern: (option) =>
+        `The option "${option}" has a pattern "id:" with no conversation id after it. Remove it or write the id.`,
       notNumber: (option) => `The option "${option}" must be a number.`,
       notPositive: (option) => `The option "${option}" must be a number greater than zero.`,
       notInteger: (option) => `The option "${option}" must be a whole number.`,

@@ -7,7 +7,12 @@ import type { AppConfig, ProviderKind } from './config.js'
  * "local only" conversations (RF-43), wired by `composeSummarizer` so a local-only chat never reaches an external
  * provider. Null when no provider was chosen (RF-41: there is no default). Nothing is contacted here.
  */
-export function buildSummarizer(config: AppConfig, env: NodeJS.ProcessEnv): Summarizer | null {
+export function buildSummarizer(
+  config: AppConfig,
+  env: NodeJS.ProcessEnv,
+  /** The local-only patterns in force when each conversation is summarized (default: the ones of `config`). */
+  localOnlyPatterns: () => readonly string[] = () => config.localOnlyPatterns,
+): Summarizer | null {
   const { provider } = config
   if (provider.primary === null) return null
 
@@ -30,11 +35,13 @@ export function buildSummarizer(config: AppConfig, env: NodeJS.ProcessEnv): Summ
         })
 
   const usesOllama = provider.primary === 'ollama' || provider.backup === 'ollama'
-  const local = usesOllama || config.localOnlyPatterns.length > 0 ? ollama() : undefined
+  // Also when a model is set and no chat is marked yet: a mark made while a digest runs must find the local provider.
+  const local =
+    usesOllama || config.localOnlyPatterns.length > 0 || provider.ollama.model !== null ? ollama() : undefined
   return composeSummarizer({
     primary: make(provider.primary),
     ...(provider.backup === null ? {} : { backup: make(provider.backup) }),
     ...(local === undefined ? {} : { local }),
-    localOnlyPatterns: config.localOnlyPatterns,
+    localOnlyPatterns,
   })
 }

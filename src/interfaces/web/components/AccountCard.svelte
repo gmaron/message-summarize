@@ -16,6 +16,7 @@
     ondigest,
     onpreview,
     onschedules,
+    onconversations,
     onsettings,
     onlink,
     onretry,
@@ -27,6 +28,7 @@
     ondigest: () => void
     onpreview: () => void
     onschedules: () => void
+    onconversations: () => void
     onsettings: () => void
     onlink: () => void
     onretry: () => void
@@ -129,6 +131,9 @@
       </button>
       <button type="button" disabled={!actions.preview} onclick={onpreview}>{ui.actions.preview}</button>
       <button type="button" disabled={!actions.schedules} onclick={onschedules}>{ui.actions.schedules}</button>
+      <button type="button" disabled={!actions.conversations} onclick={onconversations}>
+        {ui.actions.conversations}
+      </button>
       <button type="button" disabled={!actions.settings} onclick={onsettings}>{ui.actions.settings}</button>
       {#if actions.link}
         <button type="button" onclick={onlink}>{ui.actions.link}</button>

@@ -26,8 +26,17 @@ export interface TranslatorPorts {
   readonly catalog: Catalog
   readonly clock: Clock
   readonly ownIds: OwnConversationIds
-  /** Baileys' own LID to phone number mapping, when it has one. Never throws (or the error is ignored). */
+  /** Baileys' own LID to phone number mapping, read from its memory and stored keys (local). Never throws (or the error is ignored). */
   readonly resolvePhoneNumber?: (lid: string) => Promise<string | null | undefined>
+  /**
+   * The other way round: the LID of a phone number, from what the platform has STORED. LOCAL ONLY (RNF-01, RNF-17): it must
+   * never query WhatsApp. Never throws (or the error is ignored).
+   */
+  readonly resolveLid?: (phone: string) => Promise<string | null | undefined>
+  /**
+   * Told, and awaited, when a LID and a phone number are learned to be the same person (`a` is the LID, `b` the number).
+   */
+  readonly onAlias?: (a: string, b: string) => void | Promise<void>
   /**
    * Asks the platform for the subject of a group nobody told us about yet. Read only. Returns null when it asked and
    * got nothing, and undefined when it could not ask (no socket): that is not a failure and is not remembered.
@@ -62,7 +71,11 @@ export interface WhatsAppTranslator {
   chatsUpdate(chats: readonly WaChat[]): Promise<void>
   groups(groups: readonly WaGroup[]): Promise<void>
   contacts(contacts: readonly WaContact[]): Promise<void>
-  learnLidMapping(mapping: { lid: string; pn: string }): void
+  learnLidMapping(mapping: { lid: string; pn: string }): Promise<void>
+  /** The other ids of the same person that are known (see `learn`). Local only: memory and the platform's STORED mapping. */
+  aliasesOf(id: string): Promise<string[]>
+  /** The pairs learned so far, `[lid, phone]`: memory only. */
+  knownAliases(): [string, string][]
 }
 
 interface Located {
@@ -98,10 +111,43 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
 
   // ---- identity (RF-13): LID to phone number --------------------------------------------------------------------
 
-  function learn(lid: string, phone: string): void {
+  /**
+   * Remembers that a LID and a phone number are the same person. When the pair is NEW, `onAlias` is told and awaited:
+   * whoever reacts (the host adds the privacy marks of one id to the other) is done before the event that taught
+   * the pair goes on to the use case, so a chat that is marked under one id is already covered under the other when
+   * its first message arrives under it. A failure of the listener is ignored here (the listener logs it).
+   */
+  async function learn(lid: string, phone: string): Promise<void> {
     const normalizedLid = normalizeJid(lid)
     const normalizedPhone = normalizeJid(phone)
-    if (isLid(normalizedLid) && !isLid(normalizedPhone)) lidToPhone.set(normalizedLid, normalizedPhone)
+    if (!isLid(normalizedLid) || isLid(normalizedPhone)) return
+    const before = lidToPhone.get(normalizedLid)
+    lidToPhone.set(normalizedLid, normalizedPhone)
+    if (before === normalizedPhone) return
+    try {
+      await ports.onAlias?.(normalizedLid, normalizedPhone)
+    } catch {
+      // see above
+    }
+  }
+
+  /**
+   * The other ids of the same person as far as the platform has told us: the phone number of a LID, and the LIDs of a
+   * phone number. Empty when nothing is known (then a mark covers the id it was made for, and no other).
+   */
+  async function aliasesOf(id: string): Promise<string[]> {
+    const normalized = normalizeJid(id)
+    const found = new Set<string>()
+    if (isLid(normalized)) {
+      const phone = lidToPhone.get(normalized) ?? (await ports.resolvePhoneNumber?.(normalized).catch(() => null))
+      if (phone) found.add(normalizeJid(phone))
+    } else {
+      for (const [lid, phone] of lidToPhone) if (phone === normalized) found.add(lid)
+      const lid = await ports.resolveLid?.(normalized).catch(() => null)
+      if (lid) found.add(normalizeJid(lid))
+    }
+    found.delete(normalized)
+    return [...found]
   }
 
   /**
@@ -113,18 +159,18 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     const normalized = normalizeJid(jid)
     if (alt && !isLid(alt)) {
       const phone = normalizeJid(alt)
-      if (isLid(normalized)) learn(normalized, phone)
+      if (isLid(normalized)) await learn(normalized, phone)
       return phone
     }
     if (!isLid(normalized)) {
-      if (alt && isLid(alt)) learn(alt, normalized)
+      if (alt && isLid(alt)) await learn(alt, normalized)
       return normalized
     }
     const known = lidToPhone.get(normalized)
     if (known !== undefined) return known
     const resolved = await ports.resolvePhoneNumber?.(normalized).catch(() => null)
     if (resolved) {
-      learn(normalized, resolved)
+      await learn(normalized, resolved)
       return lidToPhone.get(normalized) ?? normalized
     }
     return normalized
@@ -196,9 +242,9 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
   async function saveContact(contact: WaContact): Promise<void> {
     const raw = [contact.id, contact.lid, contact.phoneNumber].filter((jid): jid is string => !!jid && !isIgnored(jid))
     // A pair in the same record is a mapping worth keeping.
-    if (contact.lid && contact.phoneNumber) learn(contact.lid, contact.phoneNumber)
-    if (contact.id && contact.phoneNumber) learn(contact.id, contact.phoneNumber)
-    if (contact.id && contact.lid) learn(contact.lid, contact.id)
+    if (contact.lid && contact.phoneNumber) await learn(contact.lid, contact.phoneNumber)
+    if (contact.id && contact.phoneNumber) await learn(contact.id, contact.phoneNumber)
+    if (contact.id && contact.lid) await learn(contact.lid, contact.id)
     const ids = new Set<string>()
     for (const jid of raw) ids.add(await toPhone(jid))
     const savedName = contact.name ?? null
@@ -378,7 +424,7 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
 
     // History: contacts, then chats (names and the unread snapshot), then messages, so names are known first.
     async historySet({ chats, contacts, messages, lidPnMappings }) {
-      for (const { lid, pn } of lidPnMappings ?? []) learn(lid, pn)
+      for (const { lid, pn } of lidPnMappings ?? []) await learn(lid, pn)
       await each(contacts, saveContact)
       const startedAt = sessionStartedAt ?? clock.now()
       await each(chats, async (chat) => {
@@ -462,8 +508,8 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
       await each(contacts, saveContact)
     },
 
-    learnLidMapping({ lid, pn }) {
-      learn(lid, pn)
-    },
+    learnLidMapping: ({ lid, pn }) => learn(lid, pn),
+    aliasesOf,
+    knownAliases: () => [...lidToPhone],
   }
 }

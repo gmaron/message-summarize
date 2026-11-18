@@ -73,6 +73,8 @@ export async function world(
     summarizer?: HarnessOptions['summarizer']
     /** How long a finished preview is kept. */
     previewTtlMs?: number
+    /** The runtimes build the configured providers (the harness's summarizer is not injected). */
+    realProviders?: boolean
     /** Where the daemon looks for the built web. */
     staticDir?: string
   } = {},
@@ -85,6 +87,7 @@ export async function world(
     ...(options.summarizer === undefined ? {} : { summarizer: options.summarizer }),
   })
   const conn = h.connection
+  if (options.realProviders === true) delete (h.ctx as { summarizer?: unknown }).summarizer
   conn.user = { id: ME }
   const factory = { delayMs: 0, fails: false, calls: 0 }
   Object.assign(h.ctx, {

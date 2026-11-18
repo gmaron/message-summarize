@@ -1,3 +1,4 @@
+import { exactIdOf } from './exclusion.js'
 import { err, ok, type Result } from './result.js'
 
 export interface DigestSettings {
@@ -28,6 +29,7 @@ export type SettingsIssueCode =
   | 'notArray'
   | 'notStringList'
   | 'emptyPattern'
+  | 'emptyIdPattern'
   | 'notNumber'
   | 'notPositive'
   | 'notInteger'
@@ -71,6 +73,8 @@ export function parseDigestSettings(input: unknown): Result<DigestSettings, Sett
     if (!v.every((p) => typeof p === 'string')) return fail('excludePatterns', 'notStringList')
     // An empty pattern is a substring of everything: it would exclude every conversation.
     if (v.some((p: string) => p.trim() === '')) return fail('excludePatterns', 'emptyPattern')
+    // `id:` with no id names no conversation.
+    if (v.some((p: string) => exactIdOf(p) === '')) return fail('excludePatterns', 'emptyIdPattern')
     return [...(v as string[])]
   })()
 

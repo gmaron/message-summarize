@@ -41,6 +41,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   'errors.settings.notArray': [['opt']],
   'errors.settings.notStringList': [['opt']],
   'errors.settings.emptyPattern': [['opt']],
+  'errors.settings.emptyIdPattern': [['opt']],
   'errors.settings.notNumber': [['opt']],
   'errors.settings.notPositive': [['opt']],
   'errors.settings.notInteger': [['opt']],

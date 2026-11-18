@@ -45,6 +45,9 @@ export type WebErrorCode =
   | 'notRunning'
   | 'tooSoon'
   | 'concurrentEdit'
+  | 'matchedByPattern'
+  | 'confirmRequired'
+  | 'notApplied'
 
 /** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
 export type WebConfigIssueCode =
@@ -520,6 +523,7 @@ export interface WebTexts {
       readonly digestNow: string
       readonly preview: string
       readonly schedules: string
+      readonly conversations: string
       readonly settings: string
       readonly link: string
       readonly relink: string
@@ -600,6 +604,44 @@ export interface WebTexts {
       /** `{option}`, `{reason}`: a problem that belongs to no field of the form. */
       readonly issue: string
       readonly issuesHeading: string
+    }
+    readonly conversations: {
+      /** `{account}`. */
+      readonly title: string
+      /** What the two marks do, said once on top. */
+      readonly explainExclude: string
+      readonly explainLocalOnly: string
+      readonly searchLabel: string
+      readonly searchPlaceholder: string
+      readonly empty: string
+      readonly noResults: string
+      readonly group: string
+      readonly individual: string
+      /** `{when}`. */
+      readonly lastMessage: string
+      readonly noMessages: string
+      /** `{count}`: how many messages are stored. */
+      readonly messages: string
+      /** `{count}`. */
+      readonly unread: string
+      readonly markedUnread: string
+      readonly exclude: string
+      readonly localOnly: string
+      /** Said once: a mark covers the ids known for this chat; a second chat of the same person is marked on its own. */
+      readonly aliasNote: string
+      /** Under a mark that comes from a pattern of the configuration (not removable here). */
+      readonly fromPattern: string
+      /** Under the "local only" mark that cannot be turned on: no Ollama model. */
+      readonly localUnavailable: string
+      /** `{count}`: asked before excluding a chat with stored messages. */
+      readonly confirmDelete: string
+      readonly confirmYes: string
+      readonly unlistedHeading: string
+      readonly unlistedHint: string
+      /** `{shown}`, `{total}`. */
+      readonly shown: string
+      readonly loadMore: string
+      readonly saving: string
     }
     readonly preview: {
       /** `{account}`. */

@@ -645,3 +645,35 @@ describe('read only (RNF-17)', () => {
     }
   })
 })
+
+describe('the ids of one person (aliases)', () => {
+  it('answers from memory and from what the platform stored, and never asks WhatsApp (RNF-01, RNF-17)', async () => {
+    const t = setup()
+    await t.connection.start()
+    const socket = t.last()
+    socket.user = { id: ME }
+    socket.ev.emit('connection.update', { connection: 'open' })
+    socket.lidToPhone[ANA_LID] = ANA
+    socket.phoneToLid['5491100000002@s.whatsapp.net'] = '99900000002@lid'
+    expect(await t.connection.aliasesOf(ANA_LID)).toEqual([ANA])
+    expect(await t.connection.aliasesOf('5491100000002@s.whatsapp.net')).toEqual(['99900000002@lid'])
+    expect(await t.connection.aliasesOf('5491100000003@s.whatsapp.net')).toEqual([])
+    expect(await t.connection.aliasesOf('99900000077@lid')).toEqual([])
+    // no sender and no query was reached for, and only the members of the narrow interface were read
+    expect(socket.forbiddenCalls).toEqual([])
+    expect(socket.accessed.filter((name) => !ALLOWED_SOCKET_MEMBERS.has(name))).toEqual([])
+  })
+
+  it('tells onAlias for a mapping the platform announces, and lists the known pairs', async () => {
+    const t = setup()
+    const told: [string, string][] = []
+    t.connection.onAlias((a, b) => {
+      told.push([a, b])
+    })
+    await t.connection.start()
+    t.last().ev.emit('lid-mapping.update', { lid: ANA_LID, pn: ANA })
+    await t.flush()
+    expect(told).toEqual([[ANA_LID, ANA]])
+    expect(t.connection.knownAliases()).toEqual([[ANA_LID, ANA]])
+  })
+})

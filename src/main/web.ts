@@ -12,6 +12,7 @@ import { errorCode } from './logger.js'
 import { PreviewService } from './preview.js'
 import { type AccountView, describeAccounts } from './web-accounts.js'
 import { removeWebAddress, writeWebAddress } from './web-address.js'
+import { conversationRoutes } from './web-conversations.js'
 import { digestRoutes } from './web-digest.js'
 import { accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
@@ -122,9 +123,11 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ...scheduleRoutes(source, () => void publishAccounts()),
     ...settingsRoutes(source, () => void publishAccounts()),
     ...digestRoutes({ ...source, previews }),
+    ...conversationRoutes(source),
   ]
 
   const qrCount = new Map<string, number>()
+  const removeBusyCheck = host.addBusyCheck((id) => previews.isBusy(id))
   const unsubscribeChange = host.onChange(() => {
     previews.prune()
     void publishAccounts()
@@ -157,6 +160,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     unsubscribeChange()
     unsubscribeLink()
     unsubscribeDigest()
+    removeBusyCheck()
     // Previews are dropped and their temporary runtimes closed: private text does not outlive the web.
     previews.stop()
   }

@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises'
+import { exactIdOf, hasIdPattern, idPattern } from '../domain/exclusion.js'
 import { mergeByTime, scheduleToCron } from '../domain/schedule.js'
 import { getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
 import { type Installation, isDirectory } from './accounts.js'
@@ -12,6 +13,7 @@ import {
   writeBlocked,
 } from './blocked.js'
 import { type AppConfig, configStamp, describeConfigIssue, loadEffectiveConfig, readConfigObject } from './config.js'
+import { editAccountPrivacyLists, type PrivacyEdit } from './config-writer.js'
 import { type CommandContext, hasSession } from './context.js'
 import { type CountingCapture, countingCapture } from './counting-capture.js'
 import { Daemon, type DaemonConnection, type DigestEvent } from './daemon.js'
@@ -20,6 +22,7 @@ import { LinkFlow, type LinkFlowResult, type LinkPhase, type LinkSnapshot } from
 import { acquireLinkLock, LINK_HEARTBEAT_MS, linkLockHolder } from './link-lock.js'
 import { errorCode, scopedLogger } from './logger.js'
 import { accountLayoutOf, ensureAccountDirs, unsafeAccountPath } from './paths.js'
+import { type AliasHost, coverAlias, purgeNow } from './privacy-aliases.js'
 import { retryBlock } from './retry.js'
 import { createRuntime, type Runtime } from './runtime.js'
 import { importConfigSchedules } from './schedules.js'
@@ -178,6 +181,8 @@ interface Unit {
   readonly id: string
   readonly runtime: Runtime
   readonly daemon: Daemon
+  /** The connection itself (not the guarded view the daemon has): the privacy marks ask it for the aliases of an id. */
+  readonly connection: ManagedConnection
 }
 
 /**
@@ -260,6 +265,11 @@ export class DaemonHost {
   private readonly languages = new Map<string, Language>()
   private readonly rootLanguage: Language
   private pollTimer: ReturnType<typeof setInterval> | null = null
+  /** Marks put in force in memory only (their file write failed or was not applied), per account: stricter, never lost. */
+  private readonly pendingMarks = new Map<string, PrivacyEdit[]>()
+  /** Ids whose stored data must be deleted when no digest or preview of the account is running. */
+  private readonly deferredPurges = new Map<string, Set<string>>()
+  private readonly busyChecks = new Set<(id: string) => boolean>()
   private reconciling: Promise<void> | null = null
   private again = false
   private stopping: Promise<void> | null = null
@@ -377,9 +387,10 @@ export class DaemonHost {
         return
       }
       this.invalidConfigs.delete(id)
-      if (JSON.stringify(loaded.value) !== JSON.stringify(unit.runtime.config)) {
+      const next = this.withPendingMarks(id, loaded.value)
+      if (JSON.stringify(next) !== JSON.stringify(unit.runtime.config)) {
         this.languages.set(id, loaded.value.language)
-        unit.daemon.applyConfig(loaded.value)
+        unit.daemon.applyConfig(next)
       }
       this.reloadFailures.delete(id)
       this.notifyChange()
@@ -465,6 +476,142 @@ export class DaemonHost {
   runtimeOf(id: string): Runtime | undefined {
     const unit = this.units.get(id)
     return unit === undefined || unit.daemon.blocked !== null ? undefined : unit.runtime
+  }
+
+  /** True while a digest of the account's unit is running (scheduled or asked for). */
+  isDigestBusy(id: string): boolean {
+    return this.units.get(id)?.daemon.digestBusy === true
+  }
+
+  /** Adds a check of "something of this account is running that reads its messages" (the web's previews). */
+  addBusyCheck(check: (id: string) => boolean): () => void {
+    this.busyChecks.add(check)
+    return () => {
+      this.busyChecks.delete(check)
+    }
+  }
+
+  /** A digest or a preview of the account is running: what is stored must not be deleted under it. */
+  isBusy(id: string): boolean {
+    return this.isDigestBusy(id) || [...this.busyChecks].some((check) => check(id))
+  }
+
+  /**
+   * The other ids of the same person that the account's running connection knows for `conversationId`. LOCAL knowledge only
+   * (memory and the platform's stored mapping): asking for it never makes the client query WhatsApp (RNF-01, RNF-17).
+   */
+  async aliasesOf(id: string, conversationId: string): Promise<string[]> {
+    const unit = this.units.get(id)
+    if (unit === undefined) return []
+    try {
+      return (await unit.connection.aliasesOf?.(conversationId)) ?? []
+    } catch {
+      return []
+    }
+  }
+
+  private aliasHost(unit: Unit): AliasHost {
+    return {
+      layout: this.ctx.layout,
+      account: accountLayoutOf(this.ctx.layout, unit.id),
+      runtime: unit.runtime,
+      reload: () => this.reloadConfig(unit.id),
+      applyInMemory: (edits) => this.applyMarksInMemory(unit, edits),
+      isBusy: () => this.isBusy(unit.id),
+      deferPurge: (ids) => {
+        const set = this.deferredPurges.get(unit.id) ?? new Set<string>()
+        for (const id of ids) set.add(id)
+        this.deferredPurges.set(unit.id, set)
+      },
+    }
+  }
+
+  /** The configuration with the marks that are only in memory added: they are never lost when the files are read again. */
+  private withPendingMarks(id: string, config: AppConfig): AppConfig {
+    const pending = this.pendingMarks.get(id)
+    if (pending === undefined || pending.length === 0) return config
+    const lists = {
+      excludePatterns: [...config.digest.excludePatterns],
+      localOnlyPatterns: [...config.localOnlyPatterns],
+    }
+    for (const edit of pending) {
+      if (edit.present && !hasIdPattern(lists[edit.list], edit.id)) lists[edit.list].push(idPattern(edit.id))
+    }
+    return {
+      ...config,
+      localOnlyPatterns: lists.localOnlyPatterns,
+      digest: { ...config.digest, excludePatterns: lists.excludePatterns },
+    }
+  }
+
+  private applyMarksInMemory(unit: Unit, edits: readonly PrivacyEdit[]): void {
+    const pending = this.pendingMarks.get(unit.id) ?? []
+    for (const edit of edits) {
+      if (!pending.some((p) => p.list === edit.list && p.id.toLowerCase() === edit.id.toLowerCase())) pending.push(edit)
+    }
+    this.pendingMarks.set(unit.id, pending)
+    try {
+      unit.daemon.applyConfig(this.withPendingMarks(unit.id, unit.runtime.config))
+    } catch (error) {
+      scopedLogger(this.ctx.logger, { account: unit.id }).error('conversation.aliasFailed', { code: errorCode(error) })
+    }
+  }
+
+  private async coverAlias(unit: Unit, a: string, b: string): Promise<void> {
+    const logger = scopedLogger(this.ctx.logger, { account: unit.id })
+    try {
+      // The unit may be gone, or replaced, by the time the event is looked at.
+      if (this.units.get(unit.id) !== unit) return
+      const covered = await coverAlias(this.aliasHost(unit), a, b)
+      if (covered.added > 0) logger.info('conversation.aliasCovered', { count: covered.added })
+    } catch (error) {
+      logger.error('conversation.aliasFailed', { code: errorCode(error) })
+    }
+  }
+
+  /**
+   * When a unit starts (and when a link is adopted): every pair of ids the connection already knows is looked at (the
+   * ones learned during the link had no listener), and what is stored under an excluded id is deleted (an earlier deletion
+   * may have been deferred, or lost with a restart).
+   */
+  private async sweepMarks(unit: Unit): Promise<void> {
+    const logger = scopedLogger(this.ctx.logger, { account: unit.id })
+    try {
+      for (const [a, b] of unit.connection.knownAliases?.() ?? []) await this.coverAlias(unit, a, b)
+      const ids = unit.runtime.config.digest.excludePatterns
+        .map((pattern) => exactIdOf(pattern))
+        .filter((id): id is string => id !== null && id !== '')
+      purgeNow(this.aliasHost(unit), ids)
+    } catch (error) {
+      logger.error('conversation.aliasFailed', { code: errorCode(error) })
+    }
+  }
+
+  /** At every look: writes again the marks that were only put in memory, and runs the deletions that were deferred. */
+  private async housekeepMarks(id: string): Promise<void> {
+    const unit = this.units.get(id)
+    if (unit === undefined) return
+    try {
+      const pending = this.pendingMarks.get(id)
+      if (pending !== undefined && pending.length > 0) {
+        const written = await editAccountPrivacyLists({
+          rootFile: this.ctx.layout.configFile,
+          accountFile: accountLayoutOf(this.ctx.layout, id).configFile,
+          edits: pending,
+        })
+        if (written.ok && this.units.get(id) === unit) {
+          this.pendingMarks.delete(id)
+          await this.reloadConfig(id)
+        }
+      }
+      const deferred = this.deferredPurges.get(id)
+      if (deferred !== undefined && deferred.size > 0 && !this.isBusy(id)) {
+        this.deferredPurges.delete(id)
+        purgeNow(this.aliasHost(unit), [...deferred])
+      }
+    } catch (error) {
+      scopedLogger(this.ctx.logger, { account: id }).error('conversation.aliasFailed', { code: errorCode(error) })
+    }
   }
 
   /** True while a link or a retry of this host holds the account (a temporary runtime must not be opened on it then). */
@@ -557,7 +704,10 @@ export class DaemonHost {
       if (this.failures.has(id) && Date.now() - since >= this.timing.unitStableMs) this.failures.delete(id)
     }
     // A config file edited by hand (or by another process) while the unit runs: applied without reconnecting.
-    for (const id of [...this.units.keys()]) await this.refreshConfig(id)
+    for (const id of [...this.units.keys()]) {
+      await this.refreshConfig(id)
+      await this.housekeepMarks(id)
+    }
     const starts: Promise<void>[] = []
     for (const id of ids) {
       const wanted = await this.decide(id)
@@ -791,7 +941,12 @@ export class DaemonHost {
             if (!this.connectedSince.has(id)) this.connectedSince.set(id, Date.now())
           } else this.connectedSince.delete(id)
         },
-        onDigest: (event) => this.emitDigest({ ...event, account: id }),
+        onDigest: (event) => {
+          this.emitDigest({ ...event, account: id })
+          // Deletions that waited for the digest to end.
+          if (event.state === 'done' || event.state === 'empty' || event.state === 'failed')
+            void this.housekeepMarks(id)
+        },
         // Another process (`msum schedule`) changed them: the next run the web shows is another.
         onSchedulesChanged: () => this.notifyChange(),
         // A new configuration (time zone, language) moves the next run the web shows.
@@ -814,7 +969,12 @@ export class DaemonHost {
           return
         }
       }
-      this.units.set(id, { id, runtime, daemon })
+      const unit: Unit = { id, runtime, daemon, connection }
+      this.units.set(id, unit)
+      // Two ids of one person (a LID and the phone number): a mark of one is put on the other, before the event that
+      // taught the pair goes on to be stored.
+      connection.onAlias?.((a, b) => this.coverAlias(unit, a, b))
+      await this.sweepMarks(unit)
       await daemon.start()
     } catch (error) {
       if (adopted !== undefined && !this.units.has(id)) await adopted.connection.stop().catch(() => undefined)
@@ -1292,6 +1452,8 @@ export class DaemonHost {
       this.blocks.set(id, { reason: reasonBlocked, persisted: false, warned: false })
     }
     this.units.delete(id)
+    this.pendingMarks.delete(id)
+    this.deferredPurges.delete(id)
     this.connectedSince.delete(id)
     this.configStamps.delete(id)
     this.invalidConfigs.delete(id)

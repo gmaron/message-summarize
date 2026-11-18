@@ -13,6 +13,7 @@ const settingsCodes: SettingsIssueCode[] = [
   'notArray',
   'notStringList',
   'emptyPattern',
+  'emptyIdPattern',
   'notNumber',
   'notPositive',
   'notInteger',

@@ -80,6 +80,8 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
       notStringList: (option) => `La opción "${option}" tiene que ser una lista de textos.`,
       emptyPattern: (option) =>
         `La opción "${option}" tiene un patrón vacío: excluiría todas las conversaciones. Borralo o escribí un texto.`,
+      emptyIdPattern: (option) =>
+        `La opción "${option}" tiene un patrón "id:" sin el id de la conversación. Borralo o escribí el id.`,
       notNumber: (option) => `La opción "${option}" tiene que ser un número.`,
       notPositive: (option) => `La opción "${option}" tiene que ser un número mayor que cero.`,
       notInteger: (option) => `La opción "${option}" tiene que ser un número entero.`,

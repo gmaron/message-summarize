@@ -60,6 +60,21 @@ describe('FallbackSummarizer (RF-42)', () => {
   })
 })
 
+describe('LocalOnlyRouter with a function for its patterns (RF-43)', () => {
+  it('reads the patterns on every conversation, so a mark made meanwhile applies to the next one', async () => {
+    const external = new Fake(ok(VALID))
+    const local = new Fake(ok(VALID))
+    let patterns: readonly string[] = []
+    const router = composeSummarizer({ primary: external, local, localOnlyPatterns: () => patterns })
+    await router.summarize(req('a', 'A'))
+    patterns = ['id:b']
+    await router.summarize(req('b', 'B'))
+    await router.summarize(req('a', 'A'))
+    expect(external.requests.map((r) => r.conversation.id)).toEqual(['a', 'a'])
+    expect(local.requests.map((r) => r.conversation.id)).toEqual(['b'])
+  })
+})
+
 describe('LocalOnlyRouter (RF-43)', () => {
   const patterns = ['familia', '5491100000001']
 

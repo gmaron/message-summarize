@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isExcluded } from '../../../src/domain/exclusion.js'
+import { exactIdOf, hasIdPattern, idPattern, isExcluded } from '../../../src/domain/exclusion.js'
 
 describe('isExcluded', () => {
   it('excludes nothing without patterns', () => {
@@ -37,5 +37,51 @@ describe('isExcluded', () => {
   })
   it('excludes when any pattern matches', () => {
     expect(isExcluded(['zzz', 'gym'], 'a', 'Gym')).toBe(true)
+  })
+  describe('the exact form id:<conversation id>', () => {
+    const mine = '5491112345678@s.whatsapp.net'
+    it('matches only that id', () => {
+      expect(isExcluded([`id:${mine}`], mine, 'Nico')).toBe(true)
+      expect(isExcluded([`id:${mine}`], '5491100000000@s.whatsapp.net', 'Nico')).toBe(false)
+    })
+    it('is not caught by the substring trap: the id of another chat that contains it is not matched', () => {
+      expect(isExcluded([mine], `1${mine}`, 'Other')).toBe(true) // the plain form IS a substring
+      expect(isExcluded([`id:${mine}`], `1${mine}`, 'Other')).toBe(false)
+      expect(isExcluded([`id:${mine}`], `${mine}x`, 'Other')).toBe(false)
+    })
+    it('is case-insensitive, in the prefix and in the id', () => {
+      expect(isExcluded([`ID:${mine.toUpperCase()}`], mine, null)).toBe(true)
+      expect(isExcluded(['id:ABC@g.us'], 'abc@g.us', null)).toBe(true)
+    })
+    it('never matches by name, and a name that contains the text does not match', () => {
+      expect(isExcluded([`id:${mine}`], 'p1', mine)).toBe(false)
+      expect(isExcluded(['id:p1'], 'p10', 'id:p1')).toBe(false)
+    })
+    it('lives next to substring patterns', () => {
+      expect(isExcluded(['id:nope', 'gym'], 'a', 'Gym')).toBe(true)
+      expect(isExcluded(['id:nope', 'zzz'], 'a', 'Gym')).toBe(false)
+    })
+    it('idPattern builds it', () => {
+      expect(idPattern('x@g.us')).toBe('id:x@g.us')
+      expect(isExcluded([idPattern('x@g.us')], 'x@g.us', null)).toBe(true)
+    })
+  })
+  describe('spaces and case in the exact form', () => {
+    it('ignores spaces after the prefix and around the id, in the prefix and in the id', () => {
+      expect(isExcluded(['id: P1'], 'p1', null)).toBe(true)
+      expect(isExcluded(['Id:  p1  '], 'P1', null)).toBe(true)
+      expect(isExcluded(['id:p1'], ' p1 ', null)).toBe(true)
+    })
+    it('"id:" alone matches nothing (the configuration refuses it), not even every chat', () => {
+      expect(isExcluded(['id:'], 'p1', 'x')).toBe(false)
+      expect(isExcluded(['id:   '], '', null)).toBe(false)
+    })
+    it('exactIdOf and hasIdPattern normalize', () => {
+      expect(exactIdOf('ID: ABC@g.us ')).toBe('abc@g.us')
+      expect(exactIdOf('gym')).toBeNull()
+      expect(exactIdOf('id:')).toBe('')
+      expect(hasIdPattern(['gym', 'ID:ABC@G.US'], 'abc@g.us')).toBe(true)
+      expect(hasIdPattern(['gym', 'abc@g.us'], 'abc@g.us')).toBe(false)
+    })
   })
 })

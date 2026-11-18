@@ -86,7 +86,13 @@ export interface WhatsAppSocket {
   /** Read-only query of the subject of a group. */
   groupMetadata(jid: string): Promise<{ readonly subject?: string | undefined }>
   readonly signalRepository?: {
-    readonly lidMapping?: { getPNForLID(lid: string): Promise<string | null | undefined> } | undefined
+    readonly lidMapping?:
+      | {
+          getPNForLID(lid: string): Promise<string | null | undefined>
+          /** The LID that is STORED for a number: a local read, never a query to WhatsApp. */
+          storedLidForPN?(pn: string): Promise<string | null | undefined>
+        }
+      | undefined
   }
 }
 
@@ -159,10 +165,14 @@ export const backoffDelay = (policy: BackoffPolicy, attempt: number): number =>
  *
  * Events of a socket are processed one at a time in the order they arrived, so a history sync stays in order.
  */
+/** Told that `a` and `b` are the same person; the capture of the event that taught it waits for it. */
+export type AliasListener = (a: string, b: string) => void | Promise<void>
+
 export class WhatsAppConnection {
   private current: WhatsAppStatus = { state: 'stopped' }
   private readonly listeners = new Set<WhatsAppStatusListener>()
   private readonly historyListeners = new Set<HistorySyncListener>()
+  private readonly aliasListeners = new Set<AliasListener>()
   /** The RECENT chunk with progress 100 was stored / Baileys said the RECENT history is complete. Per socket. */
   private recentStored = false
   private recentStatusComplete = false
@@ -187,6 +197,16 @@ export class WhatsAppConnection {
       ownIds: options.ownIds,
       ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
       resolvePhoneNumber: async (lid) => this.session?.socket.signalRepository?.lidMapping?.getPNForLID(lid),
+      resolveLid: async (phone) => this.session?.socket.signalRepository?.lidMapping?.storedLidForPN?.(phone),
+      onAlias: async (a, b) => {
+        for (const listener of [...this.aliasListeners]) {
+          try {
+            await listener(a, b)
+          } catch {
+            // a listener that fails does not stop the capture of the event that taught the pair
+          }
+        }
+      },
       fetchGroupSubject: async (jid) => {
         const session = this.session
         if (session === null) return undefined
@@ -208,6 +228,27 @@ export class WhatsAppConnection {
     return () => {
       this.listeners.delete(listener)
     }
+  }
+
+  /**
+   * Listens to two ids of the platform turning out to be the same person (a LID and a phone number). The events that
+   * taught the pair wait for the listener to finish. Returns the function that stops listening.
+   */
+  onAlias(listener: AliasListener): () => void {
+    this.aliasListeners.add(listener)
+    return () => {
+      this.aliasListeners.delete(listener)
+    }
+  }
+
+  /** The pairs of ids learned so far (memory only). */
+  knownAliases(): [string, string][] {
+    return this.translator.knownAliases()
+  }
+
+  /** The other ids of the same person that are known now (empty when none): a mark has to cover all of them. */
+  aliasesOf(id: string): Promise<string[]> {
+    return this.translator.aliasesOf(id)
   }
 
   /** Listens to the progress of the initial history sync. Returns the function that stops listening. */

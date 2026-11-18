@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
+import { exactIdOf } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
 import type { Catalog, Language } from '../infrastructure/i18n/index.js'
@@ -167,6 +168,7 @@ export function parseConfig(
     if (!Array.isArray(v)) return add(key, 'notArray')
     if (!v.every((p) => typeof p === 'string')) return add(key, 'notStringList')
     if (v.some((p: string) => p.trim() === '')) return add(key, 'emptyPattern')
+    if (v.some((p: string) => exactIdOf(p) === '')) return add(key, 'emptyIdPattern')
     return [...(v as string[])]
   }
   const choice = (obj: Obj, key: string, path: string, allowed: readonly string[]): string | null | undefined => {

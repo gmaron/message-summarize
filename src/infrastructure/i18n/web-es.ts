@@ -37,6 +37,10 @@ export const webEs: WebTexts = {
     invalidSchedule: 'El horario no es válido: revisá los días y la hora.',
     notRunning:
       'El daemon no está corriendo esta cuenta (no está vinculada, está bloqueada o está arrancando): no puede enviar un digest ahora.',
+    matchedByPattern: 'Esta marca viene de un patrón de la configuración, no de la conversación: se cambia ahí.',
+    notApplied:
+      'El cambio se guardó pero todavía no se pudo aplicar a la cuenta que está corriendo: no se borró nada. Probá de nuevo en un momento.',
+    confirmRequired: 'Falta confirmar que se borran los mensajes guardados de esta conversación.',
   },
   linkErrors: {
     timeout: 'Pasó el tiempo sin que se escaneara el QR. Volvé a intentar.',
@@ -67,6 +71,7 @@ export const webEs: WebTexts = {
     notArray: 'Tiene que ser una lista.',
     notStringList: 'Tiene que ser una lista de textos.',
     emptyPattern: 'Tiene un patrón vacío: excluiría todas las conversaciones.',
+    emptyIdPattern: 'Tiene un patrón "id:" sin el id de la conversación.',
     notNumber: 'Tiene que ser un número.',
     notPositive: 'Tiene que ser un número mayor que cero.',
     notInteger: 'Tiene que ser un número entero.',
@@ -140,6 +145,7 @@ export const webEs: WebTexts = {
       digestNow: 'Resumir ahora',
       preview: 'Vista previa',
       schedules: 'Horarios',
+      conversations: 'Conversaciones',
       settings: 'Ajustes',
       link: 'Vincular',
       relink: 'Vincular de nuevo',
@@ -235,6 +241,40 @@ export const webEs: WebTexts = {
       noChanges: 'No hay nada para guardar.',
       issue: '{option}: {reason}',
       issuesHeading: 'No se guardaron los ajustes:',
+    },
+    conversations: {
+      title: 'Conversaciones de {account}',
+      explainExclude:
+        'Excluir: la conversación no se guarda ni se resume. Se borran los mensajes que ya estaban guardados y no se recuperan al quitar la marca.',
+      explainLocalOnly:
+        'Solo local: la conversación se resume únicamente con el proveedor local (Ollama) y nunca se envía afuera de esta computadora.',
+      searchLabel: 'Buscar',
+      searchPlaceholder: 'Nombre o número',
+      empty: 'Todavía no hay conversaciones guardadas en esta cuenta.',
+      noResults: 'Ninguna conversación coincide con la búsqueda.',
+      group: 'Grupo',
+      individual: 'Individual',
+      lastMessage: 'Último mensaje: {when}',
+      noMessages: 'Sin mensajes',
+      messages: '{count} mensajes guardados',
+      unread: '{count} sin leer',
+      markedUnread: 'Marcada como no leída',
+      exclude: 'Excluir',
+      localOnly: 'Solo local',
+      aliasNote:
+        'Una marca cubre los ids que WhatsApp le dijo a esta computadora que son de la misma persona. Si la misma persona aparece como un segundo chat (WhatsApp a veces usa el número y a veces un id interno), marcá también ese chat.',
+      fromPattern: 'Viene de un patrón de la configuración: se cambia en el archivo, no acá.',
+      localUnavailable:
+        'Esta cuenta no tiene un modelo de Ollama configurado: elegí uno en Ajustes antes de marcar conversaciones como solo local.',
+      confirmDelete:
+        'Excluir esta conversación borra los {count} mensajes guardados. No se puede deshacer. ¿Excluir igual?',
+      confirmYes: 'Sí, excluir y borrar',
+      unlistedHeading: 'Marcadas que no están guardadas',
+      unlistedHint:
+        'Conversaciones excluidas (o marcadas) de las que no hay nada guardado: desde acá se les puede quitar la marca.',
+      shown: 'Mostrando {shown} de {total}',
+      loadMore: 'Cargar más',
+      saving: 'Guardando…',
     },
     preview: {
       title: 'Vista previa de {account}',

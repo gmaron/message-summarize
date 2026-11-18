@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { open, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { exactIdOf, hasIdPattern, idPattern } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type AppConfig, type ConfigIssue, isObject, type Obj, readConfigObject, validateEffective } from './config.js'
 
@@ -16,7 +17,8 @@ export interface UpdateAccountConfigOptions {
   readonly rootFile: string
   /** The account's config.json: the one that is written. It does not have to exist. */
   readonly accountFile: string
-  readonly patch: ConfigPatch
+  /** The change, or a function that builds it from the account file as it is when the write happens (read-modify-write). */
+  readonly patch: ConfigPatch | ((current: Obj, root: Obj) => ConfigPatch)
   /** The default of `timezone` (the system's). */
   readonly fallbackTimezone?: string
   /** Runs after the account file was read and patched, right before the final check. For tests: they edit the file there. */
@@ -88,6 +90,63 @@ export function updateAccountConfig(options: UpdateAccountConfigOptions): Promis
   return serialized(options.accountFile, () => write(options))
 }
 
+/** The privacy lists (RF-14, RF-43): the ones the web adds conversations to and removes them from. */
+export type PrivacyList = 'excludePatterns' | 'localOnlyPatterns'
+
+/** Puts the exact pattern of a conversation id (`id:<id>`) in a privacy list (`present: true`) or takes it out of it. */
+export interface PrivacyEdit {
+  readonly list: PrivacyList
+  /** The conversation id, not the pattern. Ids are compared without case, as the matcher does. */
+  readonly id: string
+  readonly present: boolean
+}
+
+/**
+ * Adds or removes patterns in the privacy lists of the ACCOUNT's file (RF-72). Not part of the settings API (which refuses
+ * these lists): the conversations API is the only caller. It reads the lists at the moment of the write, so two
+ * changes at once never overwrite each other, and it validates and writes exactly as `updateAccountConfig` does. Only the
+ * entries for the given ids are touched; a list of the wrong shape (a hand edit) is left alone and the validation says
+ * so (nothing is written). Adding what is there already, or removing what is not, changes nothing.
+ */
+export function editAccountPrivacyLists(
+  options: Omit<UpdateAccountConfigOptions, 'patch'> & {
+    /**
+     * The edits, or a function that decides them from the lists in force (the installation's and the account's, from the
+     * files as they are when the write happens, and re-run if the file changed under it): decided inside the serialized
+     * write, so a change that just landed is respected.
+     */
+    readonly edits:
+      | readonly PrivacyEdit[]
+      | ((inForce: Readonly<Record<PrivacyList, readonly string[]>>) => readonly PrivacyEdit[])
+  },
+): Promise<UpdateAccountConfigResult> {
+  const { edits: given, ...rest } = options
+  const patch = (current: Obj, root: Obj): ConfigPatch => {
+    const texts = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+    const edits =
+      typeof given === 'function'
+        ? given({
+            excludePatterns: [...texts(root.excludePatterns), ...texts(current.excludePatterns)],
+            localOnlyPatterns: [...texts(root.localOnlyPatterns), ...texts(current.localOnlyPatterns)],
+          })
+        : given
+    const changes: Record<string, unknown> = {}
+    for (const { list, id, present } of edits) {
+      const known = list in changes ? changes[list] : current[list]
+      if (known !== undefined && !Array.isArray(known)) continue
+      const entries = (known as string[] | undefined) ?? []
+      changes[list] = present
+        ? hasIdPattern(entries, id)
+          ? entries
+          : [...entries, idPattern(id)]
+        : entries.filter((entry) => exactIdOf(entry) !== id.toLowerCase().trim())
+    }
+    return changes
+  }
+  return updateAccountConfig({ ...rest, patch })
+}
+
 /** How the file looks (modification time and size), or "missing". */
 async function fingerprint(file: string): Promise<string> {
   try {
@@ -135,7 +194,8 @@ async function write(options: UpdateAccountConfigOptions): Promise<UpdateAccount
     const current = await readConfigObject(accountFile)
     if (!current.ok) return err([current.error])
     const next = structuredClone(current.value)
-    for (const [path, value] of Object.entries(patch)) applyOne(next, path, value)
+    const changes = typeof patch === 'function' ? patch(current.value, root.value) : patch
+    for (const [path, value] of Object.entries(changes)) applyOne(next, path, value)
     const effective = validateEffective(root.value, next, rootFile, accountFile, fallbackTimezone)
     if (!effective.ok) return effective
     const temporary = join(dirname(accountFile), `.config.json.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)

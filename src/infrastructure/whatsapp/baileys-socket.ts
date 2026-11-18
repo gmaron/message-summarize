@@ -1,8 +1,8 @@
 import './console-guard.js'
-import makeWASocket, { type BaileysEventMap, Browsers } from 'baileys'
+import makeWASocket, { type AuthenticationState, type BaileysEventMap, Browsers } from 'baileys'
 import { loadSecureAuthState } from './auth-state.js'
 import type { SocketFactory, WhatsAppSocket } from './connection.js'
-import { selfChatJid } from './jid.js'
+import { normalizeJid, selfChatJid } from './jid.js'
 import type {
   WaChat,
   WaContact,
@@ -57,6 +57,15 @@ async function sendTextToSelf(socket: BaileysSocket, text: string): Promise<void
   await socket.sendMessage(jid, { text, linkPreview: null })
 }
 
+/** The LID Baileys has STORED for a phone-number JID, from the auth state on disk. Never asks WhatsApp. */
+async function storedLid(state: AuthenticationState, pn: string): Promise<string | null> {
+  const user = normalizeJid(pn).split('@')[0] ?? ''
+  if (user === '') return null
+  const stored = await state.keys.get('lid-mapping', [user])
+  const lidUser = stored[user]
+  return typeof lidUser === 'string' && lidUser !== '' ? `${lidUser}@lid` : null
+}
+
 export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
   const { state, saveCreds, settle } = await loadSecureAuthState(authDir)
   const socket = makeWASocket({
@@ -78,7 +87,14 @@ export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
     sendTextToSelf: (text) => sendTextToSelf(socket, text),
     groupMetadata: (jid) => socket.groupMetadata(jid),
     signalRepository: {
-      lidMapping: { getPNForLID: (lid) => socket.signalRepository.lidMapping.getPNForLID(lid) },
+      lidMapping: {
+        // LOCAL lookup (RNF-01, RNF-17): `_getPNsForLIDsImpl` (baileys/lib/Signal/lid-mapping.js) reads its memory cache and
+        // the stored keys and never calls `pnToLIDFunc`, the only path of that file that queries WhatsApp.
+        getPNForLID: (lid) => socket.signalRepository.lidMapping.getPNForLID(lid),
+        // The other way is NOT `getLIDForPN`: that one falls back to a USync query to WhatsApp's servers when the number is
+        // not stored. This reads the stored mapping only (key `<number user>` of the `lid-mapping` store).
+        storedLidForPN: (pn) => storedLid(state, pn),
+      },
     },
   }
   return { socket: narrow, saveCreds, settle, me: () => state.creds.me }

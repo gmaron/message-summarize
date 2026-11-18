@@ -7,7 +7,11 @@ export interface ComposeSummarizerOptions {
   readonly backup?: Summarizer
   /** The local provider (Ollama). Required for local-only conversations to be summarized at all. */
   readonly local?: Summarizer
-  readonly localOnlyPatterns: readonly string[]
+  /**
+   * The patterns of the local-only conversations, or a function that gives the CURRENT ones: asked for on every
+   * conversation, so a mark made while a digest runs applies to the conversations of that digest not yet summarized.
+   */
+  readonly localOnlyPatterns: readonly string[] | (() => readonly string[])
 }
 
 /**

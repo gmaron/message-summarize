@@ -154,6 +154,46 @@ describe('CaptureMessages: exclusion (RF-14)', () => {
     expect((await capture.receiveMessage(received({ id: 'b' }))).stored).toBe(false)
   })
 
+  describe('a chat excluded by its exact id (id:<id>)', () => {
+    const meta = { conversation: conversation({ id: 'c1', name: 'Ana Test', address: '+5491100000001' }) }
+    it('does not store its metadata either, so its row and name do not come back', async () => {
+      const { capture, repository } = setup(['id:C1'])
+      await capture.conversationMetadata(meta)
+      expect(await repository.findConversation('c1')).toBeNull()
+      // another chat is stored as always
+      await capture.conversationMetadata({ conversation: conversation({ id: 'c2' }) })
+      expect(await repository.findConversation('c2')).not.toBeNull()
+    })
+    it('keeps storing metadata when only name patterns are set: they need the name', async () => {
+      const { capture, repository } = setup(['ana', 'id:other'])
+      await capture.conversationMetadata(meta)
+      expect(await repository.findConversation('c1')).not.toBeNull()
+    })
+  })
+
+  describe('an event in flight when the chat is excluded', () => {
+    it('does not insert after the exclusion was applied while it was being handled', async () => {
+      let patterns: readonly string[] = []
+      const clock = new FixedClock(NOW)
+      const repository = new InMemoryCaptureRepository(() => clock.time)
+      // The mass check of an own message awaits the repository: the exclusion lands exactly there.
+      const original = repository.countOtherConversationsWithOwnText.bind(repository)
+      repository.countOtherConversationsWithOwnText = async (...args) => {
+        patterns = ['id:c1']
+        return original(...args)
+      }
+      const capture = createCaptureMessages({
+        repository,
+        clock,
+        excludePatterns: () => patterns,
+        ownConversationIds: () => [],
+      })
+      const outcome = await capture.receiveMessage(own({ id: 'late', text: 'hello' }))
+      expect(outcome).toEqual({ stored: false, isNew: false, downloadAudio: false })
+      expect(await repository.source.conversationsWithMessages(all)).toEqual([])
+    })
+  })
+
   describe('metadata is always stored, so exclusion by name works afterwards', () => {
     it('an excluded group keeps its name, and its later messages are dropped', async () => {
       const { capture, source, repository } = setup(['PROVEEDORES'])

@@ -11,6 +11,8 @@ export interface AccountActions {
   readonly digest: boolean
   readonly preview: boolean
   readonly schedules: boolean
+  /** The conversations are in the database of the account: the configuration must be valid to read it as the daemon does. */
+  readonly conversations: boolean
   /** Always: with an invalid configuration the dialog says what is wrong. */
   readonly settings: boolean
   /** Opens the link dialog: the account is not linked, or a link is in progress. */
@@ -30,6 +32,7 @@ export function accountActions(account: AccountView): AccountActions {
     digest: ['connected', 'connecting', 'reconnecting'].includes(account.state),
     preview: account.configValid && account.maskedNumber !== null && account.state !== 'linking',
     schedules: account.configValid,
+    conversations: account.configValid,
     settings: true,
     link:
       account.configValid &&

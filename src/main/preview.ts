@@ -97,6 +97,11 @@ export class PreviewService {
     this.ttlMs = options.ttlMs ?? DEFAULT_PREVIEW_TTL_MS
   }
 
+  /** True while a preview of the account is being started or is running. */
+  isBusy(id: string): boolean {
+    return this.active.has(id)
+  }
+
   /** What the page shows of the account's latest preview. */
   get(id: string): PreviewView {
     const entry = this.entries.get(id)

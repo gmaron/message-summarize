@@ -94,7 +94,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     // A summarizer given in the options (tests) is fixed: a reconfiguration does not replace it.
     const makeParts = (settings: AppConfig): { renderers: Renderers; generateDigest: GenerateDigest | null } => {
       const renderers = createRenderers(settings.language, settings.timezone)
-      const summarizer = options.summarizer === undefined ? buildSummarizer(settings, env) : options.summarizer
+      const summarizer =
+        options.summarizer === undefined
+          ? buildSummarizer(settings, env, () => config.localOnlyPatterns)
+          : options.summarizer
       return {
         renderers,
         generateDigest:

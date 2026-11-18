@@ -37,6 +37,11 @@ export const webEn: WebTexts = {
     invalidSchedule: 'The schedule is not valid: check the days and the time.',
     notRunning:
       'The daemon is not running this account (it is not linked, is blocked or is starting): it cannot send a digest now.',
+    matchedByPattern:
+      'This mark comes from a pattern in the configuration, not from the conversation: change it there.',
+    notApplied:
+      'The change was saved but could not be applied to the running account yet: nothing was deleted. Try again in a moment.',
+    confirmRequired: 'You must confirm that the stored messages of this conversation are deleted.',
   },
   linkErrors: {
     timeout: 'Time ran out before the QR was scanned. Try again.',
@@ -68,6 +73,7 @@ export const webEn: WebTexts = {
     notArray: 'Must be a list.',
     notStringList: 'Must be a list of texts.',
     emptyPattern: 'Has an empty pattern: it would exclude every conversation.',
+    emptyIdPattern: 'Has a pattern "id:" with no conversation id after it.',
     notNumber: 'Must be a number.',
     notPositive: 'Must be a number greater than zero.',
     notInteger: 'Must be a whole number.',
@@ -141,6 +147,7 @@ export const webEn: WebTexts = {
       digestNow: 'Summarize now',
       preview: 'Preview',
       schedules: 'Schedules',
+      conversations: 'Conversations',
       settings: 'Settings',
       link: 'Link',
       relink: 'Link again',
@@ -236,6 +243,39 @@ export const webEn: WebTexts = {
       noChanges: 'There is nothing to save.',
       issue: '{option}: {reason}',
       issuesHeading: 'The settings were not saved:',
+    },
+    conversations: {
+      title: 'Conversations of {account}',
+      explainExclude:
+        'Exclude: the conversation is neither stored nor summarized. Messages already stored are deleted and do not come back when the mark is removed.',
+      explainLocalOnly:
+        'Local only: the conversation is summarized only with the local provider (Ollama) and never leaves this computer.',
+      searchLabel: 'Search',
+      searchPlaceholder: 'Name or number',
+      empty: 'There are no stored conversations in this account yet.',
+      noResults: 'No conversation matches the search.',
+      group: 'Group',
+      individual: 'Individual',
+      lastMessage: 'Last message: {when}',
+      noMessages: 'No messages',
+      messages: '{count} stored messages',
+      unread: '{count} unread',
+      markedUnread: 'Marked as unread',
+      exclude: 'Exclude',
+      localOnly: 'Local only',
+      aliasNote:
+        'A mark covers the ids that WhatsApp has told this computer belong to the same person. If the same person shows up as a second chat (WhatsApp sometimes uses a number and sometimes an internal id), mark that chat too.',
+      fromPattern: 'Set by a pattern in the configuration: change it in the file, not here.',
+      localUnavailable:
+        'This account has no Ollama model set: choose one in Settings before marking conversations as local only.',
+      confirmDelete:
+        'Excluding this conversation deletes its {count} stored messages. This cannot be undone. Exclude anyway?',
+      confirmYes: 'Yes, exclude and delete',
+      unlistedHeading: 'Marked but not stored',
+      unlistedHint: 'Excluded (or marked) conversations with nothing stored: the mark can be removed from here.',
+      shown: 'Showing {shown} of {total}',
+      loadMore: 'Load more',
+      saving: 'Saving…',
     },
     preview: {
       title: 'Preview of {account}',

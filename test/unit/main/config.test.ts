@@ -165,6 +165,10 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
       { option: 'provider.claudeCli.command', code: 'emptyString' },
     ])
     expect(issuesOf({ localOnlyPatterns: [''] })).toContainEqual({ option: 'localOnlyPatterns', code: 'emptyPattern' })
+    expect(issuesOf({ localOnlyPatterns: ['id:'] })).toContainEqual({
+      option: 'localOnlyPatterns',
+      code: 'emptyIdPattern',
+    })
     expect(issuesOf({ provider: 5 })).toEqual([{ option: 'provider', code: 'notObject' }])
   })
 
