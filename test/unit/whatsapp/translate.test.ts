@@ -266,6 +266,61 @@ describe('LID to phone number (RF-13)', () => {
   })
 })
 
+describe('two ids of one person (marks cover both)', () => {
+  it('tells onAlias when a pair is learned, once per new pair, and waits for it before capturing the event', async () => {
+    const told: [string, string][] = []
+    let capturedWhenDone: string[] | null = null
+    let callsOf: RecordedCall[] = []
+    const { translator, calls } = setup({
+      onAlias: async (a, b) => {
+        told.push([a, b])
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        capturedWhenDone ??= callsOf.map((c) => c.method)
+      },
+    })
+    callsOf = calls
+    const first = text('M1', ANA_LID, 'a')
+    await translator.messagesUpsert({
+      type: 'notify',
+      messages: [{ ...first, key: { ...first.key, remoteJidAlt: ANA } }, text('M2', ANA_LID, 'b')],
+    })
+    expect(told).toEqual([[ANA_LID, ANA]])
+    // nothing of the event had reached the use case when the listener finished
+    expect(capturedWhenDone).toEqual([])
+    expect(only(calls, 'receiveMessage')).toHaveLength(2)
+    await translator.learnLidMapping({ lid: ANA_LID, pn: ANA })
+    expect(told).toHaveLength(1)
+    await translator.learnLidMapping({ lid: '99900000002@lid', pn: BETO })
+    expect(told).toHaveLength(2)
+  })
+
+  it('a listener that fails does not stop the capture', async () => {
+    const { translator, calls } = setup({
+      onAlias: () => {
+        throw new Error('boom')
+      },
+    })
+    const msg = text('M', ANA_LID, 'hola')
+    await translator.messagesUpsert({ type: 'notify', messages: [{ ...msg, key: { ...msg.key, remoteJidAlt: ANA } }] })
+    expect(only(calls, 'receiveMessage')).toHaveLength(1)
+  })
+
+  it('aliasesOf gives the other ids that are known, in both directions, and nothing for the unknown', async () => {
+    const { translator } = setup({
+      resolveLid: async (phone) => (phone === BETO ? '99900000002@lid' : null),
+      resolvePhoneNumber: async (lid) => (lid === '99900000003@lid' ? '5491100000003@s.whatsapp.net' : null),
+    })
+    expect(await translator.aliasesOf(ANA)).toEqual([])
+    await translator.learnLidMapping({ lid: ANA_LID, pn: ANA })
+    expect(await translator.aliasesOf(ANA)).toEqual([ANA_LID])
+    expect(await translator.aliasesOf(ANA_LID)).toEqual([ANA])
+    // from the platform's own mapping
+    expect(await translator.aliasesOf(BETO)).toEqual(['99900000002@lid'])
+    expect(await translator.aliasesOf('99900000003@lid')).toEqual(['5491100000003@s.whatsapp.net'])
+    expect(await translator.aliasesOf('99900000077@lid')).toEqual([])
+  })
+})
+
 describe('edits (RF-11)', () => {
   const editOf = (id: string, remoteJid: string, original: string, body: string, ts = 1_700_000_100): WaMessage => ({
     key: { remoteJid, id, fromMe: false },
@@ -568,12 +623,14 @@ describe('what the translator never does', () => {
     const { translator } = setup()
     expect(Object.keys(translator).sort()).toEqual(
       [
+        'aliasesOf',
         'beginSession',
         'chatsUpdate',
         'chatsUpsert',
         'contacts',
         'groups',
         'historySet',
+        'knownAliases',
         'learnLidMapping',
         'messagesUpdate',
         'messagesUpsert',

@@ -1,5 +1,5 @@
-import type { SummarizeRequest, Summarizer } from '../../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
+import { err, ok } from '../../../domain/result.js'
 import { STRICT_SUMMARY_JSON_SCHEMA } from '../summary-schema.js'
 import { type ApiCommonOptions, runApiCall } from './api-call.js'
 
@@ -33,7 +33,7 @@ export interface AnthropicOptions extends ApiCommonOptions {
 export class AnthropicSummarizer implements Summarizer {
   constructor(private readonly options: AnthropicOptions) {}
 
-  summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const baseUrl = (this.options.baseUrl ?? ANTHROPIC_BASE_URL).replace(/\/+$/, '')
     return runApiCall({
       provider: 'anthropic',

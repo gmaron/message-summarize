@@ -5,9 +5,13 @@ import { WhatsAppConnection, type WhatsAppConnectionOptions } from './connection
 export { type AccountCheck, reconcileAccount } from './account-binding.js'
 export { AUTH_DIR_MODE, AUTH_FILE_MODE } from './auth-state.js'
 export {
+  type AliasListener,
   type BackoffPolicy,
   backoffDelay,
   DEFAULT_BACKOFF,
+  HISTORY_SYNC_RECENT,
+  type HistorySyncListener,
+  type HistorySyncProgress,
   type SocketFactory,
   type SocketSession,
   WhatsAppConnection,

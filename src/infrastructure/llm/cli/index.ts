@@ -1,5 +1,6 @@
 export {
   CHILD_ENV_NAMES,
+  CLAUDE_CLI_PROVIDER,
   CLAUDE_REQUIRED_FLAGS,
   type ClaudeCliOptions,
   ClaudeCliSummarizer,

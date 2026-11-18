@@ -219,8 +219,8 @@ describe('ClaudeCliSummarizer with verification (RF-49)', () => {
       verify: true,
       env: { PATH: process.env.PATH },
     })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'claude-cli' })
+    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'claude-cli' })
     expect(cli.calls('help')).toHaveLength(1)
     expect(cli.calls('run')).toHaveLength(2)
   })

@@ -16,7 +16,7 @@ export {
   REQUIRED_NEEDS_REPLY_AGREEMENT,
   REQUIRED_VALID_JSON_RATE,
 } from './ollama-candidates.js'
-export { type OllamaOptions, OllamaSummarizer } from './ollama-summarizer.js'
+export { OLLAMA_PROVIDER, type OllamaOptions, OllamaSummarizer } from './ollama-summarizer.js'
 export {
   isOnMachine,
   isProviderInfoKind,

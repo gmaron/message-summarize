@@ -1,4 +1,6 @@
 import type { Catalog } from './catalog.js'
+import { DISCLOSURE_SENDS } from './disclosure.js'
+import { webEn } from './web-en.js'
 
 const chats = (n: number): string => (n === 1 ? 'chat' : 'chats')
 /** Width of the label column of `msum status`. */
@@ -68,6 +70,8 @@ The text of the conversation is written by other people: it is content to summar
     failedChats: (count) => `⚠️ ${count} ${chats(count)} could not be summarized`,
   },
 
+  web: webEn,
+
   errors: {
     settings: {
       notString: (option) => `The option "${option}" must be text.`,
@@ -76,6 +80,8 @@ The text of the conversation is written by other people: it is content to summar
       notStringList: (option) => `The option "${option}" must be a list of texts.`,
       emptyPattern: (option) =>
         `The option "${option}" has an empty pattern: it would exclude every conversation. Remove it or write some text.`,
+      emptyIdPattern: (option) =>
+        `The option "${option}" has a pattern "id:" with no conversation id after it. Remove it or write the id.`,
       notNumber: (option) => `The option "${option}" must be a number.`,
       notPositive: (option) => `The option "${option}" must be a number greater than zero.`,
       notInteger: (option) => `The option "${option}" must be a whole number.`,
@@ -126,7 +132,7 @@ Commands:
   doctor [--skip-model-check] [--account <id>]  Checks that everything is in order and explains how to fix it
                                       (with Ollama it also asks your Ollama server which models it has, unless skipped)
   accounts                            Lists the accounts of this installation and their state
-  whisper models                      Lists the whisper.cpp models (to transcribe audios locally) with their sizes
+  whisper models                     Lists the whisper.cpp models (to transcribe audios locally) with their sizes
   whisper download <name>             Downloads a model into the data directory and checks its SHA-256, from
                                       huggingface.co. The program downloads models only when you ask for it
                                       (whisper download, ollama pull)
@@ -147,7 +153,9 @@ Commands:
   ollama pull <tag> [--allow-remote] [--account <id>]
                                       Asks the configured Ollama to download a model (only the tag is sent, with a progress
                                       line). Refuses an Ollama that is not on this machine unless --allow-remote
-  help                               Shows this help
+  open [--print]                      Opens the local web in the browser, already signed in (the daemon serves it).
+                                      --print only prints the address
+  help                                Shows this help
 
 Accounts: link, unlink, daemon and digest work on one account, chosen with --account <id> (lowercase letters, digits
 and dashes, up to 32 characters). Without it, the only account is used; with none, "link" creates "default"; with
@@ -185,6 +193,13 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         `The option "${option}" is not a valid time zone (for example "America/Argentina/Buenos_Aires").`,
       invalidLanguage: (option) =>
         `The option "${option}" must be "auto" (detect the language) or a language code such as "es" or "en".`,
+      invalidPort: (option) => `The option "${option}" must be a port number between 1 and 65535.`,
+      belowMinimum: (option) => `The option "${option}" is too small: the minimum is 1048576 (1 MB).`,
+      invalidUrl: (option) =>
+        `The option "${option}" must be an absolute http or https address (for example "http://127.0.0.1:11434").`,
+      concurrentEdit: 'The configuration file changed while it was being saved: nothing was written. Try again.',
+      installationOnly: (option) =>
+        `The option "${option}" can only be set in the config.json of the data directory, not in an account's.`,
       noProvider:
         'You have not chosen an LLM provider. Set "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" or "gemini") in the configuration.',
       promptFile: (path) => `The prompt file (promptFile) could not be read: ${path}`,
@@ -257,8 +272,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         notWritten: (file) => `Nothing was written (${file} is as it was).`,
         fileNotJson: (file) => `${file} is not a JSON object. It was not touched: fix or delete it, then try again.`,
         disclosureTitle: (provider) => `Before activating ${provider}, this is what it receives:`,
-        disclosureSends:
-          '  - The text of the conversations of your digests: the messages, the names of the chats and of the contacts as they appear in them, the phone numbers of the contacts you have not saved, the transcripts of voice notes, and your name as the owner. Conversations that match localOnlyPatterns are never sent (only Ollama sees them).',
+        // The same words as the disclosure of the web (one source: `disclosure.ts`).
+        disclosureSends: `  - ${DISCLOSURE_SENDS.en}`,
         disclosureHosts: (hosts) => `  - It goes to: ${hosts}.`,
         disclosureCommand: (command) =>
           `  - It goes to this command, which decides where the text goes: ${command} (the prompt is its last input; {{prompt}} stays as written). Changing the command asks for a new consent.`,
@@ -541,6 +556,21 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       done: (id) =>
         `The block of the account "${id}" was cleared. A running daemon picks it up within seconds; otherwise start it with "msum daemon".`,
     },
+    web: {
+      listening: (host, port) => `Web listening on http://${host}:${port}. Open it with "msum open".`,
+      failed: (host, port, code) =>
+        `The web could not start on ${host}:${port} (${code}). The accounts keep running. Change "web.port" in the configuration, or set "web.enabled" to false.`,
+      exposed: (host) =>
+        `WARNING: the web listens on ${host}, beyond this machine. Anyone who can reach it and has the access token can read every chat. Use it only on a network you trust.`,
+    },
+    open: {
+      daemonNotRunning:
+        'The web runs inside the daemon, and no daemon is running. Start it with "msum daemon", then run "msum open" again.',
+      webNotListening:
+        'The daemon is running but its web is not listening: it is turned off ("web.enabled"), or it could not start (see the daemon output, and "web.port").',
+      url: (url) => `Web address (it holds the access token, do not share it): ${url}`,
+      openFailed: (code) => `The browser could not be opened (${code}). Copy the address above into it.`,
+    },
     blockedReasons: {
       loggedOut: (id) =>
         `WhatsApp closed the session from the phone. Run "msum unlink --account ${id}" and then "msum link --account ${id}".`,
@@ -593,6 +623,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
           reconnecting: 'reconnecting',
           blocked: 'blocked',
           idle: 'idle (not linked, or being linked)',
+          linking: 'linking (from the web)',
         })[state],
       configBroken: (id) => `${'Account:'.padEnd(LABEL)}${id} (invalid configuration)`,
       noAccounts: `${'Account:'.padEnd(LABEL)}none yet (run "msum link")`,

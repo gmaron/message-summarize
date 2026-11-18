@@ -27,6 +27,8 @@ export interface SummarizerFixture {
 
 export interface SummarizerBackend {
   readonly name: string
+  /** The non-empty name the adapter reports as the provider of a good answer. */
+  readonly provider: string
   /** An adapter for the fake server at `baseUrl`. `timeoutMs` is for the timeout test. */
   make(baseUrl: string, options: { readonly timeoutMs?: number }): Summarizer
   /** The body of a successful answer of this provider whose model said `text`. */
@@ -53,7 +55,10 @@ export function describeSummarizerContract(backend: SummarizerBackend): void {
     it('returns the summary the model produced', async () => {
       const { summarizer, server } = await open()
       server.script({ body: backend.answer(JSON.stringify(VALID_SUMMARY)) })
-      expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+      // Every adapter names itself (RF-74): the history says which provider summarized each conversation.
+      const result = await summarizer.summarize(REQUEST)
+      expect(result).toEqual({ ok: true, value: VALID_SUMMARY, provider: backend.provider })
+      expect(backend.provider).not.toBe('')
     })
 
     it('sends the system prompt and the transcript to the model, and nothing of them in the URL', async () => {

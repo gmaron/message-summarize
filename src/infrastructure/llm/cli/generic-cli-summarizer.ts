@@ -1,4 +1,4 @@
-import type { SummarizeRequest, Summarizer } from '../../../application/ports/summarizer.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
 import type { Result } from '../../../domain/result.js'
 import { excerpt } from '../summary-schema.js'
 import {
@@ -10,6 +10,9 @@ import {
   redactSent,
   schemaInPrompt,
 } from './cli-summarizer.js'
+
+/** The name this adapter reports as the provider of a summary (RF-74). */
+export const GENERIC_CLI_PROVIDER = 'generic-cli'
 
 /** In the command template, an element that is exactly this text is replaced by the whole prompt. */
 export const PROMPT_PLACEHOLDER = '{{prompt}}'
@@ -104,7 +107,8 @@ export class GenericCliSummarizer implements Summarizer {
     })
   }
 
-  summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
-    return this.inner.summarize(request)
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
+    const result: Result<unknown, string> = await this.inner.summarize(request)
+    return result.ok ? { ok: true, value: result.value, provider: GENERIC_CLI_PROVIDER } : result
   }
 }

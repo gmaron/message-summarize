@@ -1,5 +1,5 @@
-import type { SummarizeRequest, Summarizer } from '../../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
+import { err, ok } from '../../../domain/result.js'
 import { STRICT_SUMMARY_JSON_SCHEMA } from '../summary-schema.js'
 import { type ApiCommonOptions, runApiCall } from './api-call.js'
 import { parseRetryInfoDelay } from './rate-limit-retry.js'
@@ -22,7 +22,7 @@ export interface GeminiOptions extends ApiCommonOptions {
 export class GeminiSummarizer implements Summarizer {
   constructor(private readonly options: GeminiOptions) {}
 
-  summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const baseUrl = (this.options.baseUrl ?? GEMINI_BASE_URL).replace(/\/+$/, '')
     const version = this.options.apiVersion ?? 'v1beta'
     return runApiCall({

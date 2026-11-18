@@ -113,7 +113,36 @@ CREATE TABLE account (
 `
 
 /**
- * Migration 3: audio download and transcription (RF-15, RF-20), as TWO durable queues on the messages table (so nothing
+ * Migration 3: one row per digest run (RF-74), including the ones that failed or had nothing to summarize.
+ * The row is opened when the run starts (finished_at and outcome null) and closed when it ends, so a crash leaves an
+ * open row that the daemon marks as failed with error 'interrupted' on its next start. `providers` is JSON
+ * ({"claude-cli": 12, "ollama": 2}); `failed_conversations` is JSON ([{id, name, reason}]) and holds chat names:
+ * private data that lives in the account's database only. `digest_id` is set in the same transaction that saves the
+ * digest, so a committed digest always has its run.
+ * (This number was released with the digest history: the audio transcription that came after it is migration 4.)
+ */
+const SCHEMA_V3 = `
+CREATE TABLE digest_runs (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  trigger_kind         TEXT NOT NULL CHECK (trigger_kind IN ('schedule', 'missed', 'manual', 'cli')),
+  started_at           INTEGER NOT NULL,
+  finished_at          INTEGER,
+  outcome              TEXT CHECK (outcome IS NULL OR outcome IN ('committed', 'empty', 'failed')),
+  error                TEXT,
+  summarized           INTEGER NOT NULL DEFAULT 0,
+  failed               INTEGER NOT NULL DEFAULT 0,
+  providers            TEXT NOT NULL DEFAULT '{}',
+  failed_conversations TEXT NOT NULL DEFAULT '[]',
+  digest_id            INTEGER REFERENCES digests (id) ON DELETE SET NULL,
+  since                INTEGER,
+  until                INTEGER,
+  CHECK ((finished_at IS NULL) = (outcome IS NULL))
+);
+CREATE INDEX digest_runs_by_start ON digest_runs (started_at);
+`
+
+/**
+ * Migration 4: audio download and transcription (RF-15, RF-20), as TWO durable queues on the messages table (so nothing
  * received is lost to a restart, RNF-08). All null for a message that has no audio to handle:
  * - transcribe_status: 'download_pending' (capture stored how to download the file; the download worker takes it),
  *   'pending' (file stored, waiting for its transcript), 'done' (transcript stored) or 'failed' (the download or the
@@ -127,7 +156,7 @@ CREATE TABLE account (
  *   `dl_next_attempt_at` says when the next try is due (backoff).
  * The transcript itself is the `transcript` column of migration 1.
  */
-const SCHEMA_V3 = `
+const SCHEMA_V4 = `
 ALTER TABLE messages ADD COLUMN media_ref TEXT;
 ALTER TABLE messages ADD COLUMN transcribe_status TEXT
   CHECK (transcribe_status IN ('download_pending', 'pending', 'done', 'failed'));
@@ -148,7 +177,8 @@ CREATE INDEX messages_download_queue ON messages (timestamp, seq) WHERE transcri
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
   { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
-  { version: 3, description: 'Audio transcription', sql: SCHEMA_V3 },
+  { version: 3, description: 'Digest runs', sql: SCHEMA_V3 },
+  { version: 4, description: 'Audio transcription', sql: SCHEMA_V4 },
 ]
 
 /** The highest migration version applied to this database, 0 for a database with none. */

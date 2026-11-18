@@ -53,18 +53,50 @@ ALTER TABLE accounts ADD COLUMN schedules_imported INTEGER NOT NULL DEFAULT 0 CH
   },
   {
     version: 3,
-    description: 'Consent to send chats to a provider',
+    description: 'First-use setup state and consent to external providers',
     sql: `
--- RNF-02: the user accepted that the chats of this account go to this provider. \`hosts\` is the sorted, comma-joined
--- list that was disclosed (for an OpenAI-compatible server, the origin of its base URL), so a different server needs a
--- new consent. Deleting an account deletes its consents (the connection has foreign keys on).
-CREATE TABLE provider_consents (
-  account_id  TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
-  kind        TEXT NOT NULL,
-  hosts       TEXT NOT NULL,
-  accepted_at TEXT NOT NULL,
-  PRIMARY KEY (account_id, kind, hosts)
+-- The setup wizard (RF-70): one row for the whole installation. It says which step the user is on (so a wizard closed
+-- halfway is resumed), which account it is setting up, and when it was completed (or skipped, or found unnecessary
+-- because the installation already had a linked account). Without a row the wizard has not started.
+CREATE TABLE setup (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  step         TEXT NOT NULL,
+  account_id   TEXT,
+  completed_at TEXT,
+  updated_at   TEXT NOT NULL
 );
+
+-- The consent to send the text of the chats to an external provider (RNF-02): who agreed (account), to what
+-- (provider), which version of the disclosure text they saw, and when. Deleting an account deletes its consents.
+CREATE TABLE consents (
+  account_id   TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  provider     TEXT NOT NULL,
+  text_version INTEGER NOT NULL,
+  given_at     TEXT NOT NULL,
+  PRIMARY KEY (account_id, provider, text_version)
+);
+`,
+  },
+  {
+    version: 4,
+    description: 'Consent keyed by the hosts that were disclosed',
+    sql: `
+-- RNF-02: a consent is for what was disclosed, so the key also holds the hosts of the disclosure: the sorted,
+-- comma-joined list (for an OpenAI-compatible server or a remote Ollama, the origin of its URL; for a generic CLI, the
+-- hash of its command). Pointing a provider somewhere else therefore needs a new consent. SQLite cannot change a primary
+-- key in place, so the table is rebuilt; the rows keep an empty \`hosts\`, which still covers a provider with fixed hosts.
+CREATE TABLE consents_v4 (
+  account_id   TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  provider     TEXT NOT NULL,
+  text_version INTEGER NOT NULL,
+  hosts        TEXT NOT NULL DEFAULT '',
+  given_at     TEXT NOT NULL,
+  PRIMARY KEY (account_id, provider, text_version, hosts)
+);
+INSERT INTO consents_v4 (account_id, provider, text_version, hosts, given_at)
+  SELECT account_id, provider, text_version, '', given_at FROM consents;
+DROP TABLE consents;
+ALTER TABLE consents_v4 RENAME TO consents;
 `,
   },
 ]

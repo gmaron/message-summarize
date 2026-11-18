@@ -99,7 +99,7 @@ describe('OpenAiCompatibleSummarizer (RF-40)', () => {
     const server = await serve()
     server.script({ body: openaiBody(GOOD) })
     const summarizer = new OpenAiCompatibleSummarizer({ model: 'gpt-x', baseUrl: `${server.baseUrl}/v1/`, apiKey: KEY })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await summarizer.summarize(REQUEST)).toMatchObject({ ok: true, value: VALID_SUMMARY })
     const sent = server.seen[0]
     expect(sent?.url).toBe('/v1/chat/completions')
     expect(sent?.headers.authorization).toBe(`Bearer ${KEY}`)
@@ -147,7 +147,7 @@ describe('OpenAiCompatibleSummarizer (RF-40)', () => {
       baseUrl: server.baseUrl,
       structuredOutput: 'prompt',
     }).summarize(REQUEST)
-    expect(result).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(result).toMatchObject({ ok: true, value: VALID_SUMMARY })
     expect(server.seen[0]?.json).not.toHaveProperty('response_format')
   })
 
@@ -176,7 +176,7 @@ describe('AnthropicSummarizer (RF-40)', () => {
       apiKey: KEY,
       maxTokens: 777,
     })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await summarizer.summarize(REQUEST)).toMatchObject({ ok: true, value: VALID_SUMMARY })
     const sent = server.seen[0]
     expect(sent?.url).toBe('/v1/messages')
     expect(sent?.headers['x-api-key']).toBe(KEY)
@@ -217,7 +217,7 @@ describe('AnthropicSummarizer (RF-40)', () => {
       body: JSON.stringify({ content: [{ type: 'thinking' }, { type: 'text', text: GOOD }], stop_reason: 'end_turn' }),
     })
     const summarizer = new AnthropicSummarizer({ model: 'm', baseUrl: server.baseUrl, apiKey: KEY })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await summarizer.summarize(REQUEST)).toMatchObject({ ok: true, value: VALID_SUMMARY })
   })
 
   it('reports a refusal and a cut answer as failed calls', async () => {
@@ -242,7 +242,7 @@ describe('GeminiSummarizer (RF-40)', () => {
     const server = await serve()
     server.script({ body: geminiBody(GOOD) })
     const summarizer = new GeminiSummarizer({ model: 'gemini-x', baseUrl: server.baseUrl, apiKey: KEY })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await summarizer.summarize(REQUEST)).toMatchObject({ ok: true, value: VALID_SUMMARY })
     const sent = server.seen[0]
     expect(sent?.url).toBe('/v1beta/models/gemini-x:generateContent')
     expect(sent?.url).not.toMatch(/key=|api_key/i)
@@ -264,7 +264,7 @@ describe('GeminiSummarizer (RF-40)', () => {
       }),
     })
     const summarizer = new GeminiSummarizer({ model: 'm', baseUrl: server.baseUrl, apiKey: KEY })
-    expect(await summarizer.summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await summarizer.summarize(REQUEST)).toMatchObject({ ok: true, value: VALID_SUMMARY })
   })
 
   it('reports a blocked prompt and an answer with no text as failed calls', async () => {
@@ -325,7 +325,7 @@ describe.each(providers)('$name: rate limits (RF-46)', (provider) => {
       { status: 429, ...provider.rateLimited[0], body: provider.rateLimited[0]?.body ?? '' },
       { body: provider.good },
     )
-    expect(await provider.make(server, clock, KEY).summarize(REQUEST)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await provider.make(server, clock, KEY).summarize(REQUEST)).toMatchObject({ ok: true, value: VALID_SUMMARY })
     expect(clock.waits).toEqual([7_000])
     expect(server.seen).toHaveLength(2)
   })

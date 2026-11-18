@@ -57,6 +57,8 @@ export const FORBIDDEN_SOCKET_METHODS = [
   'chatModify',
   'query',
   'sendNode',
+  'executeUSyncQuery',
+  'onWhatsApp',
 ] as const
 
 /** What the adapter is allowed to touch on a socket. */
@@ -82,6 +84,8 @@ export interface FakeSocket {
   user: { id: string; lid?: string } | undefined
   groupSubjects: Record<string, string>
   lidToPhone: Record<string, string>
+  /** What the platform has STORED for a number (what `storedLidForPN` reads). */
+  phoneToLid: Record<string, string>
   groupQueries: string[]
   /** What `sendTextToSelf` sent. `to` is where the real wrapper would send it: the own phone-number JID of `user`. */
   sent: { to: string; text: string }[]
@@ -112,6 +116,7 @@ export function fakeSocket(): FakeSocket {
     user: undefined,
     groupSubjects: {},
     lidToPhone: {},
+    phoneToLid: {},
     groupQueries: [],
     sent: [],
     sendFails: false,
@@ -146,7 +151,19 @@ export function fakeSocket(): FakeSocket {
       state.sent.push({ to, text })
     },
     signalRepository: {
-      lidMapping: { getPNForLID: async (lid: string) => state.lidToPhone[lid] ?? null },
+      lidMapping: {
+        getPNForLID: async (lid: string) => state.lidToPhone[lid] ?? null,
+        storedLidForPN: async (pn: string) => state.phoneToLid[pn] ?? null,
+        // The real ones fall back to a USync query to WhatsApp's servers: the adapter must never reach for them.
+        getLIDForPN: async () => {
+          forbiddenCalls.push('getLIDForPN')
+          throw new Error('The adapter called getLIDForPN')
+        },
+        getLIDsForPNs: async () => {
+          forbiddenCalls.push('getLIDsForPNs')
+          throw new Error('The adapter called getLIDsForPNs')
+        },
+      },
     },
   }
   for (const name of FORBIDDEN_SOCKET_METHODS) {

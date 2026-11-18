@@ -141,7 +141,7 @@ describe('Gemini thought parts', () => {
       }),
     })
     const result = await new GeminiSummarizer({ model: 'm', baseUrl: server.baseUrl, apiKey: KEY }).summarize(REQUEST)
-    expect(result).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(result).toMatchObject({ ok: true, value: VALID_SUMMARY })
   })
 
   it('fails when only thought parts came back', async () => {

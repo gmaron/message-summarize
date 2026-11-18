@@ -2,7 +2,22 @@ import type { Catalog, Language } from './catalog.js'
 import { en } from './en.js'
 import { es } from './es.js'
 
-export type { BlockedReason, Catalog, HeadlineParts, ImportLiveSignal, ImportSummary, Language } from './catalog.js'
+export type {
+  BlockedReason,
+  Catalog,
+  DigestErrorCode,
+  HeadlineParts,
+  ImportLiveSignal,
+  ImportSummary,
+  Language,
+  LinkErrorCode,
+  ProviderTestErrorCode,
+  SettingsFieldKey,
+  WebConfigIssueCode,
+  WebErrorCode,
+  WebStateName,
+  WebTexts,
+} from './catalog.js'
 
 export const LANGUAGES: readonly Language[] = ['es', 'en']
 

@@ -6,6 +6,29 @@ import { type CliHandlers, describeArgError, runCli } from '../../../src/interfa
 
 const parse = (...argv: string[]) => parseCommandLine(argv)
 
+describe('parseCommandLine: open', () => {
+  it('opens the browser by default; --print and --no-browser only print', () => {
+    expect(parseCommandLine(['open'])).toEqual({ ok: true, value: { name: 'open', print: false } })
+    expect(parseCommandLine(['open', '--print'])).toEqual({ ok: true, value: { name: 'open', print: true } })
+    expect(parseCommandLine(['open', '--no-browser'])).toEqual({ ok: true, value: { name: 'open', print: true } })
+  })
+
+  it('takes no account and no other flag, and no argument', () => {
+    expect(parseCommandLine(['open', '--account', 'x'])).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--account' },
+    })
+    expect(parseCommandLine(['open', 'now'])).toEqual({
+      ok: false,
+      error: { kind: 'unexpectedArgument', value: 'now' },
+    })
+    expect(parseCommandLine(['status', '--print'])).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--print' },
+    })
+  })
+})
+
 describe('parseCommandLine', () => {
   it('knows every command', () => {
     for (const name of ['init', 'accounts']) {
@@ -235,6 +258,7 @@ describe('runCli', () => {
     secret: handler('secret'),
     provider: handler('provider'),
     ollama: handler('ollama'),
+    open: handler('open'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {

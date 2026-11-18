@@ -10,7 +10,15 @@ import { getCatalog, type Language } from '../i18n/index.js'
 import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
 import { createTranslator } from './translate.js'
-import type { WaChat, WaContact, WaGroup, WaHistorySet, WaMessagesUpsert, WaMessageUpdate } from './wa-types.js'
+import type {
+  WaChat,
+  WaContact,
+  WaGroup,
+  WaHistorySet,
+  WaHistoryStatus,
+  WaMessagesUpsert,
+  WaMessageUpdate,
+} from './wa-types.js'
 
 /**
  * RF-04: the state of an account's link with WhatsApp.
@@ -35,6 +43,30 @@ export type WhatsAppStatus =
   | { readonly state: 'error'; readonly reason: string }
 
 export type WhatsAppStatusListener = (status: WhatsAppStatus) => void
+
+/**
+ * How the initial history sync goes (RF-02). A connection-level signal: counts and flags only, never content.
+ * - `percent`: 0 to 100 (integer) when the server said so, null when this event does not carry it.
+ * - `complete`: the initial history will not grow any more.
+ * - `explicit`: (with `complete`) the server said 100. False: inferred, because no more chunks arrived.
+ */
+export interface HistorySyncProgress {
+  readonly percent: number | null
+  readonly complete: boolean
+  readonly explicit?: boolean
+}
+export type HistorySyncListener = (progress: HistorySyncProgress) => void
+
+/**
+ * Baileys' `HistorySyncType.RECENT` (3): the history that WhatsApp sends when a device is linked (`syncFullHistory` is
+ * off). It is the only type that counts for the progress: in `Socket/chats.js` Baileys emits `messaging-history.status`
+ * `complete` for RECENT when progress 100 arrives (explicit) or `paused` after 120 s without chunks (inferred), and
+ * its progress is the real 0..100 of that transfer. INITIAL_BOOTSTRAP (0) is also reported `complete`, but on its
+ * FIRST chunk (the newest chats): taking it as the end would stop the wait while the history is still coming. FULL (2)
+ * is only sent when the full history is requested, which this adapter never does; PUSH_NAME, NON_BLOCKING_DATA and
+ * ON_DEMAND are names and extras, not history.
+ */
+export const HISTORY_SYNC_RECENT = 3
 
 /**
  * The only things the adapter uses of a socket. Deliberately narrow: no way to touch presence or to send read
@@ -65,7 +97,13 @@ export interface WhatsAppSocket {
    */
   openAudio(descriptor: AudioDescriptor): Promise<Readable>
   readonly signalRepository?: {
-    readonly lidMapping?: { getPNForLID(lid: string): Promise<string | null | undefined> } | undefined
+    readonly lidMapping?:
+      | {
+          getPNForLID(lid: string): Promise<string | null | undefined>
+          /** The LID that is STORED for a number: a local read, never a query to WhatsApp. */
+          storedLidForPN?(pn: string): Promise<string | null | undefined>
+        }
+      | undefined
   }
 }
 
@@ -164,9 +202,17 @@ export const backoffDelay = (policy: BackoffPolicy, attempt: number): number =>
  *
  * Events of a socket are processed one at a time in the order they arrived, so a history sync stays in order.
  */
+/** Told that `a` and `b` are the same person; the capture of the event that taught it waits for it. */
+export type AliasListener = (a: string, b: string) => void | Promise<void>
+
 export class WhatsAppConnection {
   private current: WhatsAppStatus = { state: 'stopped' }
   private readonly listeners = new Set<WhatsAppStatusListener>()
+  private readonly historyListeners = new Set<HistorySyncListener>()
+  private readonly aliasListeners = new Set<AliasListener>()
+  /** The RECENT chunk with progress 100 was stored / Baileys said the RECENT history is complete. Per socket. */
+  private recentStored = false
+  private recentStatusComplete = false
   private readonly translator
   private fetcher: AudioFetcher | null = null
   private worker: DownloadAudios | null = null
@@ -210,6 +256,16 @@ export class WhatsAppConnection {
       ownIds: options.ownIds,
       ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
       resolvePhoneNumber: async (lid) => this.session?.socket.signalRepository?.lidMapping?.getPNForLID(lid),
+      resolveLid: async (phone) => this.session?.socket.signalRepository?.lidMapping?.storedLidForPN?.(phone),
+      onAlias: async (a, b) => {
+        for (const listener of [...this.aliasListeners]) {
+          try {
+            await listener(a, b)
+          } catch {
+            // a listener that fails does not stop the capture of the event that taught the pair
+          }
+        }
+      },
       fetchGroupSubject: async (jid) => {
         const session = this.session
         if (session === null) return undefined
@@ -230,6 +286,50 @@ export class WhatsAppConnection {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  /**
+   * Listens to two ids of the platform turning out to be the same person (a LID and a phone number). The events that
+   * taught the pair wait for the listener to finish. Returns the function that stops listening.
+   */
+  onAlias(listener: AliasListener): () => void {
+    this.aliasListeners.add(listener)
+    return () => {
+      this.aliasListeners.delete(listener)
+    }
+  }
+
+  /** The pairs of ids learned so far (memory only). */
+  knownAliases(): [string, string][] {
+    return this.translator.knownAliases()
+  }
+
+  /** The other ids of the same person that are known now (empty when none): a mark has to cover all of them. */
+  aliasesOf(id: string): Promise<string[]> {
+    return this.translator.aliasesOf(id)
+  }
+
+  /** Listens to the progress of the initial history sync. Returns the function that stops listening. */
+  onHistorySync(listener: HistorySyncListener): () => void {
+    this.historyListeners.add(listener)
+    return () => {
+      this.historyListeners.delete(listener)
+    }
+  }
+
+  private emitExplicitComplete(): void {
+    if (this.recentStored && this.recentStatusComplete)
+      this.emitHistory({ percent: 100, complete: true, explicit: true })
+  }
+
+  private emitHistory(progress: HistorySyncProgress): void {
+    for (const listener of [...this.historyListeners]) {
+      try {
+        listener(progress)
+      } catch {
+        this.options.onWarning?.('history-listener-failed')
+      }
     }
   }
 
@@ -398,6 +498,8 @@ export class WhatsAppConnection {
   /** Subscribes to the events of one socket. Returns the function that removes every subscription. */
   private attach(session: SocketSession, generation: number): () => void {
     const { ev } = session.socket
+    this.recentStored = false
+    this.recentStatusComplete = false
     const subscriptions: [string, (data: never) => void][] = []
     const on = <T>(event: string, handler: (data: T) => void | Promise<void>): void => {
       const listener = (data: T): void => {
@@ -427,7 +529,33 @@ export class WhatsAppConnection {
     })
 
     on<WaMessagesUpsert>('messages.upsert', (data) => translator.messagesUpsert(data))
-    on<WaHistorySet>('messaging-history.set', (data) => translator.historySet(data))
+    // After the chunk is stored (the queue keeps the order), so a percent never runs ahead of the data it counts.
+    on<WaHistorySet>('messaging-history.set', async (data) => {
+      await translator.historySet(data)
+      const { syncType, progress } = data
+      if (syncType === HISTORY_SYNC_RECENT && typeof progress === 'number' && Number.isFinite(progress)) {
+        const percent = Math.min(100, Math.max(0, Math.round(progress)))
+        // Only the percent of a chunk that is stored is shown. At 100 the last chunk is in: that is half of "complete".
+        this.emitHistory({ percent, complete: false })
+        if (percent === 100) {
+          this.recentStored = true
+          this.emitExplicitComplete()
+        }
+      }
+    })
+    // Baileys emits `complete` as soon as the NOTIFICATION says 100, before that chunk is downloaded and before its
+    // `messaging-history.set` (which Baileys' event buffer may also hold back). So the status alone is not completion:
+    // it counts only together with the stored chunk, whichever comes second. `paused` (Baileys, 120 s after the last
+    // RECENT chunk) is the inferred completion. If Baileys' buffer merges sets, the tag of the merged set is the last
+    // chunk's (event-buffer.js): then the explicit completion never comes and `paused` or the quiet period ends the wait.
+    on<WaHistoryStatus>('messaging-history.status', (data) => {
+      if (data.syncType !== HISTORY_SYNC_RECENT) return
+      if (data.status === 'paused') this.emitHistory({ percent: null, complete: true, explicit: false })
+      else if (data.status === 'complete' && data.explicit === true) {
+        this.recentStatusComplete = true
+        this.emitExplicitComplete()
+      } else if (data.status === 'complete') this.emitHistory({ percent: null, complete: true, explicit: false })
+    })
     on<readonly WaMessageUpdate[]>('messages.update', (data) => translator.messagesUpdate(data))
     on<readonly WaChat[]>('chats.upsert', (data) => translator.chatsUpsert(data))
     on<readonly WaChat[]>('chats.update', (data) => translator.chatsUpdate(data))

@@ -1,6 +1,6 @@
-import type { SummarizeRequest, Summarizer } from '../../application/ports/summarizer.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../application/ports/summarizer.js'
 import { isExcluded } from '../../domain/exclusion.js'
-import { err, type Result } from '../../domain/result.js'
+import { err } from '../../domain/result.js'
 
 export const LOCAL_ONLY_UNAVAILABLE = 'localOnlyUnavailable'
 
@@ -14,12 +14,13 @@ export class LocalOnlyRouter implements Summarizer {
   constructor(
     private readonly external: Summarizer,
     private readonly local: Summarizer | undefined,
-    private readonly localOnlyPatterns: readonly string[],
+    private readonly localOnlyPatterns: readonly string[] | (() => readonly string[]),
   ) {}
 
-  async summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const { id, name } = request.conversation
-    if (!isExcluded(this.localOnlyPatterns, id, name)) return this.external.summarize(request)
+    const patterns = typeof this.localOnlyPatterns === 'function' ? this.localOnlyPatterns() : this.localOnlyPatterns
+    if (!isExcluded(patterns, id, name)) return this.external.summarize(request)
     if (this.local === undefined) return err(LOCAL_ONLY_UNAVAILABLE)
     return this.local.summarize(request)
   }

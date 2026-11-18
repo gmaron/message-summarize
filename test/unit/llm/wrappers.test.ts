@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { SummarizeRequest, Summarizer } from '../../../src/application/ports/summarizer.js'
-import { err, ok, type Result } from '../../../src/domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../src/application/ports/summarizer.js'
+import { err, ok } from '../../../src/domain/result.js'
 import {
   composeSummarizer,
   FallbackSummarizer,
@@ -12,7 +12,7 @@ const VALID = { resumen: 'r', pendientes: [], necesita_respuesta: false, priorid
 
 class Fake implements Summarizer {
   readonly requests: SummarizeRequest[] = []
-  constructor(private readonly answer: Result<unknown, string>) {}
+  constructor(private readonly answer: SummarizeResult) {}
   async summarize(request: SummarizeRequest) {
     this.requests.push(request)
     return this.answer
@@ -57,6 +57,21 @@ describe('FallbackSummarizer (RF-42)', () => {
   it('reports a schema failure of the primary together with the fallback failure', async () => {
     const result = await new FallbackSummarizer(new Fake(ok('nope')), new Fake(err('down'))).summarize(req('1', 'A'))
     expect(result).toEqual(err('invalid summary: the response must be a JSON object; fallback: down'))
+  })
+})
+
+describe('LocalOnlyRouter with a function for its patterns (RF-43)', () => {
+  it('reads the patterns on every conversation, so a mark made meanwhile applies to the next one', async () => {
+    const external = new Fake(ok(VALID))
+    const local = new Fake(ok(VALID))
+    let patterns: readonly string[] = []
+    const router = composeSummarizer({ primary: external, local, localOnlyPatterns: () => patterns })
+    await router.summarize(req('a', 'A'))
+    patterns = ['id:b']
+    await router.summarize(req('b', 'B'))
+    await router.summarize(req('a', 'A'))
+    expect(external.requests.map((r) => r.conversation.id)).toEqual(['a', 'a'])
+    expect(local.requests.map((r) => r.conversation.id)).toEqual(['b'])
   })
 })
 
@@ -138,5 +153,31 @@ describe('LocalOnlyRouter (RF-43)', () => {
     expect(backup.requests).toHaveLength(1)
     const alone = composeSummarizer({ primary: new Fake(ok(VALID)), localOnlyPatterns: [] })
     expect(await alone.summarize(req('1', 'Trabajo'))).toEqual(ok(VALID))
+  })
+})
+
+describe('the provider of an answer survives the wrappers (RF-74)', () => {
+  const named = (provider: string, value: unknown = VALID): SummarizeResult => ({ ok: true, value, provider })
+
+  it('keeps the primary name when the primary answers, and the fallback name when it does not', async () => {
+    const primary = new FallbackSummarizer(new Fake(named('claude-cli')), new Fake(named('ollama')))
+    expect(await primary.summarize(req('1', 'A'))).toMatchObject({ ok: true, provider: 'claude-cli' })
+    const backup = new FallbackSummarizer(new Fake(err('down')), new Fake(named('ollama')))
+    expect(await backup.summarize(req('1', 'A'))).toMatchObject({ ok: true, provider: 'ollama' })
+    const afterSchemaFailure = new FallbackSummarizer(
+      new Fake(named('claude-cli', { resumen: 'x' })),
+      new Fake(named('ollama')),
+    )
+    expect(await afterSchemaFailure.summarize(req('1', 'A'))).toMatchObject({ ok: true, provider: 'ollama' })
+  })
+
+  it('composeSummarizer passes the name of the external and of the local provider through', async () => {
+    const summarizer = composeSummarizer({
+      primary: new Fake(named('claude-cli')),
+      local: new Fake(named('ollama')),
+      localOnlyPatterns: ['secret'],
+    })
+    expect(await summarizer.summarize(req('1', 'Ana'))).toMatchObject({ provider: 'claude-cli' })
+    expect(await summarizer.summarize(req('2', 'Secret chat'))).toMatchObject({ provider: 'ollama' })
   })
 })

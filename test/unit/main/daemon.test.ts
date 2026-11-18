@@ -650,3 +650,24 @@ describe('CronerScheduler', () => {
     vi.useRealTimers()
   })
 })
+
+describe('Daemon.applyConfig (RF-73)', () => {
+  it('warns once that the schedules have no provider to run with, and says nothing when there is one', async () => {
+    const without = await start({ config: { schedules: ['0 9 * * *'] }, summarizer: null })
+    expect(without.runtime.generateDigest).toBeNull()
+    without.daemon.applyConfig(without.runtime.config)
+    expect(named(without.harness, 'schedules.noProvider')).toEqual([
+      expect.objectContaining({ level: 'warn', count: 1 }),
+    ])
+    expect(named(without.harness, 'config.applied')).toHaveLength(1)
+    await without.daemon.stop()
+    without.runtime.close()
+    current = null
+    disposeHarnesses()
+
+    const withProvider = await start({ config: { schedules: ['0 9 * * *'] } })
+    withProvider.daemon.applyConfig(withProvider.runtime.config)
+    expect(named(withProvider.harness, 'schedules.noProvider')).toEqual([])
+    expect(named(withProvider.harness, 'config.applied')).toHaveLength(1)
+  })
+})

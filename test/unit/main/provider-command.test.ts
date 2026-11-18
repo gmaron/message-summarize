@@ -167,7 +167,7 @@ describe('msum provider use (RF-41, RNF-02)', () => {
     const { openInstallation } = await import('../../../src/main/accounts.js')
     const opened = await openInstallation({ layout: h.layout, clock: h.ctx.clock })
     if (!opened.ok) throw new Error('could not open')
-    expect(opened.installation.consents.list('default')).toEqual([])
+    expect(opened.installation.setup.consents('default')).toEqual([])
     opened.installation.close()
   })
 
@@ -361,7 +361,7 @@ describe('msum provider use (RF-41, RNF-02)', () => {
       const { openInstallation } = await import('../../../src/main/accounts.js')
       const opened = await openInstallation({ layout: h.layout, clock: h.ctx.clock })
       if (!opened.ok) throw new Error('could not open')
-      expect(opened.installation.consents.list('default').map((c) => [c.kind, c.hosts])).toEqual([
+      expect(opened.installation.setup.consents('default').map((c) => [c.provider, c.hosts])).toEqual([
         ['ollama', 'http://192.168.1.50:11434'],
       ])
       opened.installation.close()

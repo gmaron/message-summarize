@@ -3,16 +3,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { vi } from 'vitest'
 import type { CaptureMessages } from '../../src/application/capture-messages.js'
-import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
-import { ok, type Result } from '../../src/domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../src/application/ports/summarizer.js'
+import { ok } from '../../src/domain/result.js'
 import type {
+  HistorySyncListener,
+  HistorySyncProgress,
   WhatsAppSocket,
   WhatsAppStatus,
   WhatsAppStatusListener,
 } from '../../src/infrastructure/whatsapp/connection.js'
 import { openInstallation } from '../../src/main/accounts.js'
 import { type AppConfig, parseConfig } from '../../src/main/config.js'
-import { type CommandContext, DEFAULT_LINK_TIMING, type DoctorProbes } from '../../src/main/context.js'
+import {
+  type CommandContext,
+  DEFAULT_LINK_TIMING,
+  type DoctorProbes,
+  type WebOverrides,
+} from '../../src/main/context.js'
 import { createLogger } from '../../src/main/logger.js'
 import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/paths.js'
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
@@ -35,6 +42,16 @@ export class FakeConnection implements ManagedConnection {
   /** What happens when `start()` is called (the test decides: show a QR, connect...). */
   onStart: () => void | Promise<void> = () => {}
   private readonly listeners = new Set<WhatsAppStatusListener>()
+  private readonly historyListeners = new Set<HistorySyncListener>()
+
+  /**
+   * A new unit starts from a clean status. This object is reused by every unit of a test, so the status a previous one
+   * left (loggedOut, error, qr) would be fed to the next as if it had just happened. While some unit is still listening
+   * the status is the live one and stays.
+   */
+  freshStatus(): void {
+    if (this.listeners.size === 0) this.status = { state: 'stopped' }
+  }
 
   emit(status: WhatsAppStatus): void {
     this.status = status
@@ -45,6 +62,17 @@ export class FakeConnection implements ManagedConnection {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  emitHistory(progress: HistorySyncProgress): void {
+    for (const listener of [...this.historyListeners]) listener(progress)
+  }
+
+  onHistorySync(listener: HistorySyncListener): () => void {
+    this.historyListeners.add(listener)
+    return () => {
+      this.historyListeners.delete(listener)
     }
   }
 
@@ -73,6 +101,31 @@ export class FakeConnection implements ManagedConnection {
     this.calls.push('clearSession')
   }
 
+  /** The ids of one person the "platform" knows (LID and phone number), as `[a, b]`. */
+  readonly aliasPairs: [string, string][] = []
+  private readonly aliasListeners = new Set<(a: string, b: string) => void | Promise<void>>()
+
+  onAlias(listener: (a: string, b: string) => void | Promise<void>): () => void {
+    this.aliasListeners.add(listener)
+    return () => {
+      this.aliasListeners.delete(listener)
+    }
+  }
+
+  knownAliases(): [string, string][] {
+    return [...this.aliasPairs]
+  }
+
+  async aliasesOf(id: string): Promise<string[]> {
+    return this.aliasPairs.flatMap(([a, b]) => (a === id ? [b] : b === id ? [a] : []))
+  }
+
+  /** The platform learns that `a` and `b` are the same person; like the adapter, the listeners finish before it goes on. */
+  async learnAlias(a: string, b: string): Promise<void> {
+    this.aliasPairs.push([a, b])
+    for (const listener of [...this.aliasListeners]) await listener(a, b)
+  }
+
   /** Where the events of the socket go while it is open: the capture use case. */
   capture: CaptureMessages | null = null
 
@@ -97,10 +150,8 @@ export const SUMMARY = {
 /** A summarizer that records its requests and answers with a valid summary. */
 export class FakeSummarizer implements Summarizer {
   readonly requests: SummarizeRequest[] = []
-  constructor(
-    private readonly answer: () => Promise<Result<unknown, string>> | Result<unknown, string> = () => ok(SUMMARY),
-  ) {}
-  async summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  constructor(private readonly answer: () => Promise<SummarizeResult> | SummarizeResult = () => ok(SUMMARY)) {}
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     this.requests.push(request)
     return this.answer()
   }
@@ -123,6 +174,10 @@ export interface HarnessOptions {
   readonly stdoutLogs?: boolean
   /** The accounts that exist before the command runs (directories and records). Default: just "default". */
   readonly accounts?: readonly string[]
+  /** How the daemon starts the web. Default: a free port on 127.0.0.1 (never the configured one: tests run in parallel). */
+  readonly web?: WebOverrides
+  /** What opening the browser does. Default: it succeeds. */
+  readonly openUrl?: (url: string) => Promise<void>
 }
 
 export const BASE_CONFIG = {
@@ -147,6 +202,8 @@ export interface Harness {
   /** Everything the structured logger wrote, as one string per line (stdout and stderr together). */
   readonly logs: string[]
   readonly questions: string[]
+  /** The addresses `msum open` asked the browser to open. */
+  readonly browserOpened: string[]
   readonly clock: { time: number; now(): number }
   /** The validated configuration the harness wrote (defaults applied). */
   config(): AppConfig
@@ -183,6 +240,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   const err: string[] = []
   const logs: string[] = []
   const questions: string[] = []
+  const browserOpened: string[] = []
   const clock = { time: options.now ?? NOW, now: () => (options.liveClock === true ? Date.now() : clock.time) }
   const connection = new FakeConnection()
   const summarizer = new FakeSummarizer()
@@ -198,6 +256,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     logger: createLogger(sink, sink, () => clock.time),
     clock,
     connectionFactory: async (_runtime, hooks) => {
+      connection.freshStatus()
       connection.hooks = hooks
       return connection
     },
@@ -218,6 +277,11 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
       verifyCli: async () => ({ ok: true as const, path: '/fake/claude', version: '1.0.0 (fake)' }),
       ...options.probes,
     },
+    openUrl: async (url) => {
+      browserOpened.push(url)
+      await options.openUrl?.(url)
+    },
+    web: { host: '127.0.0.1', port: 0, ...options.web },
     nodeVersion: '22.16.0',
     linkTiming: {
       ...DEFAULT_LINK_TIMING,
@@ -247,6 +311,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     err,
     logs,
     questions,
+    browserOpened,
     clock,
     config: parsed,
     runtime: (id) =>

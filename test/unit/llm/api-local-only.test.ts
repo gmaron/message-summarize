@@ -84,7 +84,7 @@ describe.each(['openai', 'anthropic', 'gemini'] as const)('%s is external (RF-43
   it('an ordinary conversation does reach it', async () => {
     const { summarizer, server } = await fake(kind)
     const composed = composeSummarizer({ primary: summarizer, localOnlyPatterns: ['banco'] })
-    expect(await composed.summarize(request('Trabajo'))).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await composed.summarize(request('Trabajo'))).toMatchObject({ ok: true, value: VALID_SUMMARY })
     expect(server.seen).toHaveLength(1)
   })
 })

@@ -1,5 +1,5 @@
-import type { SummarizeRequest } from '../../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult } from '../../../application/ports/summarizer.js'
+import { err, type Result } from '../../../domain/result.js'
 import { parseSummaryResponse } from '../../../domain/summary.js'
 import { excerpt, SUMMARY_JSON_SCHEMA_TEXT } from '../summary-schema.js'
 import {
@@ -43,6 +43,11 @@ export interface BuiltRequest {
 export interface ApiCall {
   /** Names the provider in error reasons. */
   readonly provider: string
+  /**
+   * The name a successful answer reports as its provider (RF-74: the history says who summarized). Default: `provider`.
+   * `openai-compatible` for a server that is not OpenAI itself.
+   */
+  readonly reportedAs?: string
   readonly options: ApiCommonOptions
   /** A call with no key fails before any request is made (OpenAI-compatible servers may not need one). */
   readonly keyRequired: boolean
@@ -146,10 +151,10 @@ function unfence(text: string): string {
  * an invalid answer is a failed call, so the fallback of RF-42 applies). Every error reason has the key and anything
  * shaped like one removed (RNF-04), and never quotes the transcript.
  */
-export async function runApiCall(call: ApiCall): Promise<Result<unknown, string>> {
+export async function runApiCall(call: ApiCall): Promise<SummarizeResult> {
   const key = resolveKey(call.options.apiKey)
   const secrets = [key]
-  const fail = (reason: string): Result<unknown, string> => err(redactSecrets(reason, secrets))
+  const fail = (reason: string): SummarizeResult => err(redactSecrets(reason, secrets))
   if (key === undefined && call.keyRequired) {
     return fail(`no API key for ${call.provider}: set it with "msum secret set ${call.provider}"`)
   }
@@ -216,7 +221,7 @@ export async function runApiCall(call: ApiCall): Promise<Result<unknown, string>
     }
     const valid = parseSummaryResponse(parsed)
     if (!valid.ok) return fail(`${call.provider} returned an invalid summary: ${valid.error.join(', ')}`)
-    return ok(parsed)
+    return { ok: true, value: parsed, provider: call.reportedAs ?? call.provider }
   } catch (e) {
     // Nothing here should throw; if it does, the reason still goes through the redaction.
     return fail(`${call.provider} call failed: ${e instanceof Error ? excerpt(e.message) : 'error'}`)

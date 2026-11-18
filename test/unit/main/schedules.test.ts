@@ -284,6 +284,28 @@ describe('schedules of an account in the database', () => {
     }
   })
 
+  it('updates a schedule of its own account only', async () => {
+    const h = await makeHarness({ config: BASE, accounts: ['alpha', 'beta'] })
+    const opened = await openInstallation({ layout: h.layout, clock: h.clock })
+    if (!opened.ok) throw new Error('refused')
+    try {
+      const first = makeSchedule([1], '09:00')
+      const second = makeSchedule([0, 6], '21:30')
+      if (!first.ok || !second.ok) throw new Error('invalid')
+      const { schedules } = opened.installation
+      const id = schedules.add('alpha', first.value)
+      const other = schedules.add('beta', first.value)
+      expect(schedules.update('alpha', id, second.value)).toBe(true)
+      expect(schedules.list('alpha')).toEqual([{ id, schedule: second.value }])
+      // another account's schedule, or one that does not exist, is not touched
+      expect(schedules.update('alpha', other, second.value)).toBe(false)
+      expect(schedules.update('alpha', 999, second.value)).toBe(false)
+      expect(schedules.list('beta')).toEqual([{ id: other, schedule: first.value }])
+    } finally {
+      opened.installation.close()
+    }
+  })
+
   it('ignores a row that does not hold a valid schedule', async () => {
     const h = await makeHarness({ config: BASE })
     await run(h, 'schedule', 'add', '--time', '09:00')
@@ -535,5 +557,41 @@ describe('Daemon: schedules applied without a restart (RF-61)', () => {
     expect(named(harness, 'digest.started')).toHaveLength(1)
     release()
     await vi.advanceTimersByTimeAsync(0)
+  })
+})
+
+describe('CronerScheduler.setTimezone (RF-62)', () => {
+  it('moves the same schedules to the hours of the new zone, with the jobs re-armed and nothing fired twice', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
+    vi.setSystemTime(Date.parse('2026-11-17T05:00:00Z'))
+    const ticks: string[] = []
+    const scheduler = new CronerScheduler({ timezone: 'UTC', schedules: ['0 9 * * *'], onTick: (s) => ticks.push(s) })
+    scheduler.start()
+    const first = scheduler.generationOf('0 9 * * *')
+    expect(scheduler.nextRuns(new Date())[0]?.next?.toISOString()).toBe('2026-11-17T09:00:00.000Z')
+
+    scheduler.setTimezone(BA)
+    expect(scheduler.timezone).toBe(BA)
+    expect(scheduler.expressions).toEqual(['0 9 * * *'])
+    expect(scheduler.generationOf('0 9 * * *')).not.toBe(first)
+    expect(scheduler.nextRuns(new Date())[0]?.next?.toISOString()).toBe('2026-11-17T12:00:00.000Z')
+
+    // The old hour passes without a tick; the new one fires once.
+    await vi.advanceTimersByTimeAsync(5 * 3_600_000)
+    expect(ticks).toEqual([])
+    await vi.advanceTimersByTimeAsync(2 * 3_600_000)
+    expect(ticks).toEqual(['0 9 * * *'])
+
+    // The same zone is a no-op: the job is not rebuilt.
+    const armed = scheduler.generationOf('0 9 * * *')
+    scheduler.setTimezone(BA)
+    expect(scheduler.generationOf('0 9 * * *')).toBe(armed)
+    scheduler.stop()
+    // Stopped, it only changes what `start` arms.
+    scheduler.setTimezone('UTC')
+    expect(scheduler.generationOf('0 9 * * *')).toBeUndefined()
+    scheduler.start()
+    expect(scheduler.nextRuns(new Date())[0]?.next?.toISOString()).toBe('2026-11-18T09:00:00.000Z')
+    scheduler.stop()
   })
 })

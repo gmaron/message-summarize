@@ -1,6 +1,7 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
+import { exactIdOf } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
 import type { Catalog, Language } from '../infrastructure/i18n/index.js'
@@ -147,6 +148,25 @@ export interface TranscriptionConfig {
   readonly maxMediaMb: number
 }
 
+/** The local web (RNF-03). Only the installation's config.json sets it: an account cannot. */
+export interface WebConfig {
+  readonly enabled: boolean
+  /** "127.0.0.1" by default. Any other address is the explicit opt-in to expose the web beyond this machine. */
+  readonly host: string
+  readonly port: number
+}
+
+export const DEFAULT_WEB: WebConfig = { enabled: true, host: '127.0.0.1', port: 8787 }
+
+/** The daemon's log files (RNF-12). Only the installation's config.json sets it: an account cannot. */
+export interface LogsConfig {
+  /** The most the log files may take together, in bytes (two files of half of it each, see `log-file.ts`). */
+  readonly maxBytes: number
+}
+
+export const MIN_LOG_BYTES = 1_048_576
+export const DEFAULT_LOGS: LogsConfig = { maxBytes: 52_428_800 }
+
 /** The validated contents of config.json. A missing option has its default (RF-73). */
 export interface AppConfig {
   readonly language: Language
@@ -161,6 +181,8 @@ export interface AppConfig {
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
   readonly transcription: TranscriptionConfig
+  readonly web: WebConfig
+  readonly logs: LogsConfig
 }
 
 export type ConfigIssueCode =
@@ -175,6 +197,15 @@ export type ConfigIssueCode =
   | 'secretInConfig'
   /** `provider.genericCli.command` has no program, a placeholder as the program, or one inside an element. */
   | 'invalidCommandTemplate'
+  | 'invalidPort'
+  /** A number under the smallest accepted (`logs.maxBytes`). */
+  | 'belowMinimum'
+  /** Not an absolute http(s) URL. */
+  | 'invalidUrl'
+  /** The account file changed while it was being updated (the writer gave up). */
+  | 'concurrentEdit'
+  /** An option that only the installation's config.json may set, found in an account's. */
+  | 'installationOnly'
 
 /** A problem of config.json: which option and why. Codes, not text: `describeConfigIssue` translates them. */
 export interface ConfigIssue {
@@ -207,6 +238,8 @@ const TOP_LEVEL = new Set([
   'schedules',
   'provider',
   'transcription',
+  'web',
+  'logs',
 ])
 const TRANSCRIPTION_KEYS = new Set([
   'enabled',
@@ -233,6 +266,8 @@ const PROVIDER_KEYS = new Set([
 ])
 const GENERIC_CLI_KEYS = new Set(['command', 'timeoutMs', 'acknowledgeRisk'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
+const WEB_KEYS = new Set(['enabled', 'host', 'port'])
+const LOGS_KEYS = new Set(['maxBytes'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
 const OPENAI_KEYS = new Set(['baseUrl', 'model', 'timeoutMs', 'structuredOutput'])
 const ANTHROPIC_KEYS = new Set(['model', 'timeoutMs', 'maxTokens', 'effort'])
@@ -241,11 +276,24 @@ const RETRY_KEYS = new Set(['maxRetries', 'maxWaitMs', 'maxTotalMs'])
 /** Names under which a key could be put in the section of an API provider: refused, with a pointer to `msum secret`. */
 const SECRET_KEY_NAMES = ['apiKey', 'api_key', 'apikey', 'key', 'token', 'secret']
 
+/** Options of the installation's config.json that an account's file cannot set. */
+const INSTALLATION_ONLY = ['web', 'logs'] as const
+
 /** Lists an account can only add to (see `mergeConfigJson`). */
 const UNIONED_LISTS = ['localOnlyPatterns', 'excludePatterns'] as const
 
-type Obj = Record<string, unknown>
-const isObject = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
+export type Obj = Record<string, unknown>
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== ''
+  } catch {
+    return false
+  }
+}
+
+export const isObject = (value: unknown): value is Obj =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * Validates config.json (RF-73). A missing option takes its default; an option that is present and invalid, or one
@@ -287,6 +335,7 @@ export function parseConfig(
     if (!Array.isArray(v)) return add(key, 'notArray')
     if (!v.every((p) => typeof p === 'string')) return add(key, 'notStringList')
     if (v.some((p: string) => p.trim() === '')) return add(key, 'emptyPattern')
+    if (v.some((p: string) => exactIdOf(p) === '')) return add(key, 'emptyIdPattern')
     return [...(v as string[])]
   }
   const choice = (obj: Obj, key: string, path: string, allowed: readonly string[]): string | null | undefined => {
@@ -367,7 +416,12 @@ export function parseConfig(
   const claudeTimeout = positiveInt(cliObj, 'timeoutMs', 'provider.claudeCli.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
 
   const ollamaObj = section(providerObj, 'ollama', 'provider.ollama', OLLAMA_KEYS)
-  const ollamaBaseUrl = text(ollamaObj, 'baseUrl', 'provider.ollama.baseUrl')
+  const ollamaBaseUrl = ((): string | null | undefined => {
+    const v = text(ollamaObj, 'baseUrl', 'provider.ollama.baseUrl')
+    if (typeof v !== 'string') return v
+    // Where the "local only" chats go: an absolute http(s) address, nothing else.
+    return isHttpUrl(v) ? v : add('provider.ollama.baseUrl', 'invalidUrl')
+  })()
   const ollamaModel = text(ollamaObj, 'model', 'provider.ollama.model')
   const ollamaNumCtx = positiveInt(ollamaObj, 'numCtx', 'provider.ollama.numCtx', 16384)
   const ollamaKeepAlive = text(ollamaObj, 'keepAlive', 'provider.ollama.keepAlive')
@@ -486,6 +540,32 @@ export function parseConfig(
   const historyAudioDays = positiveInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
   const maxMediaMb = positiveInt(transcriptionObj, 'maxMediaMb', 'transcription.maxMediaMb', 500)
 
+  const webObj = section(input, 'web', 'web', WEB_KEYS)
+  const webEnabled = ((): boolean | undefined => {
+    const v = webObj.enabled
+    if (v === undefined) return DEFAULT_WEB.enabled
+    return typeof v === 'boolean' ? v : add('web.enabled', 'notBoolean')
+  })()
+  const webHost = text(webObj, 'host', 'web.host')
+  const webPort = ((): number | undefined => {
+    const v = webObj.port
+    if (v === undefined) return DEFAULT_WEB.port
+    if (typeof v !== 'number') return add('web.port', 'notNumber')
+    if (!Number.isInteger(v)) return add('web.port', 'notInteger')
+    if (v < 1 || v > 65535) return add('web.port', 'invalidPort')
+    return v
+  })()
+
+  const logsObj = section(input, 'logs', 'logs', LOGS_KEYS)
+  const logsMaxBytes = ((): number | undefined => {
+    const v = logsObj.maxBytes
+    if (v === undefined) return DEFAULT_LOGS.maxBytes
+    if (typeof v !== 'number') return add('logs.maxBytes', 'notNumber')
+    if (!Number.isInteger(v)) return add('logs.maxBytes', 'notInteger')
+    if (v < MIN_LOG_BYTES) return add('logs.maxBytes', 'belowMinimum')
+    return v
+  })()
+
   const usesOllama =
     primary === 'ollama' || backup === 'ollama' || (localOnlyPatterns !== undefined && localOnlyPatterns.length > 0)
   if (usesOllama && ollamaModel === null) add('provider.ollama.model', 'required')
@@ -546,7 +626,11 @@ export function parseConfig(
     transcriptionLanguage === undefined ||
     transcriptionTimeout === undefined ||
     historyAudioDays === undefined ||
-    maxMediaMb === undefined
+    maxMediaMb === undefined ||
+    webEnabled === undefined ||
+    webHost === undefined ||
+    webPort === undefined ||
+    logsMaxBytes === undefined
   ) {
     return err(issues)
   }
@@ -597,6 +681,8 @@ export function parseConfig(
       historyAudioDays,
       maxMediaMb,
     },
+    web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort },
+    logs: { maxBytes: logsMaxBytes },
   })
 }
 
@@ -674,7 +760,7 @@ export function mergeConfigJson(base: Obj, overrides: Obj): Obj {
 }
 
 /** True when `path` ("provider.ollama.model", "schedules[1]") is set in `source`. */
-function isSetIn(source: Obj, path: string): boolean {
+export function isSetIn(source: Obj, path: string): boolean {
   let node: unknown = source
   for (const key of path.replace(/\[\d+\]/g, '').split('.')) {
     if (!isObject(node) || !(key in node)) return false
@@ -684,33 +770,24 @@ function isSetIn(source: Obj, path: string): boolean {
 }
 
 /**
- * The configuration an account runs with: the installation's `rootFile` merged with the account's optional
- * `accountFile` (see `mergeConfigJson`), validated as a whole. A problem names the file it comes from: the account's
+ * Validates an installation's and an account's raw contents as ONE configuration: what loading does once both files
+ * are read, and what the writer checks before it saves a change. A problem names the file it comes from: the account's
  * when that file sets the option, else the installation's. A relative `promptFile` is resolved against the directory
  * of the file that set it, so the result holds an absolute path.
  */
-export async function loadEffectiveConfig(
+export function validateEffective(
+  root: Obj,
+  account: Obj,
   rootFile: string,
   accountFile: string | null,
   fallbackTimezone?: string,
-): Promise<Result<AppConfig, ConfigIssue[]>> {
-  const files = accountFile === null ? [rootFile] : [rootFile, accountFile]
-  const issues: ConfigIssue[] = []
-  const parts: Obj[] = []
-  for (const file of files) {
-    const json = await readJson(file)
-    if (!json.ok) {
-      if (json.error === 'invalid') issues.push({ option: '(config)', code: 'invalidJson', file })
-      parts.push({})
-    } else if (!isObject(json.value)) {
-      issues.push({ option: '(config)', code: 'notObject', file })
-      parts.push({})
-    } else {
-      parts.push(json.value)
-    }
+): Result<AppConfig, ConfigIssue[]> {
+  // The web and the logs belong to the installation (one server and one daemon for every account): an account file
+  // cannot configure them.
+  if (accountFile !== null) {
+    const found = INSTALLATION_ONLY.filter((option) => option in account)
+    if (found.length > 0) return err(found.map((option) => ({ option, code: 'installationOnly', file: accountFile })))
   }
-  if (issues.length > 0) return err(issues)
-  const [root = {}, account = {}] = parts
   const parsed = parseConfig(mergeConfigJson(root, account), fallbackTimezone)
   const fromAccount = (option: string): boolean => accountFile !== null && isSetIn(account, option)
   if (!parsed.ok) {
@@ -722,6 +799,57 @@ export async function loadEffectiveConfig(
   if (promptFile === null) return parsed
   const source = fromAccount('promptFile') ? (accountFile as string) : rootFile
   return ok({ ...parsed.value, promptFile: resolve(dirname(source), promptFile) })
+}
+
+/** Reads a config file as a raw JSON object: `{}` when it does not exist, the issues when it is not valid. */
+export async function readConfigObject(file: string): Promise<Result<Obj, ConfigIssue>> {
+  const json = await readJson(file)
+  if (!json.ok) return json.error === 'missing' ? ok({}) : err({ option: '(config)', code: 'invalidJson', file })
+  if (!isObject(json.value)) return err({ option: '(config)', code: 'notObject', file })
+  return ok(json.value)
+}
+
+/**
+ * The configuration an account runs with: the installation's `rootFile` merged with the account's optional
+ * `accountFile` (see `mergeConfigJson`), validated as a whole (see `validateEffective`).
+ */
+export async function loadEffectiveConfig(
+  rootFile: string,
+  accountFile: string | null,
+  fallbackTimezone?: string,
+): Promise<Result<AppConfig, ConfigIssue[]>> {
+  const files = accountFile === null ? [rootFile] : [rootFile, accountFile]
+  const issues: ConfigIssue[] = []
+  const parts: Obj[] = []
+  for (const file of files) {
+    const read = await readConfigObject(file)
+    if (read.ok) parts.push(read.value)
+    else {
+      issues.push(read.error)
+      parts.push({})
+    }
+  }
+  if (issues.length > 0) return err(issues)
+  const [root = {}, account = {}] = parts
+  return validateEffective(root, account, rootFile, accountFile, fallbackTimezone)
+}
+
+/**
+ * A fingerprint of the config files (modification time and size of each, or "missing"): two equal fingerprints mean
+ * nothing was written to them in between. It is how the daemon notices an edit by hand or by another process.
+ */
+export async function configStamp(files: readonly string[]): Promise<string> {
+  const parts = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const info = await stat(file)
+        return `${info.mtimeMs}:${info.size}`
+      } catch {
+        return 'missing'
+      }
+    }),
+  )
+  return parts.join('|')
 }
 
 /**
@@ -769,6 +897,16 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.secretInConfig(issue.option)
     case 'invalidCommandTemplate':
       return texts.invalidCommandTemplate(issue.option)
+    case 'invalidPort':
+      return texts.invalidPort(issue.option)
+    case 'belowMinimum':
+      return texts.belowMinimum(issue.option)
+    case 'installationOnly':
+      return texts.installationOnly(issue.option)
+    case 'invalidUrl':
+      return texts.invalidUrl(issue.option)
+    case 'concurrentEdit':
+      return texts.concurrentEdit
     default:
       return catalog.errors.settings[issue.code](issue.option)
   }

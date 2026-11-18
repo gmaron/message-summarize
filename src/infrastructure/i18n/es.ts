@@ -1,4 +1,6 @@
 import type { Catalog } from './catalog.js'
+import { DISCLOSURE_SENDS } from './disclosure.js'
+import { webEs } from './web-es.js'
 
 const chats = (n: number): string => (n === 1 ? 'chat' : 'chats')
 /** Width of the label column of `msum status`. */
@@ -69,6 +71,8 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
     failedChats: (count) => `⚠️ ${count} chats no se pudieron resumir`,
   },
 
+  web: webEs,
+
   errors: {
     settings: {
       notString: (option) => `La opción "${option}" tiene que ser un texto.`,
@@ -77,6 +81,8 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
       notStringList: (option) => `La opción "${option}" tiene que ser una lista de textos.`,
       emptyPattern: (option) =>
         `La opción "${option}" tiene un patrón vacío: excluiría todas las conversaciones. Borralo o escribí un texto.`,
+      emptyIdPattern: (option) =>
+        `La opción "${option}" tiene un patrón "id:" sin el id de la conversación. Borralo o escribí el id.`,
       notNumber: (option) => `La opción "${option}" tiene que ser un número.`,
       notPositive: (option) => `La opción "${option}" tiene que ser un número mayor que cero.`,
       notInteger: (option) => `La opción "${option}" tiene que ser un número entero.`,
@@ -127,7 +133,7 @@ Comandos:
   doctor [--skip-model-check] [--account <id>]  Revisa que todo esté en orden y explica cómo arreglarlo
                                       (con Ollama también le pregunta a tu servidor qué modelos tiene, salvo que lo saltees)
   accounts                            Lista las cuentas de esta instalación y su estado
-  whisper models                      Lista los modelos de whisper.cpp (para transcribir audios en tu máquina) con su tamaño
+  whisper models                     Lista los modelos de whisper.cpp (para transcribir audios en tu máquina) con su tamaño
   whisper download <nombre>           Descarga un modelo al directorio de datos y verifica su SHA-256, desde
                                       huggingface.co. El programa descarga modelos solo cuando se lo pedís
                                       (whisper download, ollama pull)
@@ -148,7 +154,9 @@ Comandos:
   ollama pull <tag> [--allow-remote] [--account <id>]
                                       Le pide al Ollama configurado que descargue un modelo (solo se envía el tag, con una
                                       línea de progreso). Rechaza un Ollama que no está en esta máquina salvo con --allow-remote
-  help                               Muestra esta ayuda
+  open [--print]                      Abre la web local en el navegador, ya con la sesión iniciada (la sirve el daemon).
+                                      --print solo imprime la dirección
+  help                                Muestra esta ayuda
 
 Cuentas: link, unlink, daemon y digest trabajan sobre una cuenta, elegida con --account <id> (letras minúsculas,
 dígitos y guiones, hasta 32 caracteres). Sin esa opción se usa la única cuenta; si no hay ninguna, "link" crea
@@ -186,6 +194,13 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         `La opción "${option}" no es una zona horaria válida (por ejemplo "America/Argentina/Buenos_Aires").`,
       invalidLanguage: (option) =>
         `La opción "${option}" tiene que ser "auto" (detectar el idioma) o un código de idioma como "es" o "en".`,
+      invalidPort: (option) => `La opción "${option}" tiene que ser un número de puerto entre 1 y 65535.`,
+      belowMinimum: (option) => `La opción "${option}" es demasiado chica: el mínimo es 1048576 (1 MB).`,
+      invalidUrl: (option) =>
+        `La opción "${option}" tiene que ser una dirección http o https absoluta (por ejemplo "http://127.0.0.1:11434").`,
+      concurrentEdit: 'El archivo de configuración cambió mientras se guardaba: no se escribió nada. Probá de nuevo.',
+      installationOnly: (option) =>
+        `La opción "${option}" solo se puede poner en el config.json del directorio de datos, no en el de una cuenta.`,
       noProvider:
         'No elegiste un proveedor de LLM. Poné "provider.primary" ("claude-cli", "ollama", "openai", "anthropic" o "gemini") en la configuración.',
       promptFile: (path) => `No se pudo leer el archivo del prompt (promptFile): ${path}`,
@@ -260,8 +275,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         notWritten: (file) => `No se escribió nada (${file} quedó como estaba).`,
         fileNotJson: (file) => `${file} no es un objeto JSON. No se tocó: corregilo o borralo y probá de nuevo.`,
         disclosureTitle: (provider) => `Antes de activar ${provider}, esto es lo que recibe:`,
-        disclosureSends:
-          '  - El texto de las conversaciones de tus resúmenes: los mensajes, los nombres de los chats y de los contactos como aparecen en ellos, los números de teléfono de los contactos que no guardaste, las transcripciones de las notas de voz, y tu nombre como dueño. Las conversaciones que coinciden con localOnlyPatterns nunca se envían (solo Ollama las ve).',
+        // Las mismas palabras que la divulgación de la web (una sola fuente: `disclosure.ts`).
+        disclosureSends: `  - ${DISCLOSURE_SENDS.es}`,
         disclosureHosts: (hosts) => `  - Va a: ${hosts}.`,
         disclosureCommand: (command) =>
           `  - Va a este comando, que decide adónde va el texto: ${command} (el prompt es su última entrada; {{prompt}} queda como está escrito). Cambiar el comando pide un consentimiento nuevo.`,
@@ -545,6 +560,21 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       done: (id) =>
         `Se borró el bloqueo de la cuenta "${id}". Un daemon en marcha la toma en pocos segundos; si no hay uno, iniciá "msum daemon".`,
     },
+    web: {
+      listening: (host, port) => `Web escuchando en http://${host}:${port}. Abrila con "msum open".`,
+      failed: (host, port, code) =>
+        `La web no pudo arrancar en ${host}:${port} (${code}). Las cuentas siguen corriendo. Cambiá "web.port" en la configuración, o poné "web.enabled" en false.`,
+      exposed: (host) =>
+        `ATENCIÓN: la web escucha en ${host}, fuera de esta máquina. Quien llegue a ella y tenga el token de acceso puede leer todos los chats. Usala solo en una red de confianza.`,
+    },
+    open: {
+      daemonNotRunning:
+        'La web corre dentro del daemon, y no hay ningún daemon corriendo. Arrancalo con "msum daemon" y después corré "msum open" de nuevo.',
+      webNotListening:
+        'El daemon está corriendo pero su web no está escuchando: está apagada ("web.enabled") o no pudo arrancar (mirá la salida del daemon y "web.port").',
+      url: (url) => `Dirección de la web (incluye el token de acceso, no la compartas): ${url}`,
+      openFailed: (code) => `No se pudo abrir el navegador (${code}). Copiá la dirección de arriba en él.`,
+    },
     blockedReasons: {
       loggedOut: (id) =>
         `WhatsApp cerró la sesión desde el celular. Corré "msum unlink --account ${id}" y después "msum link --account ${id}".`,
@@ -597,6 +627,7 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
           reconnecting: 'reconectando',
           blocked: 'bloqueada',
           idle: 'inactiva (sin vincular, o vinculándose)',
+          linking: 'vinculándose (desde la web)',
         })[state],
       configBroken: (id) => `${'Cuenta:'.padEnd(LABEL)}${id} (configuración inválida)`,
       noAccounts: `${'Cuenta:'.padEnd(LABEL)}ninguna todavía (corré "msum link")`,

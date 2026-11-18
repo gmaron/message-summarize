@@ -72,7 +72,12 @@ describe('the generic CLI through the configuration', () => {
       config({ primary: 'generic-cli', genericCli: { command: [cli.path, '-x'], acknowledgeRisk: true } }),
       { PATH: process.env.PATH },
     )
-    expect(await summarizer?.summarize(request('Trabajo'))).toEqual({ ok: true, value: VALID_SUMMARY })
+    // Built by the configuration, so the answer says who gave it (the history counts it, RF-74).
+    expect(await summarizer?.summarize(request('Trabajo'))).toEqual({
+      ok: true,
+      value: VALID_SUMMARY,
+      provider: 'generic-cli',
+    })
     expect(cli.calls('run')[0]?.argv).toEqual(['-x'])
   })
 

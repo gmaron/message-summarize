@@ -1,5 +1,7 @@
 import type { MessageKind } from '../../domain/model.js'
+import type { ScheduleIssue } from '../../domain/schedule.js'
 import type { SettingsIssueCode } from '../../domain/settings.js'
+import type { SetupStep } from '../../domain/setup.js'
 import type { WindowError } from '../../domain/window.js'
 import type { ProviderCharge, ProviderInfoKind } from '../llm/provider-info.js'
 
@@ -17,6 +19,77 @@ export type BlockedReason =
   | 'notLinked'
   | 'mismatch'
   | 'noAccount'
+
+/** The codes of the errors the local web answers with (`{ "error": code }`): the web shows the text of each. */
+export type WebErrorCode =
+  | 'unauthorized'
+  | 'forbidden'
+  | 'notFound'
+  | 'methodNotAllowed'
+  | 'payloadTooLarge'
+  | 'invalidJson'
+  | 'internal'
+  | 'invalidRequest'
+  | 'invalidAccountId'
+  | 'accountExists'
+  | 'invalidConfig'
+  | 'unavailable'
+  | 'inUse'
+  | 'beingLinked'
+  | 'alreadyLinking'
+  | 'needsRetry'
+  | 'needsRelink'
+  | 'notBlocked'
+  | 'notLinking'
+  | 'busy'
+  | 'restricted'
+  | 'invalidSchedule'
+  | 'notRunning'
+  | 'tooSoon'
+  | 'concurrentEdit'
+  | 'matchedByPattern'
+  | 'confirmRequired'
+  | 'notApplied'
+  | 'blankPrompt'
+  | 'promptTooLong'
+  | 'unknownVariable'
+  | 'consentRequired'
+  | 'notLinked'
+  | 'testRunning'
+  | 'setupCompleted'
+  | 'wrongStep'
+
+/** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
+export type WebConfigIssueCode =
+  | SettingsIssueCode
+  | 'invalidJson'
+  | 'unknownOption'
+  | 'notOneOf'
+  | 'required'
+  | 'invalidTimezone'
+  | 'invalidPort'
+  | 'belowMinimum'
+  | 'invalidUrl'
+  | 'concurrentEdit'
+  | 'installationOnly'
+
+/** Why the test of a provider failed (RF-41): codes, never the text the provider answered. */
+export type ProviderTestErrorCode = 'notFound' | 'timeout' | 'invalidSummary' | 'unreachable' | 'failed'
+
+/** Why a digest asked from the web (or a scheduled one) produced nothing: codes, never text (`digest` and `preview` events). */
+export type DigestErrorCode = 'noProvider' | 'promptFile' | 'concurrentRun' | 'invalidWindow' | 'failed'
+
+/** Why a link made from the web ended without linking (`link` event and `GET /api/accounts/:id/link`): codes, never text. */
+export type LinkErrorCode =
+  | 'timeout'
+  | 'loggedOut'
+  | 'mismatch'
+  | 'noAccount'
+  | 'socketFailed'
+  | 'forbidden'
+  | 'replaced'
+  | 'cancelled'
+  | 'failed'
 
 /** The signs that the previous tool is running (see `legacyLiveSignals`). */
 export type ImportLiveSignal = 'wal' | 'shm' | 'recentWrite' | 'recentSession'
@@ -121,6 +194,9 @@ export interface Catalog {
     failedChats(count: number): string
   }
 
+  /** Texts of the local web: the page shown while it is not built, the errors of its API and the whole interface. */
+  readonly web: WebTexts
+
   readonly errors: {
     /** One message per issue code; each names the option and the reason (RF-73). */
     readonly settings: Readonly<Record<SettingsIssueCode, (option: string) => string>>
@@ -161,6 +237,12 @@ export interface Catalog {
       invalidTimezone(option: string): string
       /** A transcription language that is neither "auto" nor an ISO 639 code (RF-23). */
       invalidLanguage(option: string): string
+      invalidPort(option: string): string
+      belowMinimum(option: string): string
+      invalidUrl(option: string): string
+      readonly concurrentEdit: string
+      /** An option of the installation's config.json that an account's file cannot set. */
+      installationOnly(option: string): string
       readonly noProvider: string
       promptFile(path: string): string
       /** An API key written in config.json: keys are secrets and go in secrets.json or the environment (RNF-04). */
@@ -406,6 +488,23 @@ export interface Catalog {
       /** The daemon is idle because the account is blocked: `reason` is already translated. */
       blocked(reason: string): string
     }
+    /** The local web (RF-82, RNF-03). */
+    readonly web: {
+      listening(host: string, port: number): string
+      /** The web could not start (`code` is a system error code); the accounts keep running. */
+      failed(host: string, port: number, code: string): string
+      /** The web listens beyond this machine: anyone who can reach it and has the token sees every chat. */
+      exposed(host: string): string
+    }
+    /** `msum open`. */
+    readonly open: {
+      readonly daemonNotRunning: string
+      /** The daemon runs but its web does not listen (it is off, or it could not start). */
+      readonly webNotListening: string
+      /** The URL with the token: it is a secret, so it is printed only to the terminal of the user. */
+      url(url: string): string
+      openFailed(code: string): string
+    }
     /** Why the daemon stopped working with the account, and what to do about it. */
     readonly blockedReasons: Readonly<Record<BlockedReason, (id: string) => string>>
     readonly digest: {
@@ -471,7 +570,7 @@ export interface Catalog {
       account(id: string, masked: string | null): string
       /** What the running daemon says about the connection: `state` is already translated. */
       connection(state: string, since: string): string
-      stateName(state: 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle'): string
+      stateName(state: 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking'): string
       /** The block of an account whose configuration is invalid; the problems follow. */
       configBroken(id: string): string
       readonly noAccounts: string
@@ -614,6 +713,441 @@ export interface Catalog {
       readonly whatsappFix: string
       readonly summaryOk: string
       readonly summaryFail: string
+    }
+  }
+}
+
+/** The unit states the web labels (`UnitState` plus `notLinked`, which an idle account without a number shows). */
+/**
+ * The fields of the settings form, as keys of the catalog (the options they edit are the dotted names of
+ * `PUT /api/accounts/:id/settings`: `providerPrimary` is `provider.primary`).
+ */
+export type SettingsFieldKey =
+  | 'unreadOnly'
+  | 'flagUnsaved'
+  | 'hideRest'
+  | 'maxCharsPerConversation'
+  | 'defaultWindowHours'
+  | 'language'
+  | 'timezone'
+  | 'ownerName'
+  | 'providerPrimary'
+  | 'providerBackup'
+  | 'claudeModel'
+  | 'claudeTimeoutMs'
+  | 'ollamaBaseUrl'
+  | 'ollamaModel'
+
+export type WebStateName = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking' | 'notLinked'
+
+/**
+ * Everything the web shows (RNF-13). Templates use `{name}` placeholders that the page fills in. Kept in its own
+ * module per language (`web-es.ts`, `web-en.ts`) so the bundle of the page does not carry the prompts or the CLI texts.
+ */
+export interface WebTexts {
+  /** BCP 47 locale for dates and weekday names. */
+  readonly locale: string
+  readonly notBuilt: { readonly title: string; readonly message: string }
+  readonly errors: Readonly<Record<WebErrorCode, string>>
+  readonly linkErrors: Readonly<Record<LinkErrorCode, string>>
+  readonly digestErrors: Readonly<Record<DigestErrorCode, string>>
+  /** Why a schedule sent to `POST /api/accounts/:id/schedules` was refused (`issue`). */
+  readonly scheduleIssues: Readonly<Record<ScheduleIssue, string>>
+  /** Why an option of the settings was refused: the reason alone (the page puts it next to the field). `{allowed}` for `notOneOf`. */
+  readonly configIssues: Readonly<Record<WebConfigIssueCode, string>>
+  readonly ui: {
+    readonly title: string
+    readonly loading: string
+    readonly loadFailed: string
+    readonly retry: string
+    readonly close: string
+    readonly cancel: string
+    readonly unauthorizedTitle: string
+    readonly offline: string
+    readonly accountsTitle: string
+    readonly noAccounts: string
+    readonly addAccount: {
+      readonly button: string
+      readonly idLabel: string
+      readonly idHint: string
+      readonly submit: string
+    }
+    readonly account: {
+      readonly number: string
+      readonly noNumber: string
+      readonly lastDigest: string
+      readonly never: string
+      readonly nextRun: string
+      readonly noSchedules: string
+      readonly timezone: string
+      readonly invalidConfig: string
+      /** `{when}`. */
+      readonly blockedSince: string
+      /** `{when}`: when the web's retry becomes available. */
+      readonly retryAvailable: string
+      /** Heading of the list of problems of an invalid configuration. */
+      readonly configIssues: string
+    }
+    readonly retryConfirm: { readonly confirm: string; readonly yes: string; readonly no: string }
+    readonly states: Readonly<Record<WebStateName, string>>
+    readonly blockedReasons: Readonly<Record<BlockedReason, string>>
+    readonly actions: {
+      readonly digestNow: string
+      readonly preview: string
+      readonly schedules: string
+      readonly conversations: string
+      readonly history: string
+      readonly settings: string
+      readonly prompt: string
+      readonly link: string
+      readonly relink: string
+      readonly retry: string
+    }
+    readonly digest: {
+      readonly running: string
+      readonly started: string
+      readonly deferred: string
+      /** `{summarized}`, `{parts}`. */
+      readonly done: string
+      /** `{summarized}`, `{failed}`. */
+      readonly doneFailed: string
+      readonly empty: string
+      readonly failed: string
+      readonly busy: string
+    }
+    readonly link: {
+      /** `{account}`. */
+      readonly title: string
+      readonly starting: string
+      readonly waitingQr: string
+      readonly scan: string
+      readonly qrAlt: string
+      readonly connected: string
+      readonly syncing: string
+      /** `{count}`. */
+      readonly chats: string
+      /** `{count}`. */
+      readonly messages: string
+      readonly syncDone: string
+      /** `{percent}` is a whole number from 0 to 100. */
+      readonly percent: string
+      readonly done: string
+      readonly failed: string
+      readonly tryAgain: string
+      readonly cancel: string
+    }
+    readonly schedules: {
+      /** `{account}`. */
+      readonly title: string
+      /** `{timezone}`. */
+      readonly timezone: string
+      readonly empty: string
+      readonly daysLabel: string
+      readonly timeLabel: string
+      /** `{when}`. */
+      readonly nextRun: string
+      readonly everyDay: string
+      readonly weekdays: string
+      readonly add: string
+      readonly save: string
+      readonly edit: string
+      readonly delete: string
+      readonly saving: string
+    }
+    readonly settings: {
+      /** `{account}`. */
+      readonly title: string
+      /** Said once on top: changes apply without restarting or reconnecting. */
+      readonly appliesLive: string
+      readonly groups: { readonly digest: string; readonly languageTime: string; readonly provider: string }
+      readonly fields: Readonly<Record<SettingsFieldKey, { readonly label: string; readonly hint?: string }>>
+      readonly languageNames: Readonly<Record<Language, string>>
+      readonly providerNames: Readonly<Record<'claude-cli' | 'ollama', string>>
+      /** The choice of "no provider" (primary) or "no backup". */
+      readonly none: string
+      /** How the page says where a value comes from. */
+      readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
+      /** Under the text fields that inherit when they are left empty. */
+      readonly emptyInherits: string
+      /** Under the Ollama address when its host is not this machine. */
+      readonly remoteOllama: string
+      readonly save: string
+      readonly saving: string
+      readonly saved: string
+      readonly noChanges: string
+      /** `{option}`, `{reason}`: a problem that belongs to no field of the form. */
+      readonly issue: string
+      readonly issuesHeading: string
+    }
+    readonly prompt: {
+      /** `{account}`. */
+      readonly title: string
+      /** What the text is: the instructions the model receives for each conversation. */
+      readonly intro: string
+      /** `{variable}` (the placeholder as it is written), `{name}`: what it is replaced with. */
+      readonly nameNote: string
+      /** `{variable}`: the owner has no name set, so a generic word is used. */
+      readonly nameUnset: string
+      /** The response format is fixed and added by the program. */
+      readonly formatNote: string
+      readonly label: string
+      readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
+      readonly differs: string
+      readonly sameAsOriginal: string
+      /** `{count}`, `{max}`. */
+      readonly counter: string
+      /** The prompt file of the account is set and cannot be read. */
+      readonly fileMissing: string
+      /** `{variables}`: placeholders that are not variables (checked while typing). */
+      readonly unknownVariable: string
+      /** `{max}`. */
+      readonly tooLong: string
+      readonly blank: string
+      readonly save: string
+      readonly saving: string
+      readonly saved: string
+      readonly noChanges: string
+      readonly restore: string
+      readonly restoreConfirm: string
+      /** Said under the confirmation: an installation prompt file, when there is one, takes the place of the original. */
+      readonly restoreInherits: string
+      readonly restoreYes: string
+      readonly restoreNo: string
+      readonly restoring: string
+      readonly restored: string
+      /** Said after a restore when the account inherits the installation's prompt. */
+      readonly restoredInherited: string
+      /** The button that closes this dialog and runs a preview. */
+      readonly preview: string
+    }
+    readonly conversations: {
+      /** `{account}`. */
+      readonly title: string
+      /** What the two marks do, said once on top. */
+      readonly explainExclude: string
+      readonly explainLocalOnly: string
+      readonly searchLabel: string
+      readonly searchPlaceholder: string
+      readonly empty: string
+      readonly noResults: string
+      readonly group: string
+      readonly individual: string
+      /** `{when}`. */
+      readonly lastMessage: string
+      readonly noMessages: string
+      /** `{count}`: how many messages are stored. */
+      readonly messages: string
+      /** `{count}`. */
+      readonly unread: string
+      readonly markedUnread: string
+      readonly exclude: string
+      readonly localOnly: string
+      /** Said once: a mark covers the ids known for this chat; a second chat of the same person is marked on its own. */
+      readonly aliasNote: string
+      /** Under a mark that comes from a pattern of the configuration (not removable here). */
+      readonly fromPattern: string
+      /** Under the "local only" mark that cannot be turned on: no Ollama model. */
+      readonly localUnavailable: string
+      /** `{count}`: asked before excluding a chat with stored messages. */
+      readonly confirmDelete: string
+      readonly confirmYes: string
+      readonly unlistedHeading: string
+      readonly unlistedHint: string
+      /** `{shown}`, `{total}`. */
+      readonly shown: string
+      readonly loadMore: string
+      readonly saving: string
+    }
+    readonly history: {
+      /** `{account}`. */
+      readonly title: string
+      readonly empty: string
+      /** `{shown}`, `{total}`. */
+      readonly shown: string
+      readonly loadMore: string
+      readonly trigger: Readonly<Record<'schedule' | 'missed' | 'manual' | 'cli', string>>
+      readonly outcome: Readonly<Record<'committed' | 'empty' | 'failed' | 'running', string>>
+      /** `{n}`. */
+      readonly seconds: string
+      /** `{m}`, `{s}`. */
+      readonly minutes: string
+      readonly underSecond: string
+      readonly durationLabel: string
+      readonly providersLabel: string
+      readonly noProviders: string
+      /** `{provider}`, `{count}`. */
+      readonly providerCount: string
+      /** The label of a provider the adapter reported as `unknown`. */
+      readonly unknownProvider: string
+      /** `{summarized}`, `{failed}`. */
+      readonly counts: string
+      /** A run that was cut off by a restart. */
+      readonly interrupted: string
+      readonly open: string
+      readonly back: string
+      readonly loadingDetail: string
+      /** `{since}`, `{until}`. */
+      readonly window: string
+      /** `{when}`. */
+      readonly startedAt: string
+      readonly digestHeading: string
+      readonly noDigest: string
+      readonly failedHeading: string
+      readonly failedNone: string
+      readonly reason: Readonly<Record<'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed', string>>
+      /** Said once on top: what the history keeps and where. */
+      readonly privateNote: string
+    }
+    readonly logs: {
+      /** The button of the header that opens the view. */
+      readonly open: string
+      readonly title: string
+      /** Said once on top: what the log holds and does not. */
+      readonly note: string
+      readonly levelLabel: string
+      readonly level: Readonly<Record<'info' | 'warn' | 'error', string>>
+      readonly accountLabel: string
+      readonly allAccounts: string
+      /** The lines that belong to no account, and the account column of them. */
+      readonly installation: string
+      readonly empty: string
+      readonly loadOlder: string
+      /** Said while the view follows the daemon. */
+      readonly live: string
+      readonly timeColumn: string
+      readonly levelColumn: string
+      readonly eventColumn: string
+      readonly accountColumn: string
+      readonly detailsColumn: string
+    }
+    readonly preview: {
+      /** `{account}`. */
+      readonly title: string
+      readonly running: string
+      readonly notSent: string
+      /** `{when}`. */
+      readonly generatedAt: string
+      /** `{summarized}`, `{failed}`. */
+      readonly stats: string
+      /** `{summarized}`. */
+      readonly statsClean: string
+      readonly empty: string
+      readonly failed: string
+      readonly none: string
+      /** `{n}`, `{total}`. */
+      readonly part: string
+      readonly copy: string
+      readonly copied: string
+      readonly generate: string
+    }
+    /** What each provider costs and does with the text of the chats (RF-41, RNF-02): shown before it is used. */
+    readonly disclosure: {
+      readonly sendsLabel: string
+      /** What is sent, in the words of `msum provider use` (`DISCLOSURE_SENDS`): the text `CONSENT_TEXT_VERSION` stands for. */
+      readonly sends: string
+      readonly costLabel: string
+      readonly leavesLabel: string
+      readonly whoLabel: string
+      readonly whatLabel: string
+      readonly providers: Readonly<
+        Record<
+          'claude-cli' | 'ollama',
+          {
+            readonly name: string
+            readonly cost: string
+            readonly leaves: string
+            readonly who: string
+            readonly what: string
+            /** Only for the providers that run a program with tools (RF-49). */
+            readonly tools?: string
+          }
+        >
+      >
+      /** An Ollama server that is not on this machine: `{host}` in `leaves` and `who`. */
+      readonly ollamaRemote: {
+        readonly cost: string
+        readonly leaves: string
+        readonly who: string
+        readonly what: string
+        /** The conversations marked "local only" (RF-43) go to that host too. */
+        readonly localOnly: string
+      }
+      readonly consentTitle: string
+      /** `{provider}`: the name of the external provider. */
+      readonly consentCheckbox: string
+      readonly consentNeeded: string
+      readonly consentAgree: string
+      readonly consentSaving: string
+      readonly test: {
+        readonly button: string
+        readonly running: string
+        readonly note: string
+        /** `{ms}`. */
+        readonly ok: string
+        readonly needsConsent: string
+        readonly errors: Readonly<Record<ProviderTestErrorCode, string>>
+      }
+    }
+    /** The first-use wizard (RF-70). */
+    readonly wizard: {
+      readonly title: string
+      /** `{n}`, `{total}`. */
+      readonly stepOf: string
+      readonly stepsLabel: string
+      readonly steps: Readonly<Record<SetupStep, string>>
+      readonly back: string
+      readonly next: string
+      readonly saving: string
+      readonly skip: string
+      readonly skipConfirm: string
+      readonly skipYes: string
+      readonly skipNo: string
+      readonly language: { readonly heading: string; readonly intro: string; readonly label: string }
+      readonly name: {
+        readonly heading: string
+        readonly intro: string
+        readonly ownerLabel: string
+        readonly ownerHint: string
+        readonly ownerBlank: string
+        readonly ownerTooLong: string
+        readonly accountLabel: string
+        readonly accountHint: string
+        readonly accountLocked: string
+      }
+      readonly provider: {
+        readonly heading: string
+        readonly intro: string
+        readonly laterNote: string
+        readonly modelLabel: string
+        readonly baseUrlLabel: string
+        readonly ollamaModelLabel: string
+        readonly ollamaModelHint: string
+        readonly remoteOllama: string
+      }
+      readonly transcription: { readonly heading: string; readonly text: string }
+      readonly link: {
+        readonly heading: string
+        readonly intro: string
+        readonly start: string
+        readonly needsLink: string
+      }
+      readonly schedule: {
+        readonly heading: string
+        readonly intro: string
+        /** `{timezone}`. */
+        readonly timezone: string
+        readonly suggest: string
+        readonly edit: string
+        readonly current: string
+        readonly none: string
+        readonly skipNote: string
+      }
+      readonly done: {
+        readonly heading: string
+        readonly text: string
+        readonly noSchedule: string
+        readonly finish: string
+      }
     }
   }
 }

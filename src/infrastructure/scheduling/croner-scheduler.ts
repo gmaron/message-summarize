@@ -36,7 +36,7 @@ export function previousRunOf(expression: string, timezone: string, from: Date):
 }
 
 export interface CronerSchedulerOptions {
-  /** IANA name. The schedules follow its daylight saving changes (RF-62). */
+  /** IANA name. The schedules follow its daylight saving changes (RF-62). `setTimezone` changes it. */
   readonly timezone: string
   /** Cron expressions (RF-60). */
   readonly schedules: readonly string[]
@@ -55,8 +55,10 @@ export class CronerScheduler {
   private created = 0
   private running = false
   private schedules: readonly string[]
+  private zone: string
 
   constructor(private readonly options: CronerSchedulerOptions) {
+    this.zone = options.timezone
     this.schedules = [...new Set(options.schedules)]
   }
 
@@ -99,13 +101,32 @@ export class CronerScheduler {
     if (this.running) this.arm()
   }
 
+  /** The time zone the schedules run in. */
+  get timezone(): string {
+    return this.zone
+  }
+
+  /**
+   * Moves the schedules to another time zone (RF-62): the same expressions, so the same set, now at the hours of the
+   * new zone. The armed jobs are re-created (a job keeps the zone it was made with); while stopped it only changes what
+   * `start` will arm. No-op when the zone is the same.
+   */
+  setTimezone(timezone: string): void {
+    if (timezone === this.zone) return
+    this.zone = timezone
+    if (!this.running) return
+    this.disarm()
+    this.arm()
+  }
+
   /**
    * Makes the armed jobs match the schedules, one job per distinct expression: the jobs of expressions that are gone
    * are stopped, the ones that are new are created, and the ones that did not change are left alone (so a job that is
    * about to fire is not rebuilt by an unrelated change).
    */
   private arm(): void {
-    const { timezone, onTick } = this.options
+    const { onTick } = this.options
+    const timezone = this.zone
     const wanted = new Set(this.schedules)
     for (const [expression, { job }] of this.jobs) {
       if (wanted.has(expression)) continue
@@ -128,7 +149,7 @@ export class CronerScheduler {
 
   /** The next run of every schedule after `from`. */
   nextRuns(from: Date): { readonly schedule: string; readonly next: Date | null }[] {
-    const { timezone } = this.options
+    const timezone = this.zone
     return this.schedules.map((schedule) => ({ schedule, next: nextRunOf(schedule, timezone, from) }))
   }
 
@@ -137,7 +158,7 @@ export class CronerScheduler {
    * daemon compares with the digest pointer to find out whether a run was missed (RF-65).
    */
   lastDue(now: Date): Date | null {
-    const { timezone } = this.options
+    const timezone = this.zone
     let latest: Date | null = null
     for (const schedule of this.schedules) {
       const previous = previousRunOf(schedule, timezone, now)

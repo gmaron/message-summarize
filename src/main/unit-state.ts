@@ -3,11 +3,12 @@ import { FILE_MODE } from './paths.js'
 
 /**
  * What the daemon says about the connection of one account (RF-04): `connecting`, `connected`, `reconnecting`,
- * `blocked` (it stopped using the account, see `blocked.json`) or `idle` (the account is not linked, or being linked).
+ * `blocked` (it stopped using the account, see `blocked.json`), `idle` (the account is not linked, or a `msum link` is
+ * linking it) or `linking` (the daemon itself is linking it, started from the web).
  */
-export type UnitState = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle'
+export type UnitState = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking'
 
-const STATES: readonly UnitState[] = ['connecting', 'connected', 'reconnecting', 'blocked', 'idle']
+const STATES: readonly UnitState[] = ['connecting', 'connected', 'reconnecting', 'blocked', 'idle', 'linking']
 
 export interface UnitStateRecord {
   readonly state: UnitState

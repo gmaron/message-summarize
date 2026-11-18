@@ -1,5 +1,4 @@
 import { rm } from 'node:fs/promises'
-import type { CaptureMessages } from '../../application/capture-messages.js'
 import { reconcileAccount } from '../../infrastructure/whatsapp/account-binding.js'
 import type { WhatsAppStatus } from '../../infrastructure/whatsapp/connection.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
@@ -9,6 +8,7 @@ import { readAccountState } from '../account-state.js'
 import { daemonUsing } from '../account-use.js'
 import { clearBlocked, FIXED_BY_LINKING, readBlocked } from '../blocked.js'
 import { type CommandContext, hasSession, maskAccount, withRuntime } from '../context.js'
+import { countingCapture } from '../counting-capture.js'
 import { acquireLinkLock, LINK_HEARTBEAT_MS } from '../link-lock.js'
 import { qrForTerminal, writeQrPng } from '../qr.js'
 import { createRuntime } from '../runtime.js'
@@ -23,57 +23,6 @@ type LinkOutcome =
 /** Exit code of a command stopped with Ctrl+C (128 + SIGINT). */
 const EXIT_INTERRUPTED = 130
 
-/** The capture use case, counting calls: `link` waits until the initial history stops arriving. */
-function countingCapture(capture: CaptureMessages): { readonly capture: CaptureMessages; lastActivity(): number } {
-  let last = Date.now()
-  const touch = (): void => {
-    last = Date.now()
-  }
-  const wrapped: CaptureMessages = {
-    receiveMessage: (event) => {
-      touch()
-      return capture.receiveMessage(event)
-    },
-    editMessage: (event) => {
-      touch()
-      return capture.editMessage(event)
-    },
-    messagesRead: (event) => {
-      touch()
-      return capture.messagesRead(event)
-    },
-    unreadChanged: (event) => {
-      touch()
-      return capture.unreadChanged(event)
-    },
-    unreadSnapshot: (event) => {
-      touch()
-      return capture.unreadSnapshot(event)
-    },
-    conversationMetadata: (event) => {
-      touch()
-      return capture.conversationMetadata(event)
-    },
-    participantInfo: (event) => {
-      touch()
-      return capture.participantInfo(event)
-    },
-    transcriptReady: (event) => {
-      touch()
-      return capture.transcriptReady(event)
-    },
-    queueMedia: (event) => {
-      touch()
-      return capture.queueMedia(event)
-    },
-    mediaFailed: (event) => {
-      touch()
-      return capture.mediaFailed(event)
-    },
-  }
-  return { capture: wrapped, lastActivity: () => last }
-}
-
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
@@ -81,7 +30,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * account is connected and the initial history has been captured, then stops cleanly. A stale qr.png is deleted at
  * the start, and Ctrl+C / SIGTERM delete it and stop the connection.
  *
- * "The history has been received" cannot be observed directly, so it is approximated: after connecting, wait at least
+ * "The history has been received" is known when the connection reports that the history sync is complete (Baileys does
+ * for the recent history). When it does not (or it never comes) it is approximated: after connecting, wait at least
  * `minAfterConnectMs`, then until nothing was captured for `quietMs`, and never more than `maxAfterConnectMs`.
  *
  * The account is created when it does not exist (`default` when there is none and no id was given). One that is
@@ -189,6 +139,10 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           else if (status.state === 'error') settle({ kind: 'failed', reason: status.reason })
         })
 
+        let historyComplete = false
+        const unsubscribeHistory = connection.onHistorySync?.((history) => {
+          if (history.complete) historyComplete = true
+        })
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
           await connection.start()
@@ -228,7 +182,10 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
             const now = Date.now()
             const elapsed = now - connectedAt
             if (elapsed >= timing.maxAfterConnectMs) break
-            if (elapsed >= timing.minAfterConnectMs && now - counted.lastActivity() >= timing.quietMs) break
+            // A complete history skips the minimum wait, not the quiet period: Baileys' buffer flush and the trailing
+            // name chunks come after the report, and a chunk that was acknowledged is never sent again.
+            const quiet = now - counted.lastActivity() >= timing.quietMs
+            if (quiet && (historyComplete || elapsed >= timing.minAfterConnectMs)) break
           }
           // The audios of the history are in the durable download queue: stopping aborts the download in progress, and the
           // daemon downloads the rest when it connects. There is nothing to wait for here.
@@ -243,6 +200,7 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
         } finally {
           clearTimeout(timer)
           unsubscribe()
+          unsubscribeHistory?.()
           await connection.stop().catch(() => undefined)
           // The QR is a pairing credential: never left behind.
           await rm(account.qrFile, { force: true })

@@ -435,6 +435,47 @@ describe('msum link', () => {
     expect(h.logs.join('')).not.toContain('fake-qr-payload')
   })
 
+  it('after the history reports complete it still waits for the quiet period before it stops the connection', async () => {
+    const h = await makeHarness()
+    const quietMs = 300
+    Object.assign(h.ctx, {
+      linkTiming: {
+        ...h.ctx.linkTiming,
+        quietMs,
+        minAfterConnectMs: 10_000,
+        maxAfterConnectMs: 30_000,
+        connectTimeoutMs: 30_000,
+      },
+    })
+    let capturedAt = 0
+    let stoppedAt = 0
+    const stop = h.connection.stop.bind(h.connection)
+    h.connection.stop = async () => {
+      if (stoppedAt === 0) stoppedAt = Date.now()
+      await stop()
+    }
+    let delivering: Promise<void> = Promise.resolve()
+    h.connection.onStart = () => {
+      h.connection.emit({ state: 'connected' })
+      // the report of completion comes first; the last chunk is still being stored
+      h.connection.emitHistory({ percent: 100, complete: true, explicit: true })
+      delivering = (async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        await h.connection.hooks?.capture?.conversationMetadata({
+          conversation: { id: 'late@s.whatsapp.net', isGroup: false, name: null, participantId: null, address: 'late' },
+        })
+        capturedAt = Date.now()
+      })()
+    }
+    const started = Date.now()
+    expect(await run(h, 'link')).toBe(0)
+    await delivering
+    expect(capturedAt).toBeGreaterThan(0)
+    expect(stoppedAt).toBeGreaterThanOrEqual(capturedAt + quietMs - 30)
+    // the minimum wait of 10 s was skipped
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
   it('waits until the history stops arriving', async () => {
     const h = await makeHarness()
     // A generous quiet window, so a slow machine cannot make the link believe the history is over between two events.

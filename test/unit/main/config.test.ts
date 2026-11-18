@@ -71,6 +71,8 @@ describe('parseConfig defaults', () => {
         historyAudioDays: 14,
         maxMediaMb: 500,
       },
+      web: { enabled: true, host: '127.0.0.1', port: 8787 },
+      logs: { maxBytes: 52_428_800 },
     })
   })
 
@@ -190,6 +192,10 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
       { option: 'provider.claudeCli.command', code: 'emptyString' },
     ])
     expect(issuesOf({ localOnlyPatterns: [''] })).toContainEqual({ option: 'localOnlyPatterns', code: 'emptyPattern' })
+    expect(issuesOf({ localOnlyPatterns: ['id:'] })).toContainEqual({
+      option: 'localOnlyPatterns',
+      code: 'emptyIdPattern',
+    })
     expect(issuesOf({ provider: 5 })).toEqual([{ option: 'provider', code: 'notObject' }])
   })
 
@@ -338,6 +344,68 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
     expect(mergeConfigJson({ transcription: { enabled: true } }, { transcription: 'x' })).toEqual({
       transcription: 'x',
     })
+  })
+})
+
+describe('the web section (RNF-03)', () => {
+  it('is on, on 127.0.0.1:8787, unless the file says otherwise', () => {
+    const result = parse({ web: { enabled: false, host: '0.0.0.0', port: 9000 } })
+    expect(result.ok && result.value.web).toEqual({ enabled: false, host: '0.0.0.0', port: 9000 })
+    const partial = parse({ web: { port: 1 } })
+    expect(partial.ok && partial.value.web).toEqual({ enabled: true, host: '127.0.0.1', port: 1 })
+  })
+
+  it('refuses a port that is not an integer between 1 and 65535', () => {
+    expect(issuesOf({ web: { port: 0 } })).toEqual([{ option: 'web.port', code: 'invalidPort' }])
+    expect(issuesOf({ web: { port: 65536 } })).toEqual([{ option: 'web.port', code: 'invalidPort' }])
+    expect(issuesOf({ web: { port: 80.5 } })).toEqual([{ option: 'web.port', code: 'notInteger' }])
+    expect(issuesOf({ web: { port: '8787' } })).toEqual([{ option: 'web.port', code: 'notNumber' }])
+    expect(parse({ web: { port: 65535 } }).ok).toBe(true)
+  })
+
+  it('refuses a host or a flag of the wrong type, an unknown key and a section that is not an object', () => {
+    expect(issuesOf({ web: { host: 5 } })).toEqual([{ option: 'web.host', code: 'notString' }])
+    expect(issuesOf({ web: { host: '' } })).toEqual([{ option: 'web.host', code: 'emptyString' }])
+    expect(issuesOf({ web: { enabled: 'yes' } })).toEqual([{ option: 'web.enabled', code: 'notBoolean' }])
+    expect(issuesOf({ web: { token: 'x' } })).toEqual([{ option: 'web.token', code: 'unknownOption' }])
+    expect(issuesOf({ web: 'on' })).toEqual([{ option: 'web', code: 'notObject' }])
+  })
+
+  it('describes the new issues in both languages, naming the option', () => {
+    for (const language of ['es', 'en'] as const) {
+      const catalog = getCatalog(language)
+      expect(describeConfigIssue(catalog, { option: 'web.port', code: 'invalidPort' })).toContain('web.port')
+      expect(describeConfigIssue(catalog, { option: 'web', code: 'installationOnly' })).toContain('web')
+    }
+  })
+})
+
+describe('the logs section (RNF-12)', () => {
+  it('is 50 MB by default and takes the number the file gives', () => {
+    const none = parse({})
+    expect(none.ok && none.value.logs).toEqual({ maxBytes: 52_428_800 })
+    expect(parse({ logs: {} }).ok).toBe(true)
+    const set = parse({ logs: { maxBytes: 10_485_760 } })
+    expect(set.ok && set.value.logs).toEqual({ maxBytes: 10_485_760 })
+    expect(parse({ logs: { maxBytes: 1_048_576 } }).ok).toBe(true)
+  })
+
+  it('refuses a maximum that is not an integer, or is under 1 MB', () => {
+    expect(issuesOf({ logs: { maxBytes: 1_048_575 } })).toEqual([{ option: 'logs.maxBytes', code: 'belowMinimum' }])
+    expect(issuesOf({ logs: { maxBytes: 0 } })).toEqual([{ option: 'logs.maxBytes', code: 'belowMinimum' }])
+    expect(issuesOf({ logs: { maxBytes: -5 } })).toEqual([{ option: 'logs.maxBytes', code: 'belowMinimum' }])
+    expect(issuesOf({ logs: { maxBytes: 2_000_000.5 } })).toEqual([{ option: 'logs.maxBytes', code: 'notInteger' }])
+    expect(issuesOf({ logs: { maxBytes: '50MB' } })).toEqual([{ option: 'logs.maxBytes', code: 'notNumber' }])
+    expect(issuesOf({ logs: { dir: '/tmp' } })).toEqual([{ option: 'logs.dir', code: 'unknownOption' }])
+    expect(issuesOf({ logs: 5 })).toEqual([{ option: 'logs', code: 'notObject' }])
+  })
+
+  it('describes the new issue in both languages, naming the option', () => {
+    for (const language of ['es', 'en'] as const) {
+      const text = describeConfigIssue(getCatalog(language), { option: 'logs.maxBytes', code: 'belowMinimum' })
+      expect(text).toContain('logs.maxBytes')
+      expect(text).toContain('1048576')
+    }
   })
 })
 
@@ -561,6 +629,33 @@ describe('loadEffectiveConfig', () => {
     const weakening = setup('{"localOnlyPatterns":["bank"]}', '{"localOnlyPatterns":null}')
     const rejected = await loadEffectiveConfig(weakening.rootFile, weakening.accountFile, BA)
     expect(rejected.ok).toBe(false)
+  })
+
+  it('rejects a web section in an account file, naming that file, and accepts it in the installation one', async () => {
+    const found = setup('{"web":{"port":9000}}', '{"web":{"port":9001}}')
+    expect(await loadEffectiveConfig(found.rootFile, found.accountFile, BA)).toEqual({
+      ok: false,
+      error: [{ option: 'web', code: 'installationOnly', file: found.accountFile }],
+    })
+    const fine = setup('{"web":{"port":9000}}', '{"language":"en"}')
+    const result = await loadEffectiveConfig(fine.rootFile, fine.accountFile, BA)
+    expect(result.ok && result.value.web.port).toBe(9000)
+    // without an account file, the installation's own web section is the one read
+    expect((await loadEffectiveConfig(fine.rootFile, null, BA)).ok).toBe(true)
+  })
+
+  it('rejects a logs section in an account file, naming that file, and accepts it in the installation one', async () => {
+    const found = setup('{"logs":{"maxBytes":2000000}}', '{"logs":{"maxBytes":3000000}}')
+    expect(await loadEffectiveConfig(found.rootFile, found.accountFile, BA)).toEqual({
+      ok: false,
+      error: [{ option: 'logs', code: 'installationOnly', file: found.accountFile }],
+    })
+    const both = setup('{}', '{"web":{},"logs":{}}')
+    const rejected = await loadEffectiveConfig(both.rootFile, both.accountFile, BA)
+    expect(rejected.ok ? [] : rejected.error.map((issue) => issue.option)).toEqual(['web', 'logs'])
+    const fine = setup('{"logs":{"maxBytes":2000000}}', '{"language":"en"}')
+    const result = await loadEffectiveConfig(fine.rootFile, fine.accountFile, BA)
+    expect(result.ok && result.value.logs.maxBytes).toBe(2_000_000)
   })
 
   it('reports a file that is not JSON, or not an object, with its name', async () => {

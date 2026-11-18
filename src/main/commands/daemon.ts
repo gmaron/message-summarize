@@ -4,15 +4,18 @@ import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { installationCatalog } from '../account-command.js'
 import { type Installation, openInstallation } from '../accounts.js'
-import { describeConfigIssue, languageHint, loadEffectiveConfig } from '../config.js'
+import { DEFAULT_LOGS, describeConfigIssue, languageHint, loadEffectiveConfig } from '../config.js'
 import type { CommandContext } from '../context.js'
 import { DaemonHost, hasNoProvider } from '../daemon-host.js'
 import { acquireDaemonLock, HEARTBEAT_MS } from '../daemon-lock.js'
+import { type DaemonLogs, startDaemonLogs } from '../daemon-logs.js'
 import { removeStaleImportDirs } from '../import-workdirs.js'
 import { linkLockHolder } from '../link-lock.js'
 import { accountLayoutOf, ensureDataDirs } from '../paths.js'
 import { retryBlock } from '../retry.js'
 import { importConfigSchedules } from '../schedules.js'
+import { startWeb, type WebHandle } from '../web.js'
+import { removeWebAddress } from '../web-address.js'
 
 /**
  * `msum daemon [--retry] [--account <id>]`: ONE process for the whole installation (RF-03). It holds the lock file
@@ -26,6 +29,10 @@ import { importConfigSchedules } from '../schedules.js'
  * it runs that retrying fixes (exactly what `msum retry` clears; a dead session stays blocked and gets no socket). An
  * account with nothing linked is left idle: no connection is opened for it.
  *
+ * When `web.enabled` (the default) it also serves the local web (see `startWeb`): on 127.0.0.1 with an access token
+ * unless the configuration says otherwise. A web that cannot start (the port is taken) is reported and does not stop
+ * the accounts.
+ *
  * It stops cleanly on SIGINT and SIGTERM (every connection stopped in parallel, databases closed). It never writes to
  * the operating system's crontab or scheduler: the schedules live inside the process. A stale qr.png of an account is
  * deleted at the start, unless a `link` is working on it.
@@ -35,21 +42,39 @@ import { importConfigSchedules } from '../schedules.js'
  * names such an account, or when every account is like that.
  */
 export async function daemonCommand(
-  ctx: CommandContext,
+  baseCtx: CommandContext,
   args: { readonly retry: boolean } & AccountArg,
 ): Promise<number> {
-  const { io, layout } = ctx
+  const { io, layout } = baseCtx
+  // From the lock on, what the daemon logs also goes to the log file and the web (see `startDaemonLogs`).
+  let ctx = baseCtx
   await ensureDataDirs(layout)
   const lock = await acquireDaemonLock(layout.lockFile)
   if (!lock.ok) {
-    io.err((await installationCatalog(ctx)).cli.daemonRunning(lock.pid))
+    io.err((await installationCatalog(baseCtx)).cli.daemonRunning(lock.pid))
     return EXIT_FAILURE
   }
+  // Whatever address a daemon that died left behind is not ours to trust: this one has the lock now.
+  await removeWebAddress(layout).catch(() => undefined)
   const { heartbeatMs, ...timing } = ctx.daemonTiming ?? {}
   const heartbeat = setInterval(() => void lock.heartbeat(), heartbeatMs ?? HEARTBEAT_MS)
   heartbeat.unref()
   let installation: Installation | null = null
+  let web: WebHandle | null = null
+  let logs: DaemonLogs | null = null
   try {
+    // Keeping a log is never a reason not to run: whatever goes wrong there leaves the daemon without a file.
+    try {
+      const rootForLogs = await loadEffectiveConfig(layout.configFile, null)
+      logs = await startDaemonLogs(
+        baseCtx.logger,
+        layout,
+        rootForLogs.ok ? rootForLogs.value.logs.maxBytes : DEFAULT_LOGS.maxBytes,
+      )
+      ctx = { ...baseCtx, logger: logs.logger }
+    } catch {
+      baseCtx.logger.warn('logs.fileDisabled', { reason: 'failed' })
+    }
     const rootCatalog = await installationCatalog(ctx)
     // The lock is held: the migration of the old layout may run, and nothing else can start on this installation.
     const opened = await openInstallation({ layout, clock: ctx.clock, lockHeld: true })
@@ -112,12 +137,32 @@ export async function daemonCommand(
       language: await languageHint(layout.configFile),
       timing,
     })
-    void ctx.waitForShutdown().then(() => host.stop())
+    // The web goes down before the host: its streams are closed first, so the shutdown stays inside its budget.
+    let stopRequested = false
+    void ctx.waitForShutdown().then(async () => {
+      stopRequested = true
+      await web?.stop()
+      await host.stop()
+    })
     try {
       await host.start()
     } catch (error) {
       await host.stop()
       throw error
+    }
+    // The web needs the installation's own configuration; when it is invalid the accounts were already reported.
+    const root = await loadEffectiveConfig(layout.configFile, null)
+    if (!root.ok) ctx.logger.warn('web.skipped', { reason: 'config' })
+    else if (root.value.web.enabled && !stopRequested) {
+      web = await startWeb({
+        ctx,
+        installation,
+        host,
+        web: root.value.web,
+        language: root.value.language,
+        ...(logs === null ? {} : { logs: logs.store }),
+      })
+      if (stopRequested) await web?.stop()
     }
     io.out(rootCatalog.cli.daemon.running(layout.dataDir))
     if (targets.length === 0) io.err(rootCatalog.cli.daemon.noAccounts)
@@ -126,7 +171,10 @@ export async function daemonCommand(
     return code
   } finally {
     clearInterval(heartbeat)
+    await web?.stop()
+    await removeWebAddress(layout).catch(() => undefined)
     installation?.close()
+    await logs?.close()
     await lock.release()
   }
 }

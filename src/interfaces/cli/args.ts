@@ -92,6 +92,8 @@ export type Command =
       readonly tag: string
       readonly allowRemote: boolean
     } & AccountArg)
+  /** `msum open [--print]`: the web in the browser; `print` only prints the address. */
+  | { readonly name: 'open'; readonly print: boolean }
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
       readonly name: 'schedule'
@@ -134,6 +136,7 @@ const COMMANDS = [
   'secret',
   'provider',
   'ollama',
+  'open',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -148,6 +151,7 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   secret: ['account'],
   provider: ['account', 'model', 'backup', 'yes', 'kind', 'base-url'],
   schedule: ['account', 'time', 'days'],
+  open: ['print', 'no-browser'],
   import: ['from', 'account', 'instance', 'all', 'yes', 'schedule', 'data', 'session-only', 'force'],
 }
 
@@ -174,6 +178,8 @@ const OPTIONS = {
   'base-url': { type: 'string' },
   'skip-model-check': { type: 'boolean' },
   'allow-remote': { type: 'boolean' },
+  print: { type: 'boolean' },
+  'no-browser': { type: 'boolean' },
 } as const
 
 /** The "--name" a node:util error message talks about. */
@@ -288,6 +294,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
           ? { name: 'doctor', skipModelCheck: true, account }
           : { name: 'doctor', account },
       )
+    case 'open':
+      return ok({ name: 'open', print: values.print === true || values['no-browser'] === true })
     case 'link':
     case 'status':
     case 'retry':

@@ -34,6 +34,7 @@ export interface ProviderBaseUrls {
 /**
  * One provider of the configuration, ready to use. Nothing is contacted here, and API keys are looked up at the time of
  * each call (see `resolveApiKey`), so a key saved with `msum secret set` works in a daemon that is already running.
+ * Each adapter names itself as the provider of a successful answer (RF-74).
  */
 export function buildProvider(
   kind: ProviderKind,
@@ -120,15 +121,25 @@ export function buildProvider(
  * provider. Only Ollama is local: OpenAI, Anthropic, Gemini, the CLIs and a compatible server (even on localhost, which
  * cannot be verified to stay there) are external. Null when no provider was chosen (RF-41: there is no default).
  */
-export function buildSummarizer(config: AppConfig, env: NodeJS.ProcessEnv, secrets?: SecretFiles): Summarizer | null {
+export function buildSummarizer(
+  config: AppConfig,
+  env: NodeJS.ProcessEnv,
+  secrets?: SecretFiles,
+  /** The local-only patterns in force when each conversation is summarized (default: the ones of `config`). */
+  localOnlyPatterns: () => readonly string[] = () => config.localOnlyPatterns,
+): Summarizer | null {
   const { provider } = config
   if (provider.primary === null) return null
   const usesOllama = provider.primary === 'ollama' || provider.backup === 'ollama'
-  const local = usesOllama || config.localOnlyPatterns.length > 0 ? buildProvider('ollama', config, env) : undefined
+  // Also when a model is set and no chat is marked yet: a mark made while a digest runs must find the local provider.
+  const local =
+    usesOllama || config.localOnlyPatterns.length > 0 || provider.ollama.model !== null
+      ? buildProvider('ollama', config, env)
+      : undefined
   return composeSummarizer({
     primary: buildProvider(provider.primary, config, env, secrets),
     ...(provider.backup === null ? {} : { backup: buildProvider(provider.backup, config, env, secrets) }),
     ...(local === undefined ? {} : { local }),
-    localOnlyPatterns: config.localOnlyPatterns,
+    localOnlyPatterns,
   })
 }

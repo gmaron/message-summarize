@@ -1,12 +1,12 @@
 import { mkdirSync, rmSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
+import { CONSENT_TEXT_VERSION, consentHostsKey } from '../../../src/domain/setup.js'
 import {
   APP_MIGRATIONS,
-  consentHostsKey,
   currentVersion,
   openAppDatabase,
   openDatabase,
-  SqliteProviderConsents,
+  SqliteSetupRepository,
 } from '../../../src/infrastructure/persistence/sqlite/index.js'
 import { openInstallation } from '../../../src/main/accounts.js'
 import { runMain } from '../../../src/main/app.js'
@@ -22,7 +22,9 @@ async function consentsOf(h: Harness, account = 'default') {
   const opened = await openInstallation({ layout: h.layout, clock: h.ctx.clock })
   if (!opened.ok) throw new Error('could not open')
   try {
-    return opened.installation.consents.list(account)
+    return opened.installation.setup
+      .consents(account)
+      .map((c) => ({ kind: c.provider, hosts: c.hosts, acceptedAt: c.givenAt }))
   } finally {
     opened.installation.close()
   }
@@ -35,35 +37,69 @@ describe('the consent repository (RNF-02)', () => {
     const h = await makeHarness({ config: base, accounts: ['alpha', 'beta'] })
     const db = openAppDatabase(h.layout.appDbFile)
     try {
-      const consents = new SqliteProviderConsents(db, () => NOW)
-      expect(consentHostsKey(['b.example', 'a.example', 'a.example'])).toBe('a.example,b.example')
-      consents.record('alpha', 'claude-cli', ['b.example', 'a.example'])
-      expect(consents.find('alpha', 'claude-cli', ['a.example', 'b.example'])).toBe(new Date(NOW).toISOString())
-      // another account, another kind, other hosts: nothing
-      expect(consents.find('beta', 'claude-cli', ['a.example', 'b.example'])).toBeNull()
-      expect(consents.find('alpha', 'openai', ['a.example', 'b.example'])).toBeNull()
-      expect(consents.find('alpha', 'claude-cli', ['a.example'])).toBeNull()
-      expect(consents.list('alpha')).toEqual([
-        { kind: 'claude-cli', hosts: 'a.example,b.example', acceptedAt: new Date(NOW).toISOString() },
+      const consents = new SqliteSetupRepository(db, () => NOW)
+      const two = consentHostsKey(['b.example', 'a.example', 'a.example'])
+      expect(two).toBe('a.example,b.example')
+      consents.recordConsent('alpha', 'generic-cli', CONSENT_TEXT_VERSION, two)
+      expect(consents.findConsent('alpha', 'generic-cli', two, CONSENT_TEXT_VERSION)?.givenAt).toBe(
+        new Date(NOW).toISOString(),
+      )
+      // another account, another kind, other hosts, another text: nothing
+      expect(consents.findConsent('beta', 'generic-cli', two, CONSENT_TEXT_VERSION)).toBeNull()
+      expect(consents.findConsent('alpha', 'ollama', two, CONSENT_TEXT_VERSION)).toBeNull()
+      expect(consents.findConsent('alpha', 'generic-cli', 'a.example', CONSENT_TEXT_VERSION)).toBeNull()
+      expect(consents.findConsent('alpha', 'generic-cli', two, CONSENT_TEXT_VERSION + 1)).toBeNull()
+      expect(consents.consents('alpha')).toEqual([
+        {
+          provider: 'generic-cli',
+          hosts: 'a.example,b.example',
+          textVersion: CONSENT_TEXT_VERSION,
+          givenAt: new Date(NOW).toISOString(),
+        },
       ])
     } finally {
       db.close()
     }
   })
 
-  it('accepting the same thing again moves its date instead of adding a row, and an empty list is a key too', async () => {
+  it('accepting the same thing again adds no row and keeps its date', async () => {
     const h = await makeHarness({ config: base })
     const db = openAppDatabase(h.layout.appDbFile)
     try {
       let now = NOW
-      const consents = new SqliteProviderConsents(db, () => now)
-      consents.record('default', 'generic-cli', [])
+      const consents = new SqliteSetupRepository(db, () => now)
+      expect(consents.recordConsent('default', 'anthropic', CONSENT_TEXT_VERSION, 'api.anthropic.com')).toBe(true)
       now += 86_400_000
-      consents.record('default', 'generic-cli', [])
-      expect(consents.list('default')).toEqual([
-        { kind: 'generic-cli', hosts: '', acceptedAt: new Date(NOW + 86_400_000).toISOString() },
-      ])
-      expect(consents.find('default', 'generic-cli', [])).not.toBeNull()
+      expect(consents.recordConsent('default', 'anthropic', CONSENT_TEXT_VERSION, 'api.anthropic.com')).toBe(false)
+      expect(consents.consents('default')).toHaveLength(1)
+      expect(consents.consents('default')[0]?.givenAt).toBe(new Date(NOW).toISOString())
+    } finally {
+      db.close()
+    }
+  })
+
+  it('a consent is valid only for the current text and the exact hosts; fixed-host kinds also accept none recorded', async () => {
+    const h = await makeHarness({ config: base })
+    const db = openAppDatabase(h.layout.appDbFile)
+    try {
+      const consents = new SqliteSetupRepository(db, () => NOW)
+      const V = CONSENT_TEXT_VERSION
+      // a kind with fixed hosts: one recorded with no hosts (before the hosts were part of the key) still covers it
+      consents.recordConsent('default', 'claude-cli', V, '')
+      expect(consents.hasConsent('default', 'claude-cli', 'api.anthropic.com,claude.ai', V)).toBe(true)
+      // ...but not an older text
+      consents.recordConsent('default', 'anthropic', V - 1, 'api.anthropic.com')
+      expect(consents.hasConsent('default', 'anthropic', 'api.anthropic.com', V)).toBe(false)
+      // a kind that depends on what the user configures needs the exact key, never "none"
+      consents.recordConsent('default', 'openai-compatible', V, '')
+      consents.recordConsent('default', 'generic-cli', V, '')
+      consents.recordConsent('default', 'ollama', V, '')
+      expect(consents.hasConsent('default', 'openai-compatible', 'https://one.example', V)).toBe(false)
+      expect(consents.hasConsent('default', 'generic-cli', 'cmd:abc', V)).toBe(false)
+      expect(consents.hasConsent('default', 'ollama', 'http://10.0.0.5:11434', V)).toBe(false)
+      consents.recordConsent('default', 'ollama', V, 'http://10.0.0.5:11434')
+      expect(consents.hasConsent('default', 'ollama', 'http://10.0.0.5:11434', V)).toBe(true)
+      expect(consents.hasConsent('default', 'ollama', 'http://10.0.0.6:11434', V)).toBe(false)
     } finally {
       db.close()
     }
@@ -75,47 +111,81 @@ describe('the consent repository (RNF-02)', () => {
     if (!opened.ok) throw new Error('could not open')
     const { installation } = opened
     try {
-      installation.consents.record('alpha', 'anthropic', ['api.anthropic.com'])
-      installation.consents.record('beta', 'anthropic', ['api.anthropic.com'])
+      installation.setup.recordConsent('alpha', 'anthropic', CONSENT_TEXT_VERSION, 'api.anthropic.com')
+      installation.setup.recordConsent('beta', 'anthropic', CONSENT_TEXT_VERSION, 'api.anthropic.com')
       await installation.deleteAccount('alpha')
-      expect(installation.consents.list('alpha')).toEqual([])
-      expect(installation.consents.list('beta')).toHaveLength(1)
+      expect(installation.setup.consents('alpha')).toEqual([])
+      expect(installation.setup.consents('beta')).toHaveLength(1)
     } finally {
       installation.close()
     }
   })
 })
 
-describe('upgrading app.db from schema version 2 (RNF-02)', () => {
-  it('adds the consents table and keeps the accounts and the schedules', async () => {
+describe('upgrading app.db from schema version 3 as released (RNF-02)', () => {
+  it('rebuilds the consents table with the hosts in its key, keeping the rows, the accounts, the setup and the schedules', async () => {
     const h = await makeHarness({ config: base, accounts: [] })
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${h.layout.appDbFile}${suffix}`, { force: true })
-    // the app.db of the commit before consents: version 2, with accounts and a schedule
-    const old = openDatabase(h.layout.appDbFile, { migrations: APP_MIGRATIONS.slice(0, 2) })
-    expect(currentVersion(old)).toBe(2)
+    // the app.db that was released: version 3 (setup and consents with no hosts), with accounts, a schedule and consents
+    const old = openDatabase(h.layout.appDbFile, { migrations: APP_MIGRATIONS.slice(0, 3) })
+    expect(currentVersion(old)).toBe(3)
     old.exec(
       "INSERT INTO accounts (id, platform, created_at) VALUES ('alpha', 'whatsapp', '2026-01-01T00:00:00.000Z'), ('beta', 'whatsapp', '2026-01-02T00:00:00.000Z')",
     )
     old.exec(
       "INSERT INTO schedules (account_id, days, time, created_at) VALUES ('alpha', '1,2', '07:00', '2026-01-03T00:00:00.000Z')",
     )
+    old.exec("INSERT INTO setup (id, step, account_id, completed_at, updated_at) VALUES (1, 'done', 'alpha', 'x', 'x')")
+    old.exec(
+      "INSERT INTO consents (account_id, provider, text_version, given_at) VALUES ('alpha', 'claude-cli', 1, '2026-01-04T00:00:00.000Z'), ('beta', 'ollama-remote', 1, '2026-01-05T00:00:00.000Z')",
+    )
     old.close()
     for (const id of ['alpha', 'beta']) mkdirSync(h.accountOf(id).authDir, { recursive: true, mode: 0o700 })
 
     const upgraded = openAppDatabase(h.layout.appDbFile)
     try {
-      expect(APP_MIGRATIONS).toHaveLength(3)
-      expect(currentVersion(upgraded)).toBe(3)
+      expect(APP_MIGRATIONS).toHaveLength(4)
+      expect(currentVersion(upgraded)).toBe(4)
       expect(upgraded.prepare('SELECT id FROM accounts ORDER BY id').all()).toEqual([{ id: 'alpha' }, { id: 'beta' }])
       expect(upgraded.prepare('SELECT days, time FROM schedules').all()).toEqual([{ days: '1,2', time: '07:00' }])
-      expect(upgraded.prepare('SELECT COUNT(*) AS n FROM provider_consents').get()).toEqual({ n: 0 })
-      // and it works, with the foreign key on
-      const consents = new SqliteProviderConsents(upgraded, () => NOW)
-      consents.record('beta', 'gemini', ['generativelanguage.googleapis.com'])
-      expect(consents.list('beta')).toHaveLength(1)
-      expect(() => consents.record('nobody', 'gemini', [])).toThrow()
+      expect(upgraded.prepare('SELECT step, account_id FROM setup').all()).toEqual([
+        { step: 'done', account_id: 'alpha' },
+      ])
+      // the rows are all there, with an empty `hosts`
+      expect(
+        upgraded
+          .prepare('SELECT account_id, provider, text_version, hosts, given_at FROM consents ORDER BY account_id')
+          .all(),
+      ).toEqual([
+        {
+          account_id: 'alpha',
+          provider: 'claude-cli',
+          text_version: 1,
+          hosts: '',
+          given_at: '2026-01-04T00:00:00.000Z',
+        },
+        {
+          account_id: 'beta',
+          provider: 'ollama-remote',
+          text_version: 1,
+          hosts: '',
+          given_at: '2026-01-05T00:00:00.000Z',
+        },
+      ])
+      // phase 3's table is gone for good: there is ONE consent table
+      expect(
+        upgraded.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'provider_consents'").get(),
+      ).toEqual({ n: 0 })
+      // the key now holds the hosts: the same consent for other hosts is another row, the same one twice is not
+      const repository = new SqliteSetupRepository(upgraded, () => NOW)
+      expect(repository.recordConsent('beta', 'openai-compatible', 2, 'https://one.example')).toBe(true)
+      expect(repository.recordConsent('beta', 'openai-compatible', 2, 'https://two.example')).toBe(true)
+      expect(repository.recordConsent('beta', 'openai-compatible', 2, 'https://one.example')).toBe(false)
+      // and it works with the foreign key on: an unknown account is refused, deleting an account deletes its consents
+      expect(() => repository.recordConsent('nobody', 'gemini', 2, '')).toThrow()
       upgraded.prepare("DELETE FROM accounts WHERE id = 'beta'").run()
-      expect(upgraded.prepare('SELECT COUNT(*) AS n FROM provider_consents').get()).toEqual({ n: 0 })
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM consents WHERE account_id = 'beta'").get()).toEqual({ n: 0 })
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM consents WHERE account_id = 'alpha'").get()).toEqual({ n: 1 })
     } finally {
       upgraded.close()
     }

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { SummarizeRequest } from '../../application/ports/summarizer.js'
@@ -19,6 +18,15 @@ import { type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/in
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, type ProviderCommand } from '../../interfaces/cli/run.js'
 import { isPrepared, type PreparedAccount, prepareAccount } from '../account-command.js'
 import { type AppConfig, describeConfigIssue, mergeConfigJson, type ProviderKind, parseConfig } from '../config.js'
+import {
+  consentHosts,
+  findConsent,
+  kindOfProvider,
+  leavesMachine,
+  needsConsent,
+  originOf,
+  recordConsent,
+} from '../consent.js'
 import type { CommandContext } from '../context.js'
 import { buildProvider } from '../providers.js'
 
@@ -74,12 +82,8 @@ function keyNameOf(kind: ProviderInfoKind): KeyProvider | null {
   }
 }
 
-/** Which kind of the table the primary or the backup of the configuration is (`openai` depends on its `baseUrl`). */
-export function kindOfProvider(config: AppConfig, provider: ProviderKind | null): ProviderInfoKind | null {
-  if (provider === null) return null
-  if (provider === 'openai') return isOpenAiHost(config.provider.openai.baseUrl) ? 'openai' : 'openai-compatible'
-  return provider
-}
+// What each provider needs to have been disclosed (kinds, hosts, consent) is in `../consent.js`, shared with the web.
+export { consentHosts, kindOfProvider, leavesMachine, needsConsent, originOf }
 
 function hostOf(url: string): string {
   try {
@@ -87,53 +91,6 @@ function hostOf(url: string): string {
   } catch {
     return url
   }
-}
-
-export const originOf = (url: string): string => {
-  try {
-    return new URL(url).origin
-  } catch {
-    return url
-  }
-}
-
-/**
- * Whether the chats go out of this machine with this provider. Every provider but Ollama sends them out; Ollama does
- * only when its base URL is not on this machine (a server of the user's, but on another computer).
- *
- * RF-43 is not touched by this: "local only" conversations still go to the configured Ollama even when it is remote,
- * because it is the user's own server. "Local only" means "your Ollama server": use a loopback URL if it must be on
- * this machine.
- */
-export function leavesMachine(kind: ProviderInfoKind, config: AppConfig): boolean {
-  if (kind === 'ollama') return !isOnMachine(config.provider.ollama.baseUrl)
-  return PROVIDER_INFO[kind].dataLeaves
-}
-
-/**
- * True for a provider that sends the chats out and can run: the ones whose activation needs the consent of RNF-02. (The
- * disabled presets send nothing because they never run.)
- */
-export const needsConsent = (kind: ProviderInfoKind, config: AppConfig): boolean =>
-  leavesMachine(kind, config) && kind !== 'gemini-cli' && kind !== 'codex-cli'
-
-/**
- * The key of what was disclosed for a kind: the hosts of the table; the ORIGIN of the base URL for a compatible server
- * and for a remote Ollama; and for the generic CLI a hash of its command (the disclosure shows the command, so changing
- * it needs a new consent). Pointing a provider somewhere else therefore needs a new consent.
- *
- * Consent is RECORDED by `msum provider use` and made VISIBLE by `doctor` (a warning when it is missing), but it never
- * blocks a digest: writing config.json by hand is the expert path, and an installation configured that way (the
- * author's, with claude-cli) must keep working. The guided path records consent; doctor shows the gap.
- */
-export function consentHosts(kind: ProviderInfoKind, config: AppConfig): string[] {
-  if (kind === 'openai-compatible') return [originOf(config.provider.openai.baseUrl)]
-  if (kind === 'ollama') return [originOf(config.provider.ollama.baseUrl)]
-  if (kind === 'generic-cli') {
-    const command = JSON.stringify(config.provider.genericCli.command ?? [])
-    return [`cmd:${createHash('sha256').update(command).digest('hex')}`]
-  }
-  return [...PROVIDER_INFO[kind].hosts]
 }
 
 /** The hosts of a kind as text (RNF-01), in the language of the catalog. */
@@ -259,8 +216,8 @@ async function listProviders(ctx: CommandContext, prepared: PreparedAccount): Pr
     io.out(texts.ls.state(configured, key, usable))
     // RNF-02: for a provider that is configured and sends the chats out, whether the user accepted it
     if (configured !== texts.roles.none && needsConsent(kind, config)) {
-      const accepted = prepared.installation.consents.find(account.id, kind, consentHosts(kind, config))
-      io.out(accepted === null ? texts.ls.consentNone : texts.ls.consent(accepted.slice(0, 10)))
+      const accepted = findConsent(prepared.installation.setup, account.id, kind, config)
+      io.out(accepted === null ? texts.ls.consentNone : texts.ls.consent(accepted.givenAt.slice(0, 10)))
     }
   }
   io.out(texts.ls.footer)
@@ -430,7 +387,7 @@ async function useProvider(
     return EXIT_FAILURE
   }
   // The user was shown what is sent and accepted (asked, or `--yes`): recorded for THIS account (RNF-02).
-  if (needsConsent(kind, parsed.value)) installation.consents.record(account.id, kind, consentHosts(kind, parsed.value))
+  recordConsent(installation.setup, account.id, kind, parsed.value)
   io.out(u.wrote(target, texts.roles[role], kind))
   const keyName = keyNameOf(kind)
   if (

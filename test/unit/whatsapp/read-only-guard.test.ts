@@ -58,6 +58,12 @@ function splitAllowedSender(source: string): { rest: string; body: string | null
   return { rest: code(source).replace(SEND_FUNCTION, ''), body: match[1] ?? '' }
 }
 
+/**
+ * Names that make the client ask WhatsApp's servers something (RNF-01, RNF-17): a lookup that "falls back to a USync
+ * query" when it does not know the answer. The adapter reads its mappings locally only.
+ */
+const QUERIERS = ['getLIDForPN', 'getLIDsForPNs', 'executeUSyncQuery', 'onWhatsApp', 'pnFromLIDUSync', 'fetchStatus']
+
 /** Where the name of the only send method may appear: its declaration, its wrapper and its single caller. */
 const SEND_METHOD_FILES = ['baileys-socket.ts', 'connection.ts', 'self-chat-delivery.ts']
 
@@ -72,6 +78,15 @@ describe('the adapter is read only (RNF-17)', () => {
     it(`${file} never names a method that sends, sets presence or sends receipts (outside the one allowed sender)`, () => {
       const { rest } = splitAllowedSender(readFileSync(join(dir, file), 'utf-8'))
       const found = SENDERS.filter((name) => new RegExp(`\\b${name}\\b`).test(rest))
+      expect(found).toEqual([])
+    })
+  }
+
+  for (const file of files) {
+    it(`${file} never names a lookup that falls back to a query to WhatsApp`, () => {
+      const found = QUERIERS.filter((name) =>
+        new RegExp(`\\b${name}\\b`).test(code(readFileSync(join(dir, file), 'utf-8'))),
+      )
       expect(found).toEqual([])
     })
   }

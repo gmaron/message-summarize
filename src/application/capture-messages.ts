@@ -1,6 +1,6 @@
-import { isExcluded } from '../domain/exclusion.js'
+import { exactIdOf, isExcluded } from '../domain/exclusion.js'
 import { isMassAtReceipt } from '../domain/mass.js'
-import type { Conversation, Message } from '../domain/model.js'
+import type { Conversation, Message, Participant } from '../domain/model.js'
 import { resolveConversationName, unmaskedName } from '../domain/names.js'
 import type {
   ConversationMetadata,
@@ -80,11 +80,15 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
   const { repository, clock } = deps
   const audioHistoryDays = deps.audioHistoryDays ?? DEFAULT_AUDIO_HISTORY_DAYS
 
-  /** Should the content events of this conversation be dropped (owner's own chat, or excluded by RF-14)? */
-  async function dropped(id: string, isGroup: boolean, eventName?: string | null): Promise<boolean> {
-    if (deps.ownConversationIds().includes(id)) return true
-    const patterns = deps.excludePatterns()
-    if (patterns.length === 0) return false
+  /** What the exclusion needs to know of a conversation besides its id: the stored chat and person (for the names). */
+  interface Facts {
+    readonly base: Conversation
+    readonly person: Participant | null
+  }
+
+  /** Looks the facts up, or null when there are no patterns now (nothing to compare, so nothing to look up). */
+  async function factsOf(id: string, isGroup: boolean): Promise<Facts | null> {
+    if (deps.excludePatterns().length === 0) return null
     const stored = await repository.findConversation(id)
     const base: Conversation = stored ?? {
       id,
@@ -94,14 +98,34 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       address: id,
     }
     const person = base.participantId === null ? null : await repository.findParticipant(base.participantId)
+    return { base, person }
+  }
+
+  /**
+   * Whether the conversation is excluded by the patterns in force RIGHT NOW. Synchronous on purpose: it is called
+   * right before a write, with nothing awaited in between, so an exclusion applied while the event was being handled
+   * (the web marks a chat and deletes what was stored) can never be followed by a write of that event.
+   */
+  function excludedNow(facts: Facts | null, id: string, eventName?: string | null): boolean {
+    const patterns = deps.excludePatterns()
+    if (patterns.length === 0) return false
     // Both names count: the one the event brings and the one already stored. Neither replaces the other, so a
     // pattern that matches either excludes the chat (a rename must not let an excluded chat through).
+    const base = facts?.base ?? { id, isGroup: false, name: null, participantId: null, address: id }
     const names = new Set<string | null>([base.name, unmaskedName(eventName ?? null)])
     for (const candidate of names) {
-      const { name } = resolveConversationName({ ...base, name: candidate }, person, { unnamedGroup: '' })
+      const { name } = resolveConversationName({ ...base, name: candidate }, facts?.person ?? null, {
+        unnamedGroup: '',
+      })
       if (isExcluded(patterns, id, name)) return true
     }
     return false
+  }
+
+  /** Should the content events of this conversation be dropped (owner's own chat, or excluded by RF-14)? */
+  async function dropped(id: string, isGroup: boolean, eventName?: string | null): Promise<boolean> {
+    if (deps.ownConversationIds().includes(id)) return true
+    return excludedNow(await factsOf(id, isGroup), id, eventName)
   }
 
   /** What a message that was not stored before does to the unread state (RF-12, RF-33). */
@@ -122,9 +146,15 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       const id = message.conversationId
       if (deps.ownConversationIds().includes(id)) return { stored: false, isNew: false, downloadAudio: false }
       if (sender !== undefined) await repository.upsertParticipant(sender)
-      if (await dropped(id, isGroup, conversationName)) return { stored: false, isNew: false, downloadAudio: false }
+      const facts = await factsOf(id, isGroup)
+      if (excludedNow(facts, id, conversationName)) return { stored: false, isNew: false, downloadAudio: false }
 
       const effect = await newMessageEffect(message, origin)
+      // Again, with nothing awaited before the write: the chat may have been excluded (and what was stored deleted)
+      // while the effect was computed.
+      if (excludedNow(facts, id, conversationName) || deps.ownConversationIds().includes(id)) {
+        return { stored: false, isNew: false, downloadAudio: false }
+      }
       const { isNew, hasTranscript, mediaHandled } = await repository.insertMessage(message, { isGroup }, effect)
 
       const recent = origin === 'live' || message.timestamp >= clock.now() - audioHistoryDays * DAY_MS
@@ -138,7 +168,8 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
     async editMessage({ message, editedAt, isGroup, conversationName, sender }) {
       if (deps.ownConversationIds().includes(message.conversationId)) return null
       if (sender !== undefined) await repository.upsertParticipant(sender)
-      if (await dropped(message.conversationId, isGroup, conversationName)) return null
+      const facts = await factsOf(message.conversationId, isGroup)
+      if (excludedNow(facts, message.conversationId, conversationName)) return null
       // An edit never touches the unread counters, even when it is the first sight of the message (as the previous
       // tool did): it is stored, but only a message that arrives as a message counts.
       // The edit time is the sender's claim: clamped to now plus a small skew so a forged future time cannot lock out
@@ -170,6 +201,10 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
     },
 
     async conversationMetadata({ conversation }) {
+      // A chat excluded by its id needs nothing stored, not even its name (the name is for patterns that match names), so
+      // its row does not come back after the web deleted it. With only name patterns the metadata stays: they need it.
+      const byId = deps.excludePatterns().filter((pattern) => exactIdOf(pattern) !== null)
+      if (isExcluded(byId, conversation.id, null)) return
       await repository.upsertConversation(conversation)
     },
 

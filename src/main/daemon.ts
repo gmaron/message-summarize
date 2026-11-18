@@ -1,12 +1,18 @@
 import { DeliverPending } from '../application/deliver-pending.js'
 import { DOWNLOAD_MAX_AGE_MS } from '../application/download-audios.js'
+import type { DigestErrorCode } from '../infrastructure/i18n/index.js'
 import { CronerScheduler } from '../infrastructure/scheduling/croner-scheduler.js'
 import { reconcileAccount } from '../infrastructure/whatsapp/account-binding.js'
-import type { WhatsAppStatus, WhatsAppStatusListener } from '../infrastructure/whatsapp/connection.js'
+import type {
+  HistorySyncListener,
+  WhatsAppStatus,
+  WhatsAppStatusListener,
+} from '../infrastructure/whatsapp/connection.js'
 import { type SelfChatSource, WhatsAppSelfChatDelivery } from '../infrastructure/whatsapp/self-chat-delivery.js'
 import { type BlockedReason, readBlocked, writeBlocked } from './blocked.js'
+import type { AppConfig } from './config.js'
 import { errorCode, type Logger } from './logger.js'
-import { runDigest } from './run-digest.js'
+import { runDigest, STALE_RUN_MS } from './run-digest.js'
 import type { Runtime } from './runtime.js'
 import type { UnitState } from './unit-state.js'
 
@@ -18,6 +24,20 @@ export interface DaemonConnection extends SelfChatSource {
   onStatus(listener: WhatsAppStatusListener): () => void
   /** Wakes the audio download worker (RF-15): the daemon does it on every sweep. Absent: nothing is downloaded. */
   kickDownloads?(): void
+  /**
+   * Progress of the initial history sync (RF-02), when the platform reports it. Optional: a connection that does not
+   * have it is waited on with the quiet heuristic only.
+   */
+  onHistorySync?(listener: HistorySyncListener): () => void
+  /**
+   * Two ids of the platform that turn out to be the same person (the platform's second kind of id and the phone number).
+   * Optional: the events that taught the pair wait for the listener, so it can act before their content is stored.
+   */
+  onAlias?(listener: (a: string, b: string) => void | Promise<void>): () => void
+  /** The other ids of the same person that are known now. Optional. Local only: it must never query the platform. */
+  aliasesOf?(id: string): Promise<string[]>
+  /** The pairs of ids learned so far (memory only). Optional. */
+  knownAliases?(): [string, string][]
 }
 
 export interface DaemonOptions {
@@ -50,11 +70,32 @@ export interface DaemonOptions {
    * that a marker on disk always means the account has nothing open in the process.
    */
   readonly writesMarker?: boolean
+  /** Told how every digest of this account goes (started, finished, failed, skipped): the web shows it live. Counts and codes only. */
+  readonly onDigest?: (event: DigestEvent) => void
+  /** Called after a new configuration was applied (`applyConfig`): the language, time zone and next run may be others. */
+  readonly onConfigApplied?: () => void
+  /** Called after the set of schedules changed on a reload (RF-61): the next run of the account is another. */
+  readonly onSchedulesChanged?: () => void
 }
 
-export type DigestTrigger = 'schedule' | 'missed'
+/**
+ * Why a digest runs. `manual` is a person asking for it ("summarize now", RF-63). It is held back exactly like a
+ * scheduled tick while the connection is not settled (see `settled`): the pointer moves to "now" on commit, and the
+ * messages that arrived while offline are still being received with earlier timestamps, so running early would lose
+ * them for good. It is accepted and `deferred` to the catch-up instead.
+ */
+export type DigestTrigger = 'schedule' | 'missed' | 'manual'
 /** `busy`: another digest was in progress, so this one did not start (RF-66). */
-export type DigestOutcome = 'ran' | 'busy' | 'failed'
+export type DigestOutcome = 'ran' | 'busy' | 'failed' | 'deferred'
+
+/** What a digest says about itself. `done` and `empty` are the two ways a run ends well (`empty`: nothing to summarize). */
+export type DigestEvent =
+  | { readonly state: 'started' }
+  | { readonly state: 'busy' }
+  /** A manual request that came while the connection is not settled: it runs at the catch-up, like a scheduled tick would. */
+  | { readonly state: 'deferred' }
+  | { readonly state: 'done' | 'empty'; readonly summarized: number; readonly failed: number; readonly parts: number }
+  | { readonly state: 'failed'; readonly error: DigestErrorCode }
 
 export const DEFAULT_SWEEP_MS = 30_000
 export const DEFAULT_SCHEDULE_RELOAD_MS = 5_000
@@ -65,6 +106,8 @@ export const DEFAULT_MISSED_RUN_DELAY_MS = 60_000
  * pointer only moves on commit, so the window is summarized again next time.
  */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 7_000
+/** An open run of `msum digest` is called interrupted only after this long: that command may be running in another process. */
+export const INTERRUPTED_CLI_GRACE_MS = STALE_RUN_MS
 
 const ERROR_REASONS: Readonly<Record<string, BlockedReason>> = {
   forbidden: 'forbidden',
@@ -108,6 +151,9 @@ export class Daemon {
   private readonly shutdownGraceMs: number
   private readonly onBlocked: (reason: BlockedReason) => void
   private readonly onState: (state: UnitState) => void
+  private readonly onDigest: (event: DigestEvent) => void
+  private readonly onSchedulesChanged: () => void
+  private readonly onConfigApplied: () => void
   private state: UnitState | null = null
   private readonly scheduleSource: (() => readonly string[]) | null
   private readonly scheduleReloadMs: number
@@ -122,7 +168,7 @@ export class Daemon {
   /** A scheduled tick that could not run when it fired. */
   private deferred = false
   private catchUpDone = false
-  private digestRun: Promise<DigestOutcome> | null = null
+  private digestRun: Promise<DigestEvent> | null = null
   private sweepTimer: ReturnType<typeof setInterval> | null = null
   private catchUpTimer: ReturnType<typeof setTimeout> | null = null
   private unsubscribe: (() => void) | null = null
@@ -143,6 +189,9 @@ export class Daemon {
     this.onBlocked = options.onBlocked ?? (() => {})
     this.writesMarker = options.writesMarker ?? true
     this.onState = options.onState ?? (() => {})
+    this.onDigest = options.onDigest ?? (() => {})
+    this.onSchedulesChanged = options.onSchedulesChanged ?? (() => {})
+    this.onConfigApplied = options.onConfigApplied ?? (() => {})
     this.scheduleSource = options.scheduleSource ?? null
     this.scheduleReloadMs = options.scheduleReloadMs ?? DEFAULT_SCHEDULE_RELOAD_MS
     this.deliverPending = new DeliverPending(
@@ -178,6 +227,13 @@ export class Daemon {
   }
 
   async start(): Promise<void> {
+    // A run that never ended (the process died during it, RNF-08) is closed as failed `interrupted` (RF-74).
+    try {
+      const interrupted = this.runtime.runs.markInterrupted(this.runtime.clock.now(), INTERRUPTED_CLI_GRACE_MS)
+      if (interrupted > 0) this.logger.warn('digest.interrupted', { count: interrupted })
+    } catch (error) {
+      this.logger.error('history.failed', { code: errorCode(error) })
+    }
     const marker = await readBlocked(this.runtime.layout.blockedFile)
     if (marker !== null) {
       // Restarted while blocked: say why, once, and do nothing else.
@@ -187,7 +243,8 @@ export class Daemon {
       this.onBlocked(marker.reason)
       return
     }
-    this.setState('connecting')
+    // A connection that is open already (the web linked the account and hands its socket over) is not "connecting".
+    if (this.connection.status.state !== 'connected') this.setState('connecting')
     this.unsubscribe = this.connection.onStatus((status) => this.onStatus(status))
     this.scheduler.start()
     if (this.scheduleSource !== null) {
@@ -211,7 +268,36 @@ export class Daemon {
       count: this.scheduler.count,
       nextRun: next.length === 0 ? null : new Date(Math.min(...next)).toISOString(),
     })
+    // A connection that changed before this subscription (the socket a link handed over, in the moment between the link
+    // and the unit) said it to nobody: a terminal state, or a renewed QR, is acted on now.
+    const current = this.connection.status
+    if (current.state === 'loggedOut' || current.state === 'error' || current.state === 'qr') this.onStatus(current)
+    if (this.blockedReason !== null) return
     await this.connection.start()
+    // Open already: no status event will come for it, so it is checked here (`unverified` keeps it to once).
+    if (this.connection.status.state === 'connected' && this.unverified && this.blockedReason === null) {
+      this.handleConnected()
+    }
+  }
+
+  /**
+   * Runs from now on with another configuration (RF-73), WITHOUT touching the connection: the runtime swaps its
+   * renderers, summarizer and patterns (see `Runtime.reconfigure`), and the scheduler moves to the new time zone with the
+   * same set of schedules (RF-62). A digest in progress keeps the configuration it started with; the single-flight guard
+   * and the catch-up state are untouched.
+   */
+  applyConfig(config: AppConfig): void {
+    this.runtime.reconfigure(config)
+    this.scheduler.setTimezone(config.timezone)
+    this.logger.info('config.applied', { count: this.scheduler.count })
+    if (this.scheduler.count > 0 && this.runtime.generateDigest === null) {
+      this.logger.warn('schedules.noProvider', { count: this.scheduler.count })
+    }
+    try {
+      this.onConfigApplied()
+    } catch (error) {
+      this.logger.error('digest.reportFailed', { code: errorCode(error) })
+    }
   }
 
   /**
@@ -234,14 +320,47 @@ export class Daemon {
     return this.shutdownPromise
   }
 
+  /** True when the connection is open and has been for `missedRunDelayMs`: what arrived while offline is here. */
+  get settled(): boolean {
+    return (
+      this.connectedAt !== null &&
+      this.connection.status.state === 'connected' &&
+      this.runtime.clock.now() - this.connectedAt >= this.missedRunDelayMs
+    )
+  }
+
+  /** True while a digest of this account is running (RF-66): a request for another one would be refused as `busy`. */
+  get digestBusy(): boolean {
+    return this.digestRun !== null
+  }
+
   /**
    * Runs one digest and queues it for delivery (RF-63, RF-65, RF-66). Returns `busy`, starting nothing, when another
    * digest is running. The check and the claim of the slot happen in the same synchronous step.
    */
   async runScheduledDigest(trigger: DigestTrigger): Promise<DigestOutcome> {
+    const event = await this.runDigestNow(trigger)
+    if (event.state === 'busy' || event.state === 'deferred') return event.state
+    return event.state === 'failed' ? 'failed' : 'ran'
+  }
+
+  /** Like `runScheduledDigest`, but says how it ended (the counts, or the code of the failure) instead of only whether it ran. */
+  async runDigestNow(trigger: DigestTrigger): Promise<DigestEvent> {
     if (this.digestRun !== null) {
       this.logger.warn('digest.skipped', { reason: 'busy', trigger })
-      return 'busy'
+      const busy: DigestEvent = { state: 'busy' }
+      this.emitDigest(busy)
+      return busy
+    }
+    if (trigger === 'manual' && !this.settled) {
+      // Idempotent: a second request while one is deferred changes nothing, and the catch-up runs one digest.
+      this.deferred = true
+      this.logger.info('digest.deferred', { trigger })
+      // Connected but too recently: nothing else would schedule the catch-up (offline, the next connection does).
+      if (this.connection.status.state === 'connected' && !this.unverified) this.scheduleCatchUp()
+      const deferred: DigestEvent = { state: 'deferred' }
+      this.emitDigest(deferred)
+      return deferred
     }
     const run = this.executeDigest(trigger)
     this.digestRun = run
@@ -249,6 +368,14 @@ export class Daemon {
       return await run
     } finally {
       this.digestRun = null
+    }
+  }
+
+  private emitDigest(event: DigestEvent): void {
+    try {
+      this.onDigest(event)
+    } catch (error) {
+      this.logger.error('digest.reportFailed', { code: errorCode(error) })
     }
   }
 
@@ -264,21 +391,31 @@ export class Daemon {
     }
   }
 
-  private async executeDigest(trigger: DigestTrigger): Promise<DigestOutcome> {
+  private async executeDigest(trigger: DigestTrigger): Promise<DigestEvent> {
     this.logger.info('digest.started', { trigger })
+    this.emitDigest({ state: 'started' })
+    const finish = (event: DigestEvent): DigestEvent => {
+      this.emitDigest(event)
+      return event
+    }
     try {
-      const result = await runDigest(this.runtime, { preview: false })
+      const result = await runDigest(this.runtime, { preview: false, trigger })
       if (!result.ok) {
         this.logger.error('digest.failed', { trigger, reason: result.error.kind })
-        return 'failed'
+        return finish({ state: 'failed', error: result.error.kind })
       }
-      const { summarized, failed, parts, pointer } = result.value
+      const { summarized, failed, parts, pointer, digest } = result.value
       this.logger.info('digest.committed', { trigger, summarized, failed: failed.length, parts: parts.length, pointer })
       await this.deliver()
-      return 'ran'
+      return finish({
+        state: digest === null ? 'empty' : 'done',
+        summarized,
+        failed: failed.length,
+        parts: parts.length,
+      })
     } catch (error) {
       this.logger.error('digest.failed', { trigger, code: errorCode(error) })
-      return 'failed'
+      return finish({ state: 'failed', error: 'failed' })
     }
   }
 
@@ -295,6 +432,11 @@ export class Daemon {
       const hadNone = current.length === 0
       this.scheduler.replace(found)
       this.logger.info('schedules.reloaded', { count: this.scheduler.count })
+      try {
+        this.onSchedulesChanged()
+      } catch (error) {
+        this.logger.error('digest.reportFailed', { code: errorCode(error) })
+      }
       // Schedules arrived while nothing can summarize: say so once. The daemon keeps running (capture only is valid).
       if (hadNone && this.scheduler.count > 0 && this.runtime.generateDigest === null) {
         this.logger.warn('schedules.noProvider', { count: this.scheduler.count })
@@ -306,11 +448,7 @@ export class Daemon {
 
   private onTick(schedule: string): void {
     this.logger.info('schedule.fired', { schedule })
-    const settled =
-      this.connectedAt !== null &&
-      this.connection.status.state === 'connected' &&
-      this.runtime.clock.now() - this.connectedAt >= this.missedRunDelayMs
-    if (settled) {
+    if (this.settled) {
       void this.runScheduledDigest('schedule')
       return
     }

@@ -1,18 +1,16 @@
-import { existsSync } from 'node:fs'
-import { formatTime, scheduleToCron } from '../../domain/schedule.js'
+import { formatTime } from '../../domain/schedule.js'
 import { getCatalog } from '../../infrastructure/i18n/index.js'
-import { nextRunOf } from '../../infrastructure/scheduling/croner-scheduler.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { installationCatalog } from '../account-command.js'
+import { readAccountFacts } from '../account-facts.js'
 import { openInstallation } from '../accounts.js'
 import { readBlocked } from '../blocked.js'
 import { describeConfigIssue, languageHint, loadEffectiveConfig } from '../config.js'
-import { type CommandContext, formatInstant, loadConfigOrReport, maskAccount } from '../context.js'
+import { type CommandContext, formatInstant, loadConfigOrReport } from '../context.js'
 import { runningDaemonPid } from '../daemon-lock.js'
 import { accountLayoutOf } from '../paths.js'
-import { createRuntime } from '../runtime.js'
-import { describeDays } from '../schedule-format.js'
+import { describeDays, nextRunAt } from '../schedule-format.js'
 import { importConfigSchedules } from '../schedules.js'
 import { readUnitState } from '../unit-state.js'
 
@@ -75,20 +73,7 @@ export async function statusCommand(ctx: CommandContext, args: AccountArg): Prom
       const catalog = getCatalog(config.language)
       const texts = catalog.cli.status
 
-      let masked: string | null = null
-      let pointer: number | null = null
-      let pending = 0
-      if (existsSync(account.dbFile)) {
-        const runtime = createRuntime({ layout: account, config, env: ctx.env, clock: ctx.clock, summarizer: null })
-        try {
-          const bound = runtime.identity.get()
-          masked = bound === null ? null : maskAccount(bound)
-          pointer = await runtime.store.getPointer()
-          pending = runtime.store.pendingOutbox().length
-        } finally {
-          runtime.close()
-        }
-      }
+      const { masked, pointer, pending } = await readAccountFacts(ctx, account, config)
 
       const daemonPid = await runningDaemonPid(layout.lockFile)
       if (index === 0) {
@@ -114,13 +99,13 @@ export async function statusCommand(ctx: CommandContext, args: AccountArg): Prom
       if (stored.length === 0) lines.push(texts.noSchedules)
       else if (config.provider.primary === null) lines.push(texts.schedulesNoProvider)
       for (const { id: scheduleId, schedule } of stored) {
-        const next = nextRunOf(scheduleToCron(schedule), config.timezone, new Date(now))
+        const next = nextRunAt(schedule, config.timezone, now)
         lines.push(
           texts.schedule(
             scheduleId,
             describeDays(catalog.cli.schedule, schedule.days),
             formatTime(schedule),
-            next === null ? null : formatInstant(next.getTime(), catalog, config.timezone),
+            next === null ? null : formatInstant(next, catalog, config.timezone),
           ),
         )
       }

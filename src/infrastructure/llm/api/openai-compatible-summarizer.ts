@@ -1,5 +1,5 @@
-import type { SummarizeRequest, Summarizer } from '../../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
+import { err, ok } from '../../../domain/result.js'
 import { STRICT_SUMMARY_JSON_SCHEMA } from '../summary-schema.js'
 import { type ApiCommonOptions, runApiCall, withSchemaInPrompt } from './api-call.js'
 
@@ -42,10 +42,11 @@ export class OpenAiCompatibleSummarizer implements Summarizer {
     this.baseUrl = (options.baseUrl ?? OPENAI_BASE_URL).replace(/\/+$/, '')
   }
 
-  summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const mode = this.options.structuredOutput ?? 'json_schema'
     return runApiCall({
       provider: 'openai',
+      reportedAs: isOpenAiHost(this.baseUrl) ? 'openai' : 'openai-compatible',
       options: this.options,
       keyRequired: isOpenAiHost(this.baseUrl),
       summarizeRequest: request,

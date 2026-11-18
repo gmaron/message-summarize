@@ -9,13 +9,14 @@ import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { openInstallation } from '../accounts.js'
 import { describeConfigIssue, isApiProvider, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
+import { findConsent, kindOfProvider, needsConsent, originOf } from '../consent.js'
 import { type CommandContext, hasSession } from '../context.js'
 import { IMPORT_DIR_PATTERN, importDirs } from '../import-workdirs.js'
 import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.js'
 import { openAiKeyProvider } from '../providers.js'
 import { createRuntime } from '../runtime.js'
 import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
-import { consentHosts, hostsText, kindOfProvider, needsConsent, originOf } from './provider.js'
+import { hostsText } from './provider.js'
 
 /** Oldest Node this project supports (package.json "engines"). */
 export const MINIMUM_NODE = '22.16.0'
@@ -286,8 +287,7 @@ export async function doctorCommand(
           for (const chosen of [provider.primary, provider.backup]) {
             const infoKind = kindOfProvider(loaded.value, chosen)
             if (infoKind === null || !needsConsent(infoKind, loaded.value)) continue
-            const hosts = consentHosts(infoKind, loaded.value)
-            if (installation.consents.find(account.id, infoKind, hosts) === null) {
+            if (findConsent(installation.setup, account.id, infoKind, loaded.value) === null) {
               io.out(
                 accountTexts.warn(
                   label(accountTexts.names.provider),

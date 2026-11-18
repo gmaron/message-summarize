@@ -76,7 +76,7 @@ describe('GenericCliSummarizer refuses to run without acknowledgeRisk (RF-49)', 
 describe('GenericCliSummarizer runs the command (RF-47, RF-48)', () => {
   it('sends the prompt on stdin by default: the system prompt, the schema and the chat, none of it in argv', async () => {
     const cli = fake([GOOD])
-    expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
     const [call] = cli.calls('run')
     expect(call?.argv).toEqual(['--quiet'])
     expect(call?.stdin).toContain(chat.systemPrompt)
@@ -104,14 +104,14 @@ describe('GenericCliSummarizer runs the command (RF-47, RF-48)', () => {
 
   it('accepts the JSON in a code fence and with a line of chatter around it', async () => {
     const fenced = fake([{ kind: 'text', text: `\`\`\`json\n${JSON.stringify(VALID_SUMMARY)}\n\`\`\`` }])
-    expect(await make(fenced).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await make(fenced).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
     const chatter = fake([{ kind: 'text', text: `Here you go:\n${JSON.stringify(VALID_SUMMARY)}\nHope it helps.` }])
-    expect(await make(chatter).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await make(chatter).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
   })
 
   it('RF-48: an answer that fails the schema is corrected once, and the correction says why', async () => {
     const cli = fake([BAD_PRIORITY, GOOD])
-    expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY })
+    expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
     const [first, second] = cli.calls('run')
     expect(first?.stdin).not.toContain('previous answer was not valid')
     expect(second?.stdin).toContain('previous answer was not valid')

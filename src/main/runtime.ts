@@ -24,6 +24,7 @@ import {
   SqliteAccountIdentity,
   SqliteCaptureRepository,
   SqliteCaptureWriter,
+  SqliteDigestRuns,
   SqliteDigestSource,
   SqliteDigestStore,
   SqliteOutboxRepository,
@@ -97,11 +98,14 @@ export interface RuntimeOptions {
  */
 export interface Runtime {
   readonly layout: AccountLayout
+  /** The configuration in force now: `reconfigure` swaps it. A digest in progress keeps the one it started with. */
   readonly config: AppConfig
   readonly clock: Clock
   readonly renderers: Renderers
   readonly db: Database
   readonly store: SqliteDigestStore
+  /** The history of digest runs (RF-74). */
+  readonly runs: SqliteDigestRuns
   readonly outbox: OutboxRepository
   readonly identity: AccountIdentity
   readonly repository: CaptureRepository
@@ -114,20 +118,29 @@ export interface Runtime {
   readonly downloadQueue: DownloadQueue
   /** Null when no provider was chosen. */
   readonly generateDigest: GenerateDigest | null
+  /**
+   * Applies another configuration to the running account without touching the connection or the database: the
+   * renderers (language, time zone), the summarizer and the digest use case are built again from it (the summarizer by
+   * `buildSummarizer`, so the local-only router stays outermost), and capture reads the new exclusion patterns on its
+   * next event. A digest already running keeps what it started with.
+   */
+  reconfigure(config: AppConfig): void
   close(): void
 }
 
 export function createRuntime(options: RuntimeOptions): Runtime {
-  const { layout, config, env } = options
+  const { layout, env } = options
   const clock = options.clock ?? systemClock
   const now = (): number => clock.now()
+  let config = options.config
 
   const db = openDatabase(layout.dbFile)
   try {
     const store = new SqliteDigestStore(db, now)
+    const runs = new SqliteDigestRuns(db)
     const identity = new SqliteAccountIdentity(db, now)
     const repository = new SqliteCaptureRepository(new SqliteCaptureWriter(db, now))
-    const renderers = createRenderers(config.language, config.timezone)
+    const source = new SqliteDigestSource(db)
 
     const ownIds = new OwnConversationIds()
     const bound = identity.get()
@@ -169,6 +182,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     const capture = createCaptureMessages({
       repository,
       clock,
+      // Read through `config` on every event: a reconfiguration applies to the next message.
       excludePatterns: () => config.digest.excludePatterns,
       ownConversationIds: () => ownIds.get(),
       // History audios of the last N days are downloaded too (RF-15), when transcription is on (the adapter only
@@ -176,40 +190,57 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       audioHistoryDays: settings.historyAudioDays,
     })
 
-    const summarizer = options.summarizer === undefined ? buildSummarizer(config, env, layout) : options.summarizer
-    const generateDigest =
-      summarizer === null
-        ? null
-        : createGenerateDigest({
-            source: new SqliteDigestSource(db),
-            summarizer,
-            store,
-            clock,
-            renderers,
-            ownConversationIds: () => ownIds.get(),
-            // The audios of the window are transcribed first, with a bounded wait (RF-15). Off: nothing to wait for.
-            ...(transcription.enabled
-              ? {
-                  beforeWindow: async (window: SummaryWindow) => {
-                    // A transcript is captured data (like a message), not a result of the digest: it is stored whether
-                    // the digest is a preview or not, and it never touches the pointer or the history (RF-64).
-                    await transcription.prepareWindow(
-                      { from: window.since, until: window.until },
-                      options.transcriptionWaitMs ?? DIGEST_TRANSCRIPTION_WAIT_MS,
-                      { observeOnly: options.transcriptionMode === 'observe' },
-                    )
-                  },
-                }
-              : {}),
-          })
+    // A summarizer given in the options (tests) is fixed: a reconfiguration does not replace it. The audio wait is not
+    // part of the configuration that changes live: it is wired the same way for every rebuilt digest use case.
+    const makeParts = (next: AppConfig): { renderers: Renderers; generateDigest: GenerateDigest | null } => {
+      const renderers = createRenderers(next.language, next.timezone)
+      const summarizer =
+        options.summarizer === undefined
+          ? buildSummarizer(next, env, layout, () => config.localOnlyPatterns)
+          : options.summarizer
+      return {
+        renderers,
+        generateDigest:
+          summarizer === null
+            ? null
+            : createGenerateDigest({
+                source,
+                summarizer,
+                store,
+                clock,
+                renderers,
+                ownConversationIds: () => ownIds.get(),
+                // The audios of the window are transcribed first, with a bounded wait (RF-15). Off: nothing to wait for.
+                ...(transcription.enabled
+                  ? {
+                      beforeWindow: async (window: SummaryWindow) => {
+                        // A transcript is captured data (like a message), not a result of the digest: it is stored
+                        // whether the digest is a preview or not, and it never touches the pointer or the history (RF-64).
+                        await transcription.prepareWindow(
+                          { from: window.since, until: window.until },
+                          options.transcriptionWaitMs ?? DIGEST_TRANSCRIPTION_WAIT_MS,
+                          { observeOnly: options.transcriptionMode === 'observe' },
+                        )
+                      },
+                    }
+                  : {}),
+              }),
+      }
+    }
+    let parts = makeParts(config)
 
     return {
       layout,
-      config,
+      get config() {
+        return config
+      },
       clock,
-      renderers,
+      get renderers() {
+        return parts.renderers
+      },
       db,
       store,
+      runs,
       outbox: new SqliteOutboxRepository(store),
       identity,
       repository,
@@ -217,7 +248,15 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       ownIds,
       transcription,
       downloadQueue: queues,
-      generateDigest,
+      get generateDigest() {
+        return parts.generateDigest
+      },
+      reconfigure: (next) => {
+        // Built before anything is swapped: if it throws, the runtime keeps the configuration it had.
+        const rebuilt = makeParts(next)
+        config = next
+        parts = rebuilt
+      },
       close: () => {
         // Kills a transcription that is running (its audio stays pending) before the database goes away.
         void transcription.stop()

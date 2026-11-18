@@ -1,5 +1,5 @@
-import type { SummarizeRequest, Summarizer } from '../../application/ports/summarizer.js'
-import { err, ok, type Result } from '../../domain/result.js'
+import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../application/ports/summarizer.js'
+import { err } from '../../domain/result.js'
 import { excerpt, SUMMARY_JSON_SCHEMA } from './summary-schema.js'
 
 export interface OllamaOptions {
@@ -14,6 +14,9 @@ export interface OllamaOptions {
   readonly keepAlive?: string
 }
 
+/** The name this adapter reports as the provider of a summary. */
+export const OLLAMA_PROVIDER = 'ollama'
+
 /** Summarizes with a local Ollama server (RF-40). The output is forced to the summary schema through `format`. */
 export class OllamaSummarizer implements Summarizer {
   private readonly endpoint: string
@@ -24,7 +27,7 @@ export class OllamaSummarizer implements Summarizer {
     this.timeoutMs = options.timeoutMs ?? 3 * 60_000
   }
 
-  async summarize(request: SummarizeRequest): Promise<Result<unknown, string>> {
+  async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     try {
       const response = await fetch(this.endpoint, {
         method: 'POST',
@@ -53,7 +56,7 @@ export class OllamaSummarizer implements Summarizer {
       const content = body?.message?.content
       if (typeof content !== 'string') return err('ollama returned no message content')
       try {
-        return ok(JSON.parse(content))
+        return { ok: true, value: JSON.parse(content), provider: OLLAMA_PROVIDER }
       } catch {
         return err('ollama returned content that is not JSON')
       }

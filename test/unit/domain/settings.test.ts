@@ -95,6 +95,8 @@ describe('parseDigestSettings', () => {
     ['excludePatterns', ['gym', 3], 'notStringList'],
     ['excludePatterns', ['gym', ''], 'emptyPattern'],
     ['excludePatterns', ['  '], 'emptyPattern'],
+    ['excludePatterns', ['gym', 'id:'], 'emptyIdPattern'],
+    ['excludePatterns', ['ID:   '], 'emptyIdPattern'],
   ])('rejects %s = %j with %s instead of falling back to the default', (option, value, code) => {
     expect(issuesOf({ ...valid, [option]: value })).toEqual([{ option, code }])
   })

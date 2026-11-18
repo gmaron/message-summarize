@@ -17,3 +17,8 @@ export async function writeQrPng(file: string, qr: string): Promise<void> {
   if (process.platform !== 'win32') await chmod(file, FILE_MODE)
   await QRCode.toFile(file, qr, { type: 'png', width: 400, margin: 2 })
 }
+
+/** The QR as an SVG image for the web. Made on every request from the string in memory: nothing is stored. */
+export function qrAsSvg(qr: string): Promise<string> {
+  return QRCode.toString(qr, { type: 'svg', margin: 2 })
+}
