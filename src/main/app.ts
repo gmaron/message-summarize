@@ -7,6 +7,7 @@ import { doctorCommand } from './commands/doctor.js'
 import { importCommand } from './commands/import.js'
 import { initCommand } from './commands/init.js'
 import { linkCommand } from './commands/link.js'
+import { ollamaCommand } from './commands/ollama.js'
 import { providerCommand } from './commands/provider.js'
 import { retryCommand } from './commands/retry.js'
 import { scheduleCommand } from './commands/schedule.js'
@@ -34,6 +35,7 @@ export function createHandlers(ctx: CommandContext): CliHandlers {
     whisper: (command) => whisperCommand(ctx, command),
     secret: (command) => secretCommand(ctx, command),
     provider: (command) => providerCommand(ctx, command),
+    ollama: (command) => ollamaCommand(ctx, command),
   }
 }
 

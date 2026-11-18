@@ -22,6 +22,9 @@ export type SecretCommand = Extract<Command, { name: 'secret' }>
 /** The `provider` command with its subcommand. */
 export type ProviderCommand = Extract<Command, { name: 'provider' }>
 
+/** The `ollama` command with its subcommand. */
+export type OllamaCommand = Extract<Command, { name: 'ollama' }>
+
 /** Where the CLI writes. A line is written with its newline. Tests give their own. */
 export interface CliIo {
   out(line: string): void
@@ -36,7 +39,7 @@ export interface CliHandlers {
   daemon(args: { readonly retry: boolean } & AccountArg): Promise<number>
   digest(args: DigestArgs): Promise<number>
   status(args: AccountArg): Promise<number>
-  doctor(args: AccountArg): Promise<number>
+  doctor(args: { readonly skipModelCheck?: true } & AccountArg): Promise<number>
   retry(args: AccountArg): Promise<number>
   import(args: ImportArgs): Promise<number>
   accounts(): Promise<number>
@@ -44,6 +47,7 @@ export interface CliHandlers {
   whisper(command: WhisperCommand): Promise<number>
   secret(command: SecretCommand): Promise<number>
   provider(command: ProviderCommand): Promise<number>
+  ollama(command: OllamaCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -98,7 +102,7 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
     case 'status':
       return handlers.status({ account: command.account })
     case 'doctor':
-      return handlers.doctor({ account: command.account })
+      return handlers.doctor(command)
     case 'retry':
       return handlers.retry({ account: command.account })
     case 'import':
@@ -113,6 +117,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.secret(command)
     case 'provider':
       return handlers.provider(command)
+    case 'ollama':
+      return handlers.ollama(command)
   }
 }
 

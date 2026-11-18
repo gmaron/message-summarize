@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { type Catalog, getCatalog } from '../../infrastructure/i18n/index.js'
-import { isOnMachine, PROMPT_PLACEHOLDER, resolveExecutable } from '../../infrastructure/llm/index.js'
+import { isOnMachine, ollamaHasModel, PROMPT_PLACEHOLDER, resolveExecutable } from '../../infrastructure/llm/index.js'
 import { envNames, type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/index.js'
 import { findModelByFile, resolveModelPath, sha256File } from '../../infrastructure/transcription/index.js'
 import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
@@ -39,7 +39,10 @@ export function compareVersions(a: string, b: string): number {
  * The only things it contacts are the configured CLI and, for Ollama, the configured base URL. For an API provider it
  * checks that the model is set and that a key exists, and makes no request.
  */
-export async function doctorCommand(ctx: CommandContext, args: AccountArg): Promise<number> {
+export async function doctorCommand(
+  ctx: CommandContext,
+  args: { readonly skipModelCheck?: true } & AccountArg,
+): Promise<number> {
   const { io, layout } = ctx
   // Looked at BEFORE opening the installation, which tightens the data and accounts directories.
   const looseBefore = await loosePermissions(layout)
@@ -128,6 +131,33 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
       } else {
         ok(label(accountTexts.names.config), accountTexts.configOk)
         const { provider } = loaded.value
+        /**
+         * Reachability, and that the configured model is installed. The second asks the user's own Ollama for its list
+         * of models (`/api/tags`: no chat text, 3 s timeout) and `--skip-model-check` leaves it out.
+         */
+        const checkOllama = async (kind: ProviderKind): Promise<void> => {
+          const name = label(accountTexts.names.provider)
+          const reachable = await ctx.probes.ollamaReachable(provider.ollama.baseUrl)
+          if (!reachable) {
+            fail(name, accountTexts.providerMissing(provider.ollama.baseUrl), accountTexts.providerFix(kind))
+            return
+          }
+          ok(name, accountTexts.providerOk(kind, provider.ollama.baseUrl))
+          const model = provider.ollama.model
+          if (args.skipModelCheck === true || model === null) return
+          const models = await ctx.probes.ollamaModels(provider.ollama.baseUrl)
+          if (!models.ok) {
+            io.out(
+              accountTexts.warn(
+                name,
+                accountTexts.ollamaModelUnknown(models.error),
+                accountTexts.ollamaModelUnknownFix,
+              ),
+            )
+          } else if (!ollamaHasModel(model, models.value)) {
+            fail(name, accountTexts.ollamaModelMissing(model), accountTexts.ollamaModelMissingFix(model))
+          } else ok(name, accountTexts.ollamaModelOk(model))
+        }
         const kinds: ProviderKind[] = [provider.primary, provider.backup].filter((k): k is ProviderKind => k !== null)
         if (kinds.length === 0) {
           fail(label(accountTexts.names.provider), accountTexts.providerNone, accountCatalog.cli.config.noProvider)
@@ -214,16 +244,11 @@ export async function doctorCommand(ctx: CommandContext, args: AccountArg): Prom
               )
             }
           } else {
-            const reachable = await ctx.probes.ollamaReachable(provider.ollama.baseUrl)
-            if (!reachable) {
-              fail(
-                label(accountTexts.names.provider),
-                accountTexts.providerMissing(provider.ollama.baseUrl),
-                accountTexts.providerFix(kind),
-              )
-            } else ok(label(accountTexts.names.provider), accountTexts.providerOk(kind, provider.ollama.baseUrl))
+            await checkOllama(kind)
           }
         }
+        // Chats marked "local only" go to Ollama even when it is neither the primary nor the backup (RF-43).
+        if (loaded.value.localOnlyPatterns.length > 0 && !kinds.includes('ollama')) await checkOllama('ollama')
 
         // The files that hold API keys must be readable by the owner only (RNF-04).
         if (process.platform !== 'win32') {

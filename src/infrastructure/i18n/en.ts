@@ -123,11 +123,13 @@ Commands:
   schedule [ls|add|rm] [--account <id>]  When the digests run: ls lists them with the next run,
                                       add --time HH:MM [--days daily|weekdays|weekends|mon,wed|mon-fri], rm <id>
   status [--account <id>]             Shows the state: accounts, last digest, pending deliveries and next schedules
-  doctor [--account <id>]             Checks that everything is in order and explains how to fix it
+  doctor [--skip-model-check] [--account <id>]  Checks that everything is in order and explains how to fix it
+                                      (with Ollama it also asks your Ollama server which models it has, unless skipped)
   accounts                            Lists the accounts of this installation and their state
   whisper models                      Lists the whisper.cpp models (to transcribe audios locally) with their sizes
-  whisper download <name>             Downloads a model into the data directory and checks its SHA-256. It is the only
-                                      download the program makes, from huggingface.co, and only when you ask for it
+  whisper download <name>             Downloads a model into the data directory and checks its SHA-256, from
+                                      huggingface.co. The program downloads models only when you ask for it
+                                      (whisper download, ollama pull)
   secret set <provider> [--account <id>]  Saves the API key of openai, openai-compatible (any other server
                                       behind provider.openai.baseUrl), anthropic or gemini, read from the input (hidden on
                                       a terminal, or piped); never as an argument. Not in config.json
@@ -140,6 +142,10 @@ Commands:
                                       account. Before one that sends your chats out it says what it receives and asks
   provider test [--backup] [--kind <name>] [--account <id>]
                                       Tries the provider with ONE real call and a made-up conversation (never your messages)
+  ollama recommend                    Recommends a small local model for the RAM of this machine (provisional until it is evaluated)
+  ollama pull <tag> [--allow-remote] [--account <id>]
+                                      Asks the configured Ollama to download a model (only the tag is sent, with a progress
+                                      line). Refuses an Ollama that is not on this machine unless --allow-remote
   help                               Shows this help
 
 Accounts: link, unlink, daemon and digest work on one account, chosen with --account <id> (lowercase letters, digits
@@ -342,6 +348,35 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       sizeError: 'The file does not have the expected size. Nothing was saved.',
       checksumError: 'The checksum of the downloaded file is not the expected one. The file was discarded.',
       writeError: (dir) => `The model could not be written in ${dir}. Nothing was saved.`,
+    },
+    ollama: {
+      ramLine: (gb) => `This machine has about ${gb} GB of RAM.`,
+      candidatesHeader: 'Candidate models of 3 to 8 billion parameters (tag, parameters, download, minimum RAM):',
+      candidateRow: (tag, parameters, size, ram, fits, evaluation) =>
+        `  ${fits ? '*' : ' '} ${tag}  ${parameters}  ${size}  ${ram} RAM  ${evaluation}`,
+      evaluationNone: 'not evaluated',
+      evaluationDone: (date, validJson, agreement, passed) =>
+        `evaluated ${date}: valid JSON ${validJson}, "needs reply" ${agreement} (${passed ? 'passes' : 'does not pass'} RF-45)`,
+      recommended: (tag) => `Recommended: ${tag}`,
+      provisional:
+        'This recommendation is PROVISIONAL: no candidate has been evaluated yet against the golden conversations (RF-45 asks for 100% valid JSON and 90% agreement on "needs reply"). The choice is a guess by size and RAM.',
+      provisionalHint:
+        'To evaluate a model on your Ollama: npm run eval:ollama -- --models <tag> (see "Choosing a local model" in the README).',
+      noneFits: (minGb) =>
+        `No candidate fits in this machine's RAM (the smallest needs about ${minGb} GB). Use an API provider or the CLI of one instead ("msum provider ls").`,
+      nextSteps: (tag) =>
+        `Download it with "msum ollama pull ${tag}", then choose it with "msum provider use ollama --model ${tag}".`,
+      invalidTag: (tag) => `"${tag}" does not look like an Ollama model tag (for example qwen3:4b).`,
+      remoteRefused: (origin) =>
+        `The configured Ollama is at ${origin}, which is not this machine. Nothing was downloaded. Pull the model there, or repeat with --allow-remote if you really want this server to download it.`,
+      pulling: (tag, origin) =>
+        `Asking the Ollama at ${origin} to download "${tag}". No chat text is sent, only the tag.`,
+      progress: (percent, received, total) => `  ${percent}%  (${received} of ${total})`,
+      status: (status) => `  ${status}`,
+      done: (tag) => `The model "${tag}" was downloaded.`,
+      doneHint: (tag) =>
+        `Choose it with "msum provider use ollama --model ${tag}" and try it with "msum provider test".`,
+      failed: (reason) => `The download failed: ${reason}`,
     },
     unexpectedError: (code) => `Something went wrong (${code}).`,
     cannotCreateDataDir: (path) => `The data directory could not be created: ${path}`,
@@ -692,6 +727,12 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         `Ollama is at ${origin}, which is not this machine: your chats go to that server (also the "local only" ones, which go to your Ollama server)`,
       ollamaRemoteFix:
         'if it must be on this machine, point "provider.ollama.baseUrl" at a loopback address such as http://127.0.0.1:11434; otherwise this is as you set it.',
+      ollamaModelOk: (model) => `the model "${model}" is installed in that Ollama`,
+      ollamaModelMissing: (model) => `Ollama does not have the model "${model}": the digests would fail with it`,
+      ollamaModelMissingFix: (model) =>
+        `download it with "msum ollama pull ${model}" (or choose another with "msum ollama recommend"). To skip this check: "msum doctor --skip-model-check".`,
+      ollamaModelUnknown: (reason) => `could not read the list of models of Ollama (${reason})`,
+      ollamaModelUnknownFix: 'try again, or skip this check with "msum doctor --skip-model-check".',
       consentMissingFix: (provider) =>
         `review it with "msum provider use ${provider}": it shows what is sent and records your answer. (A configuration written by hand works without it; this is only a reminder.)`,
       providerTestHint:

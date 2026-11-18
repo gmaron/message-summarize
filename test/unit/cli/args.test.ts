@@ -36,6 +36,35 @@ describe('parseCommandLine', () => {
     expect(parse('link', '--account')).toEqual({ ok: false, error: { kind: 'missingValue', value: '--account' } })
   })
 
+  it('parses ollama recommend and pull, and doctor --skip-model-check', () => {
+    expect(parse('ollama')).toEqual({ ok: true, value: { name: 'ollama', action: 'recommend' } })
+    expect(parse('ollama', 'recommend')).toEqual({ ok: true, value: { name: 'ollama', action: 'recommend' } })
+    expect(parse('ollama', 'recommend', 'x')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'x' } })
+    expect(parse('ollama', 'recommend', '--account', 'a')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--account' },
+    })
+    expect(parse('ollama', 'pull', 'qwen3:4b')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'pull', tag: 'qwen3:4b', allowRemote: false, account: null },
+    })
+    expect(parse('ollama', 'pull', 'qwen3:4b', '--allow-remote', '--account', 'work')).toEqual({
+      ok: true,
+      value: { name: 'ollama', action: 'pull', tag: 'qwen3:4b', allowRemote: true, account: 'work' },
+    })
+    expect(parse('ollama', 'pull')).toEqual({ ok: false, error: { kind: 'missingValue', value: '<tag>' } })
+    expect(parse('ollama', 'pull', 'a', 'b')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'b' } })
+    expect(parse('ollama', 'nope')).toEqual({ ok: false, error: { kind: 'unknownSubcommand', value: 'nope' } })
+    expect(parse('doctor', '--skip-model-check')).toEqual({
+      ok: true,
+      value: { name: 'doctor', skipModelCheck: true, account: null },
+    })
+    expect(parse('status', '--skip-model-check')).toEqual({
+      ok: false,
+      error: { kind: 'unknownOption', value: '--skip-model-check' },
+    })
+  })
+
   it('parses whisper: the list of models by default, and download with a model name', () => {
     expect(parse('whisper')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
     expect(parse('whisper', 'models')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
@@ -190,6 +219,7 @@ describe('runCli', () => {
     whisper: handler('whisper'),
     secret: handler('secret'),
     provider: handler('provider'),
+    ollama: handler('ollama'),
   }
   const texts = getCatalog('en').cli
   const run = async (...argv: string[]) => {

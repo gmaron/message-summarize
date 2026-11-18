@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { Clock } from '../application/ports/clock.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import type { Transcriber } from '../application/ports/transcriber.js'
+import type { Result } from '../domain/result.js'
 import { type Catalog, getCatalog } from '../infrastructure/i18n/index.js'
 import type { CliVerification } from '../infrastructure/llm/index.js'
 import type { WhisperModel } from '../infrastructure/transcription/index.js'
@@ -57,6 +58,8 @@ export interface DoctorProbes {
   verifyCli(command: string, env: NodeJS.ProcessEnv): Promise<CliVerification>
   /** Whether an Ollama server answers at this base URL. */
   ollamaReachable(baseUrl: string): Promise<boolean>
+  /** The names of the models that Ollama server has (`/api/tags`, short timeout), or why they could not be read. */
+  ollamaModels(baseUrl: string): Promise<Result<string[], string>>
 }
 
 /** Everything the commands need from the outside. The composition root builds it; tests build their own. */
@@ -90,8 +93,10 @@ export interface CommandContext {
    * servers: the product only ever contacts the real hosts (RNF-01).
    */
   readonly providerBaseUrls?: { readonly anthropic?: string; readonly gemini?: string }
-  /** Replaces `fetch` for the download of whisper models, so tests never reach the network. */
+  /** Replaces `fetch` for the download of whisper models and of Ollama models, so tests never reach the network. */
   readonly fetch?: typeof fetch
+  /** Replaces the RAM of this machine (`os.totalmem()`) for `msum ollama recommend`. For tests. */
+  readonly totalMemBytes?: number
   /** Replaces the table of pinned whisper models (sizes and checksums). For tests, which cannot produce a 77 MB file. */
   readonly whisperModels?: readonly WhisperModel[]
   /** Called right after `link`, `unlink`, `retry` or `import` takes the lock of an account. For tests: they widen that window. */

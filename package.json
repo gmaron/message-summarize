@@ -17,7 +17,8 @@
     "format": "biome check --write .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "eval:ollama": "node test/eval/run.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",

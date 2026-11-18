@@ -361,6 +361,39 @@ export interface Catalog {
       readonly checksumError: string
       writeError(dir: string): string
     }
+    /** `msum ollama recommend|pull` (RF-45): a small local model chosen by RAM, and its download. */
+    readonly ollama: {
+      /** `gb` is already formatted ("16"). */
+      ramLine(gb: string): string
+      readonly candidatesHeader: string
+      /** `size` and `ram` are already formatted; `evaluation` is the text of `evaluationDone` or `evaluationNone`. */
+      candidateRow(
+        tag: string,
+        parameters: string,
+        size: string,
+        ram: string,
+        fits: boolean,
+        evaluation: string,
+      ): string
+      readonly evaluationNone: string
+      evaluationDone(date: string, validJson: string, agreement: string, passed: boolean): string
+      recommended(tag: string): string
+      /** The shipped table has no committed evaluation for the candidates that fit: the choice is a guess. */
+      readonly provisional: string
+      readonly provisionalHint: string
+      noneFits(minGb: number): string
+      nextSteps(tag: string): string
+      invalidTag(tag: string): string
+      /** Pulling needs an Ollama on this machine, unless `--allow-remote` says otherwise. */
+      remoteRefused(origin: string): string
+      pulling(tag: string, origin: string): string
+      /** One line of progress. The sizes are already formatted. */
+      progress(percent: number, received: string, total: string): string
+      status(status: string): string
+      done(tag: string): string
+      doneHint(tag: string): string
+      failed(reason: string): string
+    }
     readonly unlink: {
       confirm(id: string): string
       activeInDaemon(id: string, pid: number): string
@@ -571,6 +604,14 @@ export interface Catalog {
       /** Ollama at an address that is not this machine: the chats go to a server of the user's, but out of this computer. */
       ollamaRemote(origin: string): string
       readonly ollamaRemoteFix: string
+      /** The configured Ollama has the model (a call to the user's own server, `/api/tags`, with a short timeout). */
+      ollamaModelOk(model: string): string
+      /** Ollama answers and has no such model: the digests would fail with it. */
+      ollamaModelMissing(model: string): string
+      ollamaModelMissingFix(model: string): string
+      /** The list of models could not be read (a warning: the server answered the reachability check). */
+      ollamaModelUnknown(reason: string): string
+      readonly ollamaModelUnknownFix: string
       /** After the providers: the way to try them for real, which `doctor` never does (RNF-01). */
       readonly providerTestHint: string
       readonly providerNone: string

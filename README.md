@@ -163,6 +163,28 @@ The usual setups:
 
 Add a second one as the backup with `--backup`, for example `msum provider use ollama --backup --model <model>`.
 
+## Choosing a local model (Ollama)
+
+A small model of 3 to 8 billion parameters can summarize on your own machine. Which one is a question of RAM and of how well it does the job, so the program has a table of candidates and a way to measure them (RF-45).
+
+**The recommendation shipped today is provisional.** No candidate has been evaluated yet against the golden conversations, so `msum ollama recommend` picks the largest candidate that fits your RAM, says so plainly, and marks every candidate "not evaluated". It stops being provisional only when an evaluation that passes is committed (see below).
+
+- **`msum ollama recommend`** reads the RAM of this machine and lists the candidates (tag, parameters, download size, minimum RAM; the ones that fit are marked `*`), then recommends one and the commands to use it. It makes no network call. The table is in `src/infrastructure/llm/ollama-candidates.ts`: tags, parameters and sizes come from the pages of the Ollama library (read on 2026-11-17, listed in that file). The **minimum RAM is an estimate** (download size times 1.25 plus 3 GB), not a number Ollama publishes. The candidates are `qwen3.5:4b`, `qwen3:4b`, `qwen3:8b`, `qwen2.5:3b`, `qwen2.5:7b`, `gemma3:4b`, `gemma4:e4b`, `llama3.2:3b`, `llama3.1:8b` and `phi4-mini:3.8b`; newer tags appear in the library all the time, so check it and edit the table.
+- **`msum ollama pull <tag> [--account <id>]`** asks the Ollama configured in `provider.ollama.baseUrl` to download the model (its `/api/pull`), with a progress line and a check that Ollama finishes with `success`. It sends only the tag, never chat text, and it **only works against an Ollama on this machine** unless you add `--allow-remote` (a model is downloaded to the server that receives the request, so pulling to another computer should be a decision). Errors from the server are shown with key-shaped text removed. Then choose it with `msum provider use ollama --model <tag>` and try it with `msum provider test`.
+- **`msum doctor`** also asks your Ollama for its list of models (`/api/tags`, 3 seconds, no chat text) when Ollama is the primary, the backup or serves your "local only" chats, and fails if the configured model is not installed, with the `msum ollama pull` command to fix it. `msum doctor --skip-model-check` leaves that call out (the check that Ollama answers at all is separate and stays).
+
+### Evaluating a model
+
+`npm run eval:ollama -- --models qwen3:4b,gemma3:4b [--base-url URL] [--runs N] [--allow-remote]`
+
+The evaluation set is in `test/eval/ollama/`: **81 conversations taken from the golden files** (all made up), each with the exact transcript the summarizer receives (`transcripts.json`, produced by `test/eval/extract-cases.mjs`) and a **hand-written label** of whether the owner has to reply, with a one-line reason (`labels.json`, `doubtful` marks the ones a reader could argue). The answers of the previous tool were used only as a cross-check, never as the truth. For every model and case the script calls the real `OllamaSummarizer` with the production prompt and schema and records whether the JSON was valid, whether "needs reply" matches the label (an invalid answer counts as a mismatch), the latency and the error. It prints a table and writes `test/eval/ollama/results/<date>-<model>.json` (ids and numbers, no chat text).
+
+The labelling rule is written in `test/eval/ollama/README.md`. **Valid JSON is judged on every case; agreement is judged on the clear cases only** (not marked `doubtful`, and not the six filler cases marked `jsonOnly`, which count for valid JSON and not for agreement). The agreement on the doubtful cases and the overall one are printed and stored as separate columns, for information. Committed results files in `test/eval/ollama/results/` are not ignored: they are what promotes a candidate to evaluated.
+
+**A model passes RF-45 with 100% valid JSON and at least 90% agreement on "needs reply" (clear cases).** The script exits with 1 if a model does not pass. It refuses a `--base-url` that is not on this machine unless you pass `--allow-remote`. It needs your own Ollama running with the models already pulled; it never starts one.
+
+To record a passing model, set `evaluated: true` and `result: { date, validJsonRate, needsReplyAgreement }` on its entry in `ollama-candidates.ts` (the script prints the line) and commit it together with the results file; a test fails if a committed result says a model passed and the table does not. From then on `recommend` chooses among the models that passed and no longer calls its choice provisional.
+
 ## What the program connects to
 
 Nothing is sent anywhere except:
@@ -170,6 +192,7 @@ Nothing is sent anywhere except:
 - **WhatsApp**, through the connection of your own account (including the download of the audios you receive, when transcription is on).
 - **The LLM provider you chose**, and nothing else: with Ollama, the URL you configured; with an API provider, exactly one of `api.openai.com` (or your `provider.openai.baseUrl`), `api.anthropic.com` or `generativelanguage.googleapis.com`. **The text of the conversations that are not local only is sent there**, together with your summary prompt. Keys travel only in the request headers.
 - **With `claude-cli`, whatever Claude Code itself contacts**, which is its vendor's own hosts, per [its network documentation](https://code.claude.com/docs/en/network-config): `api.anthropic.com` (the model requests, which carry the text of the conversations that are not local only, and its own operational telemetry), `claude.ai`, `claude.com`, `platform.claude.com` and `sso.claude.com` (sign-in), and `http-intake.logs.us5.datadoghq.com` and `browser-intake-us5-datadoghq.com` (optional telemetry of the CLI, which its settings can turn off: `DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`). That traffic is the CLI's, not this program's, and the program does not pass those variables to it: set them in the settings file of Claude Code. `gemini-cli` and `codex-cli` are disabled and contact nothing. A `generic-cli` command contacts whatever it does.
+- **Your own Ollama server, when you run `msum ollama pull <tag>` or `msum doctor`:** the tag to download, or a request for its list of models, to the URL in `provider.ollama.baseUrl` and nowhere else; no chat text. The download itself is made by Ollama, not by this program.
 - **Hugging Face, only when you run `msum whisper download <name>`:** the model is fetched from the official whisper.cpp repository, `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-<name>.bin`. Hugging Face answers with a redirect to its content network: a request to that URL ends at **`us.aws.cdn.hf.co`** (checked with a `HEAD` request when this was written). The program follows redirects itself, one at a time, and only to `https` addresses on `huggingface.co` or `*.hf.co`; any other host is refused. Nothing is sent but the request for that file, and the **checksum (SHA-256) and size of every model are pinned in the program**: a file that does not match is discarded.
 
 There is no telemetry, and transcription never opens a network connection.

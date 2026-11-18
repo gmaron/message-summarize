@@ -52,7 +52,8 @@ export type Command =
   | ({ readonly name: 'daemon'; readonly retry: boolean } & AccountArg)
   | ({ readonly name: 'digest' } & DigestArgs)
   | ({ readonly name: 'status' } & AccountArg)
-  | ({ readonly name: 'doctor' } & AccountArg)
+  /** `skipModelCheck` (only present when given) leaves out the call that asks the configured Ollama for its models. */
+  | ({ readonly name: 'doctor'; readonly skipModelCheck?: true } & AccountArg)
   | ({ readonly name: 'retry' } & AccountArg)
   | ({ readonly name: 'import' } & ImportArgs)
   | { readonly name: 'accounts' }
@@ -81,6 +82,15 @@ export type Command =
       readonly action: 'test'
       readonly backup: boolean
       readonly kind: ProviderInfoKind | null
+    } & AccountArg)
+  /** `msum ollama recommend`: the local model that fits this machine's RAM (RF-45). */
+  | { readonly name: 'ollama'; readonly action: 'recommend' }
+  /** `msum ollama pull <tag>`: download a model into the configured Ollama (RF-45). */
+  | ({
+      readonly name: 'ollama'
+      readonly action: 'pull'
+      readonly tag: string
+      readonly allowRemote: boolean
     } & AccountArg)
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
@@ -123,6 +133,7 @@ const COMMANDS = [
   'whisper',
   'secret',
   'provider',
+  'ollama',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -131,8 +142,9 @@ const FLAGS: Readonly<Record<string, readonly string[]>> = {
   daemon: ['retry', 'account'],
   digest: ['dry-run', 'from', 'to', 'hours', 'account'],
   status: ['account'],
-  doctor: ['account'],
+  doctor: ['account', 'skip-model-check'],
   retry: ['account'],
+  ollama: ['account', 'allow-remote'],
   secret: ['account'],
   provider: ['account', 'model', 'backup', 'yes', 'kind', 'base-url'],
   schedule: ['account', 'time', 'days'],
@@ -160,6 +172,8 @@ const OPTIONS = {
   backup: { type: 'boolean' },
   kind: { type: 'string' },
   'base-url': { type: 'string' },
+  'skip-model-check': { type: 'boolean' },
+  'allow-remote': { type: 'boolean' },
 } as const
 
 /** The "--name" a node:util error message talks about. */
@@ -191,6 +205,7 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     command !== 'whisper' &&
     command !== 'secret' &&
     command !== 'provider' &&
+    command !== 'ollama' &&
     rest.length > 0
   ) {
     return err({ kind: 'unexpectedArgument', value: rest[0] as string })
@@ -201,14 +216,16 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       ? (FLAGS.schedule ?? []).filter(
           (flag) => flag === 'account' || (rest[0] === 'add' && ['time', 'days'].includes(flag)),
         )
-      : command === 'provider'
-        ? (FLAGS.provider ?? []).filter(
-            (flag) =>
-              flag === 'account' ||
-              (rest[0] === 'use' && ['model', 'backup', 'yes', 'base-url'].includes(flag)) ||
-              (rest[0] === 'test' && ['backup', 'kind'].includes(flag)),
-          )
-        : (FLAGS[command] ?? [])
+      : command === 'ollama'
+        ? (FLAGS.ollama ?? []).filter((flag) => rest[0] === 'pull' && ['account', 'allow-remote'].includes(flag))
+        : command === 'provider'
+          ? (FLAGS.provider ?? []).filter(
+              (flag) =>
+                flag === 'account' ||
+                (rest[0] === 'use' && ['model', 'backup', 'yes', 'base-url'].includes(flag)) ||
+                (rest[0] === 'test' && ['backup', 'kind'].includes(flag)),
+            )
+          : (FLAGS[command] ?? [])
   for (const flag of Object.keys(values)) {
     if (flag !== 'help' && !accepted.includes(flag)) return err({ kind: 'unknownOption', value: `--${flag}` })
   }
@@ -259,9 +276,16 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       return parseProvider(rest, values, account)
     case 'import':
       return parseImport(values, account)
+    case 'ollama':
+      return parseOllama(rest, values['allow-remote'] === true, account)
+    case 'doctor':
+      return ok(
+        values['skip-model-check'] === true
+          ? { name: 'doctor', skipModelCheck: true, account }
+          : { name: 'doctor', account },
+      )
     case 'link':
     case 'status':
-    case 'doctor':
     case 'retry':
       return ok({ name: command, account })
     default:
@@ -326,6 +350,20 @@ function parseProvider(
     baseUrl: values['base-url'] ?? null,
     account,
   })
+}
+
+/** `msum ollama recommend` and `msum ollama pull <tag> [--allow-remote]`. */
+function parseOllama(rest: readonly string[], allowRemote: boolean, account: string | null): Result<Command, ArgError> {
+  const [action = 'recommend', ...more] = rest
+  if (action !== 'recommend' && action !== 'pull') return err({ kind: 'unknownSubcommand', value: action })
+  if (action === 'recommend') {
+    if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
+    return ok({ name: 'ollama', action: 'recommend' })
+  }
+  const [tag, ...extra] = more
+  if (tag === undefined || tag.trim() === '') return err({ kind: 'missingValue', value: '<tag>' })
+  if (extra.length > 0) return err({ kind: 'unexpectedArgument', value: extra[0] as string })
+  return ok({ name: 'ollama', action: 'pull', tag: tag.trim(), allowRemote, account })
 }
 
 /** All the kinds `msum provider` knows, for the message that lists them. */
