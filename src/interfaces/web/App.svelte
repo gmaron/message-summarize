@@ -10,6 +10,7 @@
   import PromptDialog from './components/PromptDialog.svelte'
   import SchedulesDialog from './components/SchedulesDialog.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
+  import Wizard from './components/Wizard.svelte'
   import type { Api } from './lib/api.js'
   import type { Controller } from './lib/controller.js'
   import { errorText } from './lib/digest.js'
@@ -67,7 +68,7 @@
       <h2 id="unauthorized-title">{ui.unauthorizedTitle}</h2>
       <p class="note error">{texts.errors.unauthorized}</p>
     </section>
-  {:else if app.accounts === null}
+  {:else if app.accounts === null || app.setup === null}
     {#if app.loadError !== null}
       <section class="center">
         <p class="note error" role="alert">{ui.loadFailed} {errorText(app.loadError, texts)}</p>
@@ -76,6 +77,8 @@
     {:else}
       <p class="muted center" role="status">{ui.loading}</p>
     {/if}
+  {:else if !app.setup.completed}
+    <Wizard {controller} {api} {texts} {app} setup={app.setup} />
   {:else}
     <section aria-labelledby="accounts-title">
       <div class="row">

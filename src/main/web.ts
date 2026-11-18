@@ -1,11 +1,17 @@
 import { fileURLToPath } from 'node:url'
-import { type DigestErrorCode, getCatalog, type Language, type LinkErrorCode } from '../infrastructure/i18n/index.js'
+import {
+  type DigestErrorCode,
+  getCatalog,
+  LANGUAGES,
+  type Language,
+  type LinkErrorCode,
+} from '../infrastructure/i18n/index.js'
 import { EventBus } from '../interfaces/http/events.js'
 import { isLoopbackHost } from '../interfaces/http/hosts.js'
 import type { Route } from '../interfaces/http/router.js'
 import { createWebServer, type WebServer } from '../interfaces/http/web-server.js'
 import type { Installation } from './accounts.js'
-import type { WebConfig } from './config.js'
+import { readConfigObject, type WebConfig } from './config.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
 import type { LogStore } from './log-store.js'
@@ -18,9 +24,10 @@ import { digestRoutes } from './web-digest.js'
 import { historyRoutes } from './web-history.js'
 import { logRoutes } from './web-logs.js'
 import { promptRoutes } from './web-prompt.js'
-import { accountRoutes } from './web-routes.js'
+import { accountCreator, accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
 import { settingsRoutes } from './web-settings.js'
+import { setupRoutes } from './web-setup.js'
 import { ensureWebToken } from './web-token.js'
 
 /**
@@ -123,15 +130,27 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       publishing = false
     }
   }
+  const createAccount = accountCreator(source)
   const routes: Route[] = [
-    // What the page needs before it can draw anything: the language of the installation.
-    { method: 'GET', path: '/api/info', handler: () => ({ body: { language: options.language } }) },
+    // What the page needs before it can draw anything: the language of the installation. Read from the file each time
+    // (the setup wizard changes it); the one the daemon started with when the file cannot say.
+    {
+      method: 'GET',
+      path: '/api/info',
+      handler: async () => {
+        const root = await readConfigObject(ctx.layout.configFile)
+        const written = root.ok ? root.value.language : undefined
+        const language = (LANGUAGES as readonly unknown[]).includes(written) ? written : options.language
+        return { body: { language } }
+      },
+    },
     {
       method: 'GET',
       path: '/api/accounts',
       handler: async () => ({ body: { accounts: await describeAccounts(source) } }),
     },
-    ...accountRoutes(source),
+    ...accountRoutes(source, createAccount),
+    ...setupRoutes({ ...source, create: createAccount, onChanged: () => void publishAccounts() }),
     ...scheduleRoutes(source, () => void publishAccounts()),
     ...settingsRoutes(source, () => void publishAccounts()),
     ...promptRoutes(source, () => void publishAccounts()),

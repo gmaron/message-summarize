@@ -9,10 +9,12 @@ import type {
   MarksResult,
   PreviewView,
   PromptView,
+  ProviderTestResult,
   SchedulesView,
   ScheduleView,
   SettingsIssue,
   SettingsView,
+  SetupView,
 } from './types.js'
 
 /** What the page needs of a response: the browser's `fetch` gives more. */
@@ -44,6 +46,8 @@ export class ApiError extends Error {
     readonly variables?: readonly string[],
     /** For a 422 `promptTooLong`: the limit. */
     readonly maxLength?: number,
+    /** For a 409 `consentRequired`: the provider that needs the consent. */
+    readonly provider?: string,
   ) {
     super(code)
     this.name = 'ApiError'
@@ -75,6 +79,7 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       messages?: unknown
       variables?: unknown
       maxLength?: unknown
+      provider?: unknown
     }
     if (!reply.ok) {
       if (reply.status === 401) onUnauthorized()
@@ -86,6 +91,7 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
         typeof data.messages === 'number' ? data.messages : undefined,
         Array.isArray(data.variables) ? data.variables.filter((v): v is string => typeof v === 'string') : undefined,
         typeof data.maxLength === 'number' ? data.maxLength : undefined,
+        typeof data.provider === 'string' ? data.provider : undefined,
       )
     }
     return data as T
@@ -93,6 +99,16 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
   const account = (id: string) => `/api/accounts/${enc(id)}`
   return {
     info: () => request<{ language?: unknown }>('GET', '/api/info'),
+    setup: () => request<SetupView>('GET', '/api/setup'),
+    /** Saves the step the wizard is on and moves to the next (`{ from, ...data }`), or goes back (`{ goto }`). */
+    saveSetup: (body: Record<string, unknown>) => request<SetupView>('PUT', '/api/setup', body),
+    skipSetup: () => request<SetupView>('POST', '/api/setup/skip'),
+    /** The real call of "Test connection": only on a click; `consent` is the ticked box for an external provider. */
+    testProvider: (body: { provider: string; options: Record<string, string>; consent?: boolean }) =>
+      request<ProviderTestResult>('POST', '/api/setup/test-provider', body),
+    /** Records the consent of an account to an external provider (RNF-02). */
+    recordConsent: (id: string, provider: string) =>
+      request<{ provider: string }>('POST', `/api/accounts/${enc(id)}/consents`, { provider }),
     accounts: async () => (await request<{ accounts: AccountView[] }>('GET', '/api/accounts')).accounts,
     createAccount: (id: string) => request<{ id: string }>('POST', '/api/accounts', { id }),
     startLink: (id: string) => request<{ state: string }>('POST', `${account(id)}/link`),

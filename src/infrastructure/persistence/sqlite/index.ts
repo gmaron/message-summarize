@@ -28,5 +28,6 @@ export {
   SqliteDigestRuns,
 } from './runs.js'
 export { SqliteScheduleRepository, type StoredSchedule } from './schedule-repository.js'
+export { type ConsentRecord, type SetupRecord, SqliteSetupRepository } from './setup-repository.js'
 export { SqliteDigestSource } from './source.js'
 export { type OutboxEntry, SqliteDigestStore } from './store.js'

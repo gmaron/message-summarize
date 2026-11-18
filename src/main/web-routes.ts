@@ -22,14 +22,45 @@ export function knownAccount(source: AccountRoutesSource, params: Readonly<Recor
 }
 
 /**
+ * The creation of an account as the web does it, shared by `POST /api/accounts` and the setup wizard: the same checks, in
+ * the same order, and the same creation `msum link` does for a new account (`Installation.createAccount`, after the
+ * same check of the path). Two requests for the same id never both get to create it. Throws an `HttpError`.
+ */
+export function accountCreator(source: AccountRoutesSource): (id: string) => Promise<void> {
+  const { host, installation } = source
+  /** Ids being created right now. */
+  const creating = new Set<string>()
+  return async (id) => {
+    if (!isValidAccountId(id)) throw new HttpError(400, 'invalidAccountId')
+    if (host.isStopping) throw new HttpError(503, 'unavailable')
+    // An account this daemon does not run could not be linked (its link would be a 404): not created.
+    if (host.onlyAccountId !== null && host.onlyAccountId !== id) throw new HttpError(422, 'restricted')
+    if (installation.accounts().some((row) => row.id === id) || creating.has(id)) {
+      throw new HttpError(409, 'accountExists')
+    }
+    creating.add(id)
+    try {
+      if ((await unsafeAccountPath(accountLayoutOf(source.ctx.layout, id))) !== null) {
+        throw new HttpError(409, 'accountExists')
+      }
+      await installation.createAccount(id)
+    } finally {
+      creating.delete(id)
+    }
+    void host.reconcile()
+  }
+}
+
+/**
  * The routes that change accounts (RF-01, RF-03, RF-04): create one, link it by scanning a QR (the daemon does the
  * linking, see `DaemonHost.startLink`), cancel that, and clear a block that retrying fixes. They answer with codes the
  * web translates; none of them returns a number, a name or a message.
  */
-export function accountRoutes(source: AccountRoutesSource): Route[] {
-  const { host, installation } = source
-  /** Ids being created right now: two requests for the same id never both get to create it. */
-  const creating = new Set<string>()
+export function accountRoutes(
+  source: AccountRoutesSource,
+  create: (id: string) => Promise<void> = accountCreator(source),
+): Route[] {
+  const { host } = source
   return [
     {
       // The same creation `msum link` does for a new account (`Installation.createAccount`, after the same check of the
@@ -43,23 +74,7 @@ export function accountRoutes(source: AccountRoutesSource): Route[] {
         const given = (body as { id?: unknown } | undefined)?.id
         if (given !== undefined && typeof given !== 'string') throw new HttpError(400, 'invalidRequest')
         const id = given ?? DEFAULT_ACCOUNT_ID
-        if (!isValidAccountId(id)) throw new HttpError(400, 'invalidAccountId')
-        if (host.isStopping) throw new HttpError(503, 'unavailable')
-        // An account this daemon does not run could not be linked (its link would be a 404): not created.
-        if (host.onlyAccountId !== null && host.onlyAccountId !== id) throw new HttpError(422, 'restricted')
-        if (installation.accounts().some((row) => row.id === id) || creating.has(id)) {
-          throw new HttpError(409, 'accountExists')
-        }
-        creating.add(id)
-        try {
-          if ((await unsafeAccountPath(accountLayoutOf(source.ctx.layout, id))) !== null) {
-            throw new HttpError(409, 'accountExists')
-          }
-          await installation.createAccount(id)
-        } finally {
-          creating.delete(id)
-        }
-        void host.reconcile()
+        await create(id)
         return { status: 201, body: { id } }
       },
     },

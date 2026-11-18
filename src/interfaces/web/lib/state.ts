@@ -7,6 +7,7 @@ import type {
   LinkErrorCode,
   LinkPhase,
   PreviewView,
+  SetupView,
   SyncProgress,
 } from './types.js'
 
@@ -44,6 +45,8 @@ export interface AppState {
   readonly links: Readonly<Record<string, LinkUi>>
   readonly digests: Readonly<Record<string, DigestUi>>
   readonly previews: Readonly<Record<string, PreviewUi>>
+  /** Where the first-use wizard is (RF-70). Null until the daemon says; `completed` hides the wizard. */
+  readonly setup: SetupView | null
   readonly connection: 'connecting' | 'online' | 'offline'
   /** The daemon refused the session: the page asks to open it again with `msum open`. */
   readonly unauthorized: boolean
@@ -57,6 +60,7 @@ export const initialState = (language: Language): AppState => ({
   links: {},
   digests: {},
   previews: {},
+  setup: null,
   connection: 'connecting',
   unauthorized: false,
   loadError: null,

@@ -51,6 +51,32 @@ CREATE INDEX schedules_by_account ON schedules (account_id, id);
 ALTER TABLE accounts ADD COLUMN schedules_imported INTEGER NOT NULL DEFAULT 0 CHECK (schedules_imported IN (0, 1));
 `,
   },
+  {
+    version: 3,
+    description: 'First-use setup state and consent to external providers',
+    sql: `
+-- The setup wizard (RF-70): one row for the whole installation. It says which step the user is on (so a wizard closed
+-- halfway is resumed), which account it is setting up, and when it was completed (or skipped, or found unnecessary
+-- because the installation already had a linked account). Without a row the wizard has not started.
+CREATE TABLE setup (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  step         TEXT NOT NULL,
+  account_id   TEXT,
+  completed_at TEXT,
+  updated_at   TEXT NOT NULL
+);
+
+-- The consent to send the text of the chats to an external provider (RNF-02): who agreed (account), to what
+-- (provider), which version of the disclosure text they saw, and when. Deleting an account deletes its consents.
+CREATE TABLE consents (
+  account_id   TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  provider     TEXT NOT NULL,
+  text_version INTEGER NOT NULL,
+  given_at     TEXT NOT NULL,
+  PRIMARY KEY (account_id, provider, text_version)
+);
+`,
+  },
 ]
 
 /** Opens (creating it when missing) the installation database: 0600, WAL, migrated. */

@@ -13,6 +13,7 @@ import {
   withLink,
   withPreview,
 } from './state.js'
+import type { Language, SetupView } from './types.js'
 
 export interface ControllerOptions {
   readonly api: Api
@@ -23,6 +24,18 @@ export interface ControllerOptions {
 }
 
 export type AddAccountResult = { readonly ok: true } | { readonly ok: false; readonly code: string }
+
+/** What the page assumes when the daemon cannot say where the wizard is: it is over, so the panel opens. */
+const FALLBACK_SETUP: SetupView = {
+  completed: true,
+  step: 'language',
+  account: null,
+  linked: false,
+  language: 'en',
+  consents: [],
+}
+
+export type SetupResult = { readonly ok: true } | { readonly ok: false; readonly error: ApiError | null }
 
 const codeOf = (error: unknown): string => (error instanceof ApiError ? error.code : 'internal')
 
@@ -66,6 +79,17 @@ export function createController(options: ControllerOptions) {
     } catch (error) {
       failed(error)
       update((s) => (s.accounts === null ? { ...s, loadError: codeOf(error) } : s))
+    }
+  }
+
+  /** The wizard's state. A daemon that cannot say never keeps the panel away: the setup counts as over. */
+  const loadSetup = async (): Promise<void> => {
+    try {
+      const setup = await api.setup()
+      update((s) => ({ ...s, setup }))
+    } catch (error) {
+      failed(error)
+      update((s) => (s.setup === null ? { ...s, setup: { ...FALLBACK_SETUP, language: s.language } } : s))
     }
   }
 
@@ -123,7 +147,7 @@ export function createController(options: ControllerOptions) {
       } catch (error) {
         failed(error)
       }
-      await refreshAccounts()
+      await Promise.all([refreshAccounts(), loadSetup()])
       stream = connectEvents(
         options.createEventSource,
         {
@@ -166,7 +190,38 @@ export function createController(options: ControllerOptions) {
     },
 
     refreshAccounts,
+    loadSetup,
     restoreLink,
+
+    /** The page's language changes at once (the wizard's first step shows it live); the daemon is told when the step is saved. */
+    setLanguage(language: Language): void {
+      update((s) => (s.language === language ? s : { ...s, language }))
+    },
+
+    /** Saves a step of the wizard (or goes back) and keeps the answer. On a refusal the error is handed back to be shown. */
+    async saveSetup(body: Record<string, unknown>): Promise<SetupResult> {
+      try {
+        const setup = await api.saveSetup(body)
+        update((s) => ({ ...s, setup }))
+        // A step may have created the account or changed what a card shows.
+        if (body.from === 'name' || body.from === 'provider') await refreshAccounts()
+        return { ok: true }
+      } catch (error) {
+        failed(error)
+        return { ok: false, error: error instanceof ApiError ? error : null }
+      }
+    },
+
+    async skipSetup(): Promise<SetupResult> {
+      try {
+        const setup = await api.skipSetup()
+        update((s) => ({ ...s, setup }))
+        return { ok: true }
+      } catch (error) {
+        failed(error)
+        return { ok: false, error: error instanceof ApiError ? error : null }
+      }
+    },
     loadPreview,
 
     /** Creates the account and starts linking it. */

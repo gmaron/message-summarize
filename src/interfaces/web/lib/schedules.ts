@@ -1,5 +1,7 @@
 import { makeSchedule, type ScheduleIssue } from '../../../domain/schedule.js'
+import type { WebTexts } from '../../../infrastructure/i18n/catalog.js'
 import { ApiError } from './api.js'
+import { weekdayName } from './format.js'
 
 /** Monday first, as the page shows the week; the API numbers the days from Sunday (0). */
 export const UI_DAY_ORDER: readonly number[] = [1, 2, 3, 4, 5, 6, 0]
@@ -48,4 +50,13 @@ export function presetOf(days: readonly number[]): 'everyDay' | 'weekdays' | nul
   if (sameDays(days, EVERY_DAY)) return 'everyDay'
   if (sameDays(days, WEEKDAYS)) return 'weekdays'
   return null
+}
+
+/** The days of a schedule as a person reads them: "Every day", "Weekdays" or the short names in the page's order. */
+export function dayLabel(days: readonly number[], texts: WebTexts): string {
+  const preset = presetOf(days)
+  if (preset !== null) return texts.ui.schedules[preset]
+  return inUiOrder(days)
+    .map((day) => weekdayName(day, texts.locale, 'short'))
+    .join(', ')
 }

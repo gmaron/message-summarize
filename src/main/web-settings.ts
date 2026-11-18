@@ -1,3 +1,4 @@
+import { CONSENT_TEXT_VERSION, consentKeyFor } from '../domain/setup.js'
 import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
 import { HttpError, type Route } from '../interfaces/http/router.js'
 import {
@@ -210,6 +211,33 @@ export function settingsRoutes(source: SettingsRoutesSource, onChanged: () => vo
         const patch = readPatch(body)
         const account = accountLayoutOf(ctx.layout, id)
         if ((await unsafeAccountPath(account)) !== null) throw new HttpError(500, 'internal')
+        // RNF-02: a recipient that gets the text of the chats out of this machine (Claude Code, or an Ollama server that is
+        // not on this machine) is chosen here only with the consent of the account recorded; the page asks and retries.
+        // What the file already holds (set by hand or by the CLI) is not touched: only a change of `provider.primary`,
+        // `provider.backup`, or of the address of an Ollama that is one of them. An invalid change is left to the write
+        // below, which says why.
+        const preview = await updateAccountConfig({
+          rootFile: ctx.layout.configFile,
+          accountFile: account.configFile,
+          patch,
+          dryRun: true,
+        })
+        if (preview.ok) {
+          const { primary, backup, ollama } = preview.value.provider
+          const keys = new Set<string | null>()
+          for (const option of ['provider.primary', 'provider.backup']) {
+            const chosen = patch[option]
+            if (typeof chosen === 'string') keys.add(consentKeyFor(chosen, ollama.baseUrl))
+          }
+          if (typeof patch['provider.ollama.baseUrl'] === 'string' && (primary === 'ollama' || backup === 'ollama')) {
+            keys.add(consentKeyFor('ollama', ollama.baseUrl))
+          }
+          for (const key of keys) {
+            if (key !== null && !source.installation.setup.hasConsent(id, key, CONSENT_TEXT_VERSION)) {
+              return { status: 409, body: { error: 'consentRequired', provider: key } }
+            }
+          }
+        }
         const written = await updateAccountConfig({
           rootFile: ctx.layout.configFile,
           accountFile: account.configFile,

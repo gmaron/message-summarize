@@ -51,6 +51,8 @@ export interface WebOverrides {
   readonly heartbeatMs?: number
   /** The least time between two `log` events of the web. For tests. */
   readonly logEventMs?: number
+  /** The most a "test the connection" call of the setup wizard waits, at most its usual limit. For tests. */
+  readonly providerTestTimeoutMs?: number
 }
 
 /** Everything the commands need from the outside. The composition root builds it; tests build their own. */

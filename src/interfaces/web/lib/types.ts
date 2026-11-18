@@ -1,12 +1,40 @@
+import type { SetupStep } from '../../../domain/setup.js'
 import type {
   BlockedReason,
   DigestErrorCode,
   Language,
   LinkErrorCode,
+  ProviderTestErrorCode,
   WebConfigIssueCode,
 } from '../../../infrastructure/i18n/index.js'
 
-export type { BlockedReason, DigestErrorCode, Language, LinkErrorCode, WebConfigIssueCode }
+export type {
+  BlockedReason,
+  DigestErrorCode,
+  Language,
+  LinkErrorCode,
+  ProviderTestErrorCode,
+  SetupStep,
+  WebConfigIssueCode,
+}
+
+/** `GET /api/setup` (RF-70): where the first-use wizard is. */
+export interface SetupView {
+  readonly completed: boolean
+  readonly step: SetupStep
+  /** The account the wizard is setting up, once its "name" step made it. */
+  readonly account: string | null
+  /** The account has a registered session. */
+  readonly linked: boolean
+  readonly language: Language
+  /** The external providers the account agreed to (RNF-02). */
+  readonly consents: readonly string[]
+}
+
+/** The answer of `POST /api/setup/test-provider`. */
+export type ProviderTestResult =
+  | { readonly ok: true; readonly ms: number }
+  | { readonly ok: false; readonly error: ProviderTestErrorCode }
 
 /** What the daemon says about the connection of an account. */
 export type UnitState = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking'

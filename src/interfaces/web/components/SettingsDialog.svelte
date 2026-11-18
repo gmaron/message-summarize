@@ -4,6 +4,7 @@
   import { type Api, ApiError } from '../lib/api.js'
   import { errorText } from '../lib/digest.js'
   import { fmt } from '../lib/i18n.js'
+  import { hostOf, needsConsent } from '../lib/setup.js'
   import {
     buildPatch,
     type Draft,
@@ -20,6 +21,7 @@
     timeZoneChoices,
   } from '../lib/settings.js'
   import type { AccountView, SettingsIssue, SettingsView } from '../lib/types.js'
+  import Disclosure from './Disclosure.svelte'
   import Modal from './Modal.svelte'
 
   let {
@@ -44,6 +46,10 @@
 
   const grouped = $derived(groupIssues(issues))
 
+  // RNF-02: choosing a provider that sends the text of the chats out of this machine asks for the agreement first. The
+  // daemon answers 409 consentRequired; the change waits here until the box is ticked, then it is recorded and retried.
+  let consent: { key: string; patch: Record<string, unknown>; agreed: boolean } | null = $state.raw(null)
+
   function show(view: SettingsView) {
     loaded = view
     draft = { ...draftOf(view) }
@@ -64,12 +70,35 @@
     untrack(() => load(id))
   })
 
+  async function send(patch: Record<string, unknown>) {
+    saving = true
+    try {
+      show(await api.saveSettings(accountId, patch))
+      saved = true
+      consent = null
+    } catch (error) {
+      const found = issuesOf(error)
+      if (found !== null) issues = found
+      else if (
+        error instanceof ApiError &&
+        error.code === 'consentRequired' &&
+        error.provider !== undefined &&
+        needsConsent(error.provider)
+      ) {
+        consent = { key: error.provider, patch, agreed: false }
+      } else failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
+    } finally {
+      saving = false
+    }
+  }
+
   async function save(event: SubmitEvent) {
     event.preventDefault()
     if (loaded === null) return
     failure = null
     saved = false
     issues = []
+    consent = null
     const built = buildPatch(loaded, draft as Draft)
     if (!built.ok) {
       issues = [built.issue]
@@ -79,17 +108,29 @@
       failure = t.noChanges
       return
     }
+    await send(built.patch)
+  }
+
+  async function agree() {
+    if (consent === null || !consent.agreed) return
+    const { key, patch } = consent
     saving = true
+    failure = null
     try {
-      show(await api.saveSettings(accountId, built.patch))
-      saved = true
+      await api.recordConsent(accountId, key)
     } catch (error) {
-      const found = issuesOf(error)
-      if (found !== null) issues = found
-      else failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
-    } finally {
+      failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
       saving = false
+      return
     }
+    saving = false
+    await send(patch)
+  }
+
+  /** The host an Ollama that is not on this machine is reached at: the address typed, or the one in force. */
+  function consentHost(): string | undefined {
+    const typed = String(draft['provider.ollama.baseUrl'] ?? '').trim()
+    return hostOf(typed === '' ? (loaded?.values.provider.ollama.baseUrl ?? '') : typed) ?? undefined
   }
 
   const sourceOf = (option: string): string | null => {
@@ -191,6 +232,27 @@
       {:else if issues.length > 0}
         <p class="note error" role="alert">{t.issuesHeading}</p>
       {/if}
+      {#if consent !== null}
+        <div class="consent note warn" role="alert">
+          <h3>{texts.ui.disclosure.consentTitle}</h3>
+          <Disclosure {texts} provider={consent.key === 'claude-cli' ? 'claude-cli' : 'ollama'} host={consent.key === 'claude-cli' ? undefined : consentHost()} />
+          <label class="check">
+            <input
+              type="checkbox"
+              checked={consent.agreed}
+              onchange={(event) => {
+                if (consent !== null) consent = { ...consent, agreed: event.currentTarget.checked }
+              }}
+            />
+            <span>{fmt(texts.ui.disclosure.consentCheckbox, { provider: consent.key === 'claude-cli' ? providerName('claude-cli') : (consentHost() ?? providerName('ollama')) })}</span>
+          </label>
+          <div>
+            <button type="button" class="primary" disabled={saving || !consent.agreed} onclick={agree}>
+              {saving ? texts.ui.disclosure.consentSaving : texts.ui.disclosure.consentAgree}
+            </button>
+          </div>
+        </div>
+      {/if}
       {#if failure !== null}
         <p class="note warn" role="alert">{failure}</p>
       {/if}
@@ -265,5 +327,14 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+
+  .consent {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .consent h3 {
+    font-size: 1rem;
   }
 </style>

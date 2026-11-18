@@ -3,7 +3,16 @@ import { open, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { exactIdOf, hasIdPattern, idPattern } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
-import { type AppConfig, type ConfigIssue, isObject, type Obj, readConfigObject, validateEffective } from './config.js'
+import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
+import {
+  type AppConfig,
+  type ConfigIssue,
+  defaultConfigJson,
+  isObject,
+  type Obj,
+  readConfigObject,
+  validateEffective,
+} from './config.js'
 
 /**
  * A change to an account's config.json: option (a dotted path such as `unreadOnly` or `provider.claudeCli.model`) to
@@ -150,7 +159,7 @@ export function editAccountPrivacyLists(
 }
 
 /** How the file looks (modification time and size), or "missing". */
-async function fingerprint(file: string): Promise<string> {
+export async function fingerprint(file: string): Promise<string> {
   try {
     const info = await stat(file)
     return `${info.mtimeMs}:${info.size}`
@@ -221,4 +230,70 @@ async function write(options: UpdateAccountConfigOptions): Promise<UpdateAccount
     return ok(effective.value)
   }
   return err([{ option: '(config)', code: 'concurrentEdit', file: accountFile }])
+}
+
+export interface UpdateInstallationLanguageOptions {
+  /** The installation's config.json. It does not have to exist: then it is created as `msum init` would. */
+  readonly rootFile: string
+  readonly language: Language
+  /** The default of `timezone` (the system's). */
+  readonly fallbackTimezone?: string
+}
+
+export type UpdateInstallationLanguageResult = Result<Language, ConfigIssue[]>
+
+/**
+ * Sets `language` in the INSTALLATION's config.json, and nothing else: the one write of the web to that file (the setup
+ * wizard, RF-70, where there is no other account yet to hold the choice, and the language of the installation drives the
+ * texts of the web and of the command line). Every other key is kept as it is. A file that is not valid JSON is not
+ * rewritten (it was edited by hand). It is validated and written like an account's file: atomically, mode 0600, with
+ * the check for a change made meanwhile, and serialized with the other writes to the same file.
+ */
+export function updateInstallationLanguage(
+  options: UpdateInstallationLanguageOptions,
+): Promise<UpdateInstallationLanguageResult> {
+  return serialized(options.rootFile, () => writeInstallationLanguage(options))
+}
+
+async function writeInstallationLanguage(
+  options: UpdateInstallationLanguageOptions,
+): Promise<UpdateInstallationLanguageResult> {
+  const { rootFile, language, fallbackTimezone } = options
+  if (!(LANGUAGES as readonly string[]).includes(language)) {
+    return err([{ option: 'language', code: 'notOneOf', allowed: LANGUAGES }])
+  }
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    const seen = await fingerprint(rootFile)
+    const current = await readConfigObject(rootFile)
+    if (!current.ok) return err([current.error])
+    const base: Obj =
+      seen === 'missing' ? (JSON.parse(defaultConfigJson(fallbackTimezone)) as Obj) : structuredClone(current.value)
+    const next: Obj = { ...base, language }
+    // Only what the language change brings is refused: the file may be valid just once merged with the accounts' files, or
+    // have an old problem the user has not fixed, and that must not block the first step.
+    const effective = validateEffective(next, {}, rootFile, null, fallbackTimezone)
+    if (!effective.ok) {
+      const before = validateEffective(base, {}, rootFile, null, fallbackTimezone)
+      const known = new Set(before.ok ? [] : before.error.map((issue) => `${issue.option}:${issue.code}`))
+      const added = effective.error.filter(
+        (issue) => issue.option === 'language' || !known.has(`${issue.option}:${issue.code}`),
+      )
+      if (added.length > 0) return err(added)
+    }
+    const temporary = join(dirname(rootFile), `.config.json.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)
+    try {
+      await writeDurably(temporary, `${JSON.stringify(next, null, 2)}\n`)
+      if ((await fingerprint(rootFile)) !== seen) {
+        await rm(temporary, { force: true })
+        continue
+      }
+      await rename(temporary, rootFile)
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined)
+      throw error
+    }
+    await syncDirectory(dirname(rootFile))
+    return ok(language)
+  }
+  return err([{ option: '(config)', code: 'concurrentEdit', file: rootFile }])
 }

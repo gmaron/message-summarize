@@ -1,6 +1,7 @@
 import type { MessageKind } from '../../domain/model.js'
 import type { ScheduleIssue } from '../../domain/schedule.js'
 import type { SettingsIssueCode } from '../../domain/settings.js'
+import type { SetupStep } from '../../domain/setup.js'
 import type { WindowError } from '../../domain/window.js'
 
 export type Language = 'es' | 'en'
@@ -51,6 +52,11 @@ export type WebErrorCode =
   | 'blankPrompt'
   | 'promptTooLong'
   | 'unknownVariable'
+  | 'consentRequired'
+  | 'notLinked'
+  | 'testRunning'
+  | 'setupCompleted'
+  | 'wrongStep'
 
 /** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
 export type WebConfigIssueCode =
@@ -65,6 +71,9 @@ export type WebConfigIssueCode =
   | 'invalidUrl'
   | 'concurrentEdit'
   | 'installationOnly'
+
+/** Why the test of a provider failed (RF-41): codes, never the text the provider answered. */
+export type ProviderTestErrorCode = 'notFound' | 'timeout' | 'invalidSummary' | 'unreachable' | 'failed'
 
 /** Why a digest asked from the web (or a scheduled one) produced nothing: codes, never text (`digest` and `preview` events). */
 export type DigestErrorCode = 'noProvider' | 'promptFile' | 'concurrentRun' | 'invalidWindow' | 'failed'
@@ -772,6 +781,112 @@ export interface WebTexts {
       readonly copy: string
       readonly copied: string
       readonly generate: string
+    }
+    /** What each provider costs and does with the text of the chats (RF-41, RNF-02): shown before it is used. */
+    readonly disclosure: {
+      readonly costLabel: string
+      readonly leavesLabel: string
+      readonly whoLabel: string
+      readonly whatLabel: string
+      readonly providers: Readonly<
+        Record<
+          'claude-cli' | 'ollama',
+          {
+            readonly name: string
+            readonly cost: string
+            readonly leaves: string
+            readonly who: string
+            readonly what: string
+            /** Only for the providers that run a program with tools (RF-49). */
+            readonly tools?: string
+          }
+        >
+      >
+      /** An Ollama server that is not on this machine: `{host}` in `leaves` and `who`. */
+      readonly ollamaRemote: {
+        readonly cost: string
+        readonly leaves: string
+        readonly who: string
+        readonly what: string
+        /** The conversations marked "local only" (RF-43) go to that host too. */
+        readonly localOnly: string
+      }
+      readonly consentTitle: string
+      /** `{provider}`: the name of the external provider. */
+      readonly consentCheckbox: string
+      readonly consentNeeded: string
+      readonly consentAgree: string
+      readonly consentSaving: string
+      readonly test: {
+        readonly button: string
+        readonly running: string
+        readonly note: string
+        /** `{ms}`. */
+        readonly ok: string
+        readonly needsConsent: string
+        readonly errors: Readonly<Record<ProviderTestErrorCode, string>>
+      }
+    }
+    /** The first-use wizard (RF-70). */
+    readonly wizard: {
+      readonly title: string
+      /** `{n}`, `{total}`. */
+      readonly stepOf: string
+      readonly stepsLabel: string
+      readonly steps: Readonly<Record<SetupStep, string>>
+      readonly back: string
+      readonly next: string
+      readonly saving: string
+      readonly skip: string
+      readonly skipConfirm: string
+      readonly skipYes: string
+      readonly skipNo: string
+      readonly language: { readonly heading: string; readonly intro: string; readonly label: string }
+      readonly name: {
+        readonly heading: string
+        readonly intro: string
+        readonly ownerLabel: string
+        readonly ownerHint: string
+        readonly ownerBlank: string
+        readonly ownerTooLong: string
+        readonly accountLabel: string
+        readonly accountHint: string
+        readonly accountLocked: string
+      }
+      readonly provider: {
+        readonly heading: string
+        readonly intro: string
+        readonly laterNote: string
+        readonly modelLabel: string
+        readonly baseUrlLabel: string
+        readonly ollamaModelLabel: string
+        readonly ollamaModelHint: string
+        readonly remoteOllama: string
+      }
+      readonly transcription: { readonly heading: string; readonly text: string }
+      readonly link: {
+        readonly heading: string
+        readonly intro: string
+        readonly start: string
+        readonly needsLink: string
+      }
+      readonly schedule: {
+        readonly heading: string
+        readonly intro: string
+        /** `{timezone}`. */
+        readonly timezone: string
+        readonly suggest: string
+        readonly edit: string
+        readonly current: string
+        readonly none: string
+        readonly skipNote: string
+      }
+      readonly done: {
+        readonly heading: string
+        readonly text: string
+        readonly noSchedule: string
+        readonly finish: string
+      }
     }
   }
 }

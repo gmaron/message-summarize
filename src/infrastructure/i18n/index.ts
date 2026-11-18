@@ -11,6 +11,7 @@ export type {
   ImportSummary,
   Language,
   LinkErrorCode,
+  ProviderTestErrorCode,
   SettingsFieldKey,
   WebConfigIssueCode,
   WebErrorCode,
