@@ -729,6 +729,8 @@ describe('classifyFailure', () => {
     ['openai', 'openai answered 404: The model `x` does not exist', 'unknownModel'],
     ['ollama', 'ollama answered 404: model "x" not found', 'unknownModel'],
     ['openai', 'openai answered 429: slow (gave up after 3 retries)', 'rateLimit'],
+    ['openai', 'openai answered 429: You have no credits remaining. Add credits to continue', 'noCredit'],
+    ['openai', 'openai answered 429: {"error":{"code":"insufficient_quota"}}', 'noCredit'],
     ['anthropic', 'anthropic answered 529: overloaded', 'rateLimit'],
     ['openai', 'openai timed out after 3s', 'timeout'],
     ['openai', 'openai: the total time limit of the call was reached', 'timeout'],

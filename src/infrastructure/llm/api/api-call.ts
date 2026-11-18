@@ -80,6 +80,8 @@ export function withSchemaInPrompt(system: string): string {
 }
 
 const RETRYABLE_STATUS = new Set([429, 503, 529])
+/** Words of a 429 that means "out of credit or over a spend limit", not "too many requests right now". */
+export const OUT_OF_CREDIT = /insufficient_quota|no credits|credit balance|billing|spend(ing)? limit/i
 
 /** The most of an answer (success or error) that is read: a summary is a few KB, so anything near this is not one. */
 export const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -173,6 +175,9 @@ export async function runApiCall(call: ApiCall): Promise<Result<unknown, string>
         if (!response.ok) {
           const reason = `${call.provider} answered ${response.status}: ${errorText(text)}`
           if (!RETRYABLE_STATUS.has(response.status)) return { kind: 'fail', reason }
+          // A 429 for an account with no credit (OpenAI `insufficient_quota`, a billing or spend limit) is not a rate
+          // limit: waiting does not fix it, so it is not retried.
+          if (response.status === 429 && OUT_OF_CREDIT.test(text)) return { kind: 'fail', reason }
           const hintMs = retryAfterMs(response.headers) ?? call.retryDelayFromBody?.(text) ?? undefined
           return { kind: 'retry', reason, hintMs }
         }

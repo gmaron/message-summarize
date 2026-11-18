@@ -302,6 +302,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
             'The provider does not know that model: check the name in provider.<name>.model (model names change often).',
           rateLimit:
             'The provider answered "too many requests" and the wait was over the budget. Try again later; a free plan has low limits.',
+          noCredit:
+            'The API account has no credit left or reached its spending limit. Add credit in the provider console (an API account is billed separately from a chat subscription); waiting does not help.',
           timeout: 'The provider did not answer in time. Check the connection, or raise provider.<name>.timeoutMs.',
           disabled: 'This provider is disabled: nothing was run. See "msum provider ls" and the README.',
           verifyFailed:

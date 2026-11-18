@@ -305,6 +305,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
             'El proveedor no conoce ese modelo: revisá el nombre en provider.<nombre>.model (los nombres de los modelos cambian seguido).',
           rateLimit:
             'El proveedor respondió "demasiados pedidos" y la espera pasaba el presupuesto. Probá más tarde; un plan gratuito tiene límites bajos.',
+          noCredit:
+            'La cuenta de API no tiene crédito o llegó a su límite de gasto. Cargá crédito en la consola del proveedor (la API se paga aparte de la suscripción del chat); esperar no lo arregla.',
           timeout: 'El proveedor no respondió a tiempo. Revisá la conexión, o subí provider.<nombre>.timeoutMs.',
           disabled: 'Este proveedor está deshabilitado: no se ejecutó nada. Mirá "msum provider ls" y el README.',
           verifyFailed:

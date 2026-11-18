@@ -259,6 +259,7 @@ export interface Catalog {
           readonly authFailed: string
           readonly unknownModel: string
           readonly rateLimit: string
+          readonly noCredit: string
           readonly timeout: string
           readonly disabled: string
           readonly verifyFailed: string

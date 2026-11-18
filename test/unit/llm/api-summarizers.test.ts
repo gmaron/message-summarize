@@ -373,6 +373,20 @@ describe.each(providers)('$name: rate limits (RF-46)', (provider) => {
     if (!result.ok) expect(result.error).toContain('429')
     expect(server.seen).toHaveLength(4)
   })
+
+  it('does not retry a 429 that means the account has no credit: waiting does not fix it', async () => {
+    const server = await serve()
+    const clock = recordingClock()
+    server.script({
+      status: 429,
+      body: '{"error":{"message":"You have no credits remaining.","code":"insufficient_quota"}}',
+    })
+    const result = await provider.make(server, clock, KEY).summarize(REQUEST)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('429')
+    expect(server.seen).toHaveLength(1)
+    expect(clock.waits).toEqual([])
+  })
 })
 
 describe('where each provider says how long to wait', () => {

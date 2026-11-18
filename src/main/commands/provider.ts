@@ -464,6 +464,7 @@ export type FailureHint =
   | 'authFailed'
   | 'unknownModel'
   | 'rateLimit'
+  | 'noCredit'
   | 'timeout'
   | 'disabled'
   | 'verifyFailed'
@@ -495,6 +496,12 @@ export function classifyFailure(kind: ProviderInfoKind, reason: string): Failure
   }
   if (/answered 404\b/.test(reason) || /model\b.{0,60}(not found|does not exist|unknown|invalid)/i.test(reason)) {
     return 'unknownModel'
+  }
+  if (
+    /answered 429\b/.test(reason) &&
+    /insufficient_quota|no credits|credit balance|billing|spend(ing)? limit/i.test(reason)
+  ) {
+    return 'noCredit'
   }
   if (/answered (429|503|529)\b|gave up after|over the budget/.test(reason)) return 'rateLimit'
   if (/timed out|total time limit/.test(reason)) return 'timeout'
