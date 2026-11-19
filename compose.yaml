@@ -1,0 +1,57 @@
+# message-summarize: the daemon and its web.
+#
+#   docker compose up -d
+#   docker compose exec message-summarize msum link             # link a WhatsApp account (QR in the terminal)
+#   docker compose exec message-summarize cat /data/web-token   # the token the web asks for
+#
+# Then open http://127.0.0.1:8787 and paste the token.
+#
+# Notes:
+# - Never `docker compose run` the daemon service: it would start a second daemon on the same WhatsApp session. Use `exec`.
+# - Keep the port as `127.0.0.1:8787:8787`. The web only accepts a Host header that carries the INTERNAL port (8787), so
+#   another published port (for example 127.0.0.1:9000:8787) answers 403. Behind a reverse proxy, point the proxy at
+#   127.0.0.1:8787 and make it send `Host: 127.0.0.1:8787` (a proxy_set_header or equivalent); the token is still needed.
+# - The web listens on 0.0.0.0 inside the container (MSUM_WEB_HOST in the image) unless config.json sets web.host.
+# - A host directory instead of the named volume must be owned by uid 1000 (chown 1000:1000).
+services:
+  message-summarize:
+    image: ghcr.io/gmaron/message-summarize:latest
+    # Used when the image cannot be pulled (or with `docker compose build`).
+    build: .
+    container_name: message-summarize
+    # A fixed host name: the daemon's lock file carries it, so a lock left by a killed container is recognised as stale
+    # when the container is recreated (the default host name is a new random id every time).
+    hostname: message-summarize
+    restart: unless-stopped
+    environment:
+      # Time zone of the digests and the schedules. Set TZ in your shell or a .env file; UTC when unset.
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Config, token, WhatsApp session, databases, models. Back this volume up.
+      - msum-data:/data
+    ports:
+      # Loopback of the host ONLY (RNF-03). Never publish this on the LAN: the web shows every chat.
+      # Behind a reverse proxy, point the proxy at 127.0.0.1:8787 rather than changing this line.
+      - "127.0.0.1:8787:8787"
+
+  # Opt-in variant with Claude Code, Gemini CLI and Codex installed, for providers that use a subscription login.
+  #   docker compose --profile cli up -d message-summarize-cli    (stop the service above first: same port and volume)
+  #   docker compose exec message-summarize-cli claude            # log in once; it is kept in the volume
+  message-summarize-cli:
+    profiles: ["cli"]
+    image: ghcr.io/gmaron/message-summarize-cli:latest
+    build:
+      context: .
+      target: cli
+    container_name: message-summarize-cli
+    hostname: message-summarize-cli
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - msum-data:/data
+    ports:
+      - "127.0.0.1:8787:8787"
+
+volumes:
+  msum-data:

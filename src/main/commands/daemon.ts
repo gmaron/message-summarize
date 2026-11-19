@@ -4,7 +4,7 @@ import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { installationCatalog } from '../account-command.js'
 import { type Installation, openInstallation } from '../accounts.js'
-import { DEFAULT_LOGS, describeConfigIssue, languageHint, loadEffectiveConfig } from '../config.js'
+import { DEFAULT_LOGS, describeConfigIssue, languageHint, loadEffectiveConfig, readConfigObject } from '../config.js'
 import type { CommandContext } from '../context.js'
 import { DaemonHost, hasNoProvider } from '../daemon-host.js'
 import { acquireDaemonLock, HEARTBEAT_MS } from '../daemon-lock.js'
@@ -16,6 +16,7 @@ import { retryBlock } from '../retry.js'
 import { importConfigSchedules } from '../schedules.js'
 import { startWeb, type WebHandle } from '../web.js'
 import { removeWebAddress } from '../web-address.js'
+import { chooseWebHost } from '../web-host.js'
 
 /**
  * `msum daemon [--retry] [--account <id>]`: ONE process for the whole installation (RF-03). It holds the lock file
@@ -154,11 +155,15 @@ export async function daemonCommand(
     const root = await loadEffectiveConfig(layout.configFile, null)
     if (!root.ok) ctx.logger.warn('web.skipped', { reason: 'config' })
     else if (root.value.web.enabled && !stopRequested) {
+      // MSUM_WEB_HOST (the Docker image) applies only when config.json does not set web.host.
+      const raw = await readConfigObject(layout.configFile)
+      const chosen = chooseWebHost(root.value.web, raw.ok ? raw.value : {}, ctx.env)
+      if (chosen.invalidEnv) ctx.logger.warn('web.host_env_ignored', { reason: 'invalid' })
       web = await startWeb({
         ctx,
         installation,
         host,
-        web: root.value.web,
+        web: chosen.web,
         language: root.value.language,
         ...(logs === null ? {} : { logs: logs.store }),
       })

@@ -1,0 +1,43 @@
+# Keep the build context to what the image needs. Nothing personal, no secrets, no local state.
+.git
+.gitignore
+.github
+.claude
+.sandbox
+.playwright-mcp
+.impeccable
+.idea
+.vscode
+.DS_Store
+
+node_modules
+dist
+coverage
+
+# Local data, WhatsApp sessions, databases, models and secrets never enter an image.
+data
+auth
+accounts
+models
+**/data
+**/auth
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.log
+**/qr.png
+.env
+.env.*
+**/secrets.json
+**/web-token
+config.json
+
+# Not needed to build or run.
+docs
+test
+*.md
+CLAUDE.local.md
+compose.yaml
+Dockerfile
+.dockerignore
