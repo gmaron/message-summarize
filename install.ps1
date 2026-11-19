@@ -1018,7 +1018,10 @@ function Invoke-MsumInstaller {
     # installer already checked the Node.js version) and protobufjs' postinstall only prints a warning. Not running
     # third-party scripts is the safer choice. --no-save: a tarball in a temporary file must not stay in the manifest,
     # and a rerun resolves the version again. An upgrade is a clean install; the previous tree is kept aside and put
-    # back if the new one cannot be installed (see the finally of the caller).
+    # back if the new one cannot be installed (see the finally of the caller). No --install-links: the package declares
+    # "sharp": "file:vendor/sharp-stub" and with that flag npm looks for the stub next to the tarball instead of inside
+    # it (ENOENT/ENOTDIR on every OS). Without it npm makes a link (a junction on Windows, no privileges needed), which
+    # Remove-Links/Remove-Tree already handle, and it is the same command install.sh runs.
     $modules = [System.IO.Path]::Combine($Prefix, 'node_modules')
     $aside = [System.IO.Path]::Combine($Prefix, 'node_modules.old')
     if (Test-Path -LiteralPath $aside -PathType Container) {
@@ -1040,7 +1043,7 @@ function Invoke-MsumInstaller {
     try {
       $env:Path = $nodeDir + ';' + $env:Path
       $env:npm_config_update_notifier = 'false'
-      $code = Invoke-Native $npm @('install', '--prefix', $Prefix, '--no-fund', '--no-audit', '--ignore-scripts', '--no-save', '--install-links', '--loglevel=error', $packageSpec)
+      $code = Invoke-Native $npm @('install', '--prefix', $Prefix, '--no-fund', '--no-audit', '--ignore-scripts', '--no-save', '--loglevel=error', $packageSpec)
     } finally {
       $env:Path = $oldPath
       $env:npm_config_update_notifier = $oldNotifier

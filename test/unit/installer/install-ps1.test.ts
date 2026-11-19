@@ -1,5 +1,14 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -146,7 +155,7 @@ describe('install.ps1 (static)', () => {
   })
 
   it('installs with the safe npm flags, keeping the previous tree aside', () => {
-    for (const flag of ['--ignore-scripts', '--no-fund', '--no-audit', '--no-save', '--install-links', '--prefix'])
+    for (const flag of ['--ignore-scripts', '--no-fund', '--no-audit', '--no-save', '--prefix'])
       expect(code).toContain(`'${flag}'`)
     expect(code).toContain('node_modules.old')
     expect(code).toMatch(/if \(\$S\.ModulesAside\)/)
@@ -276,8 +285,8 @@ describe('install.ps1 (static): lessons of the review', () => {
     expect(code.match(/Send-EnvironmentChange/g)?.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('uses --install-links, and never deletes a tree recursively without removing the links first', () => {
-    expect(code).toContain("'--install-links'")
+  it('does not use --install-links (it breaks the file: stub of a tarball), and never deletes a tree recursively without removing the links first', () => {
+    expect(code).not.toContain("'--install-links'")
     expect(code).toContain('function Remove-Links')
     expect(code).toContain('.Delete()')
     expect(code).toContain('rmdir /s /q')
@@ -336,7 +345,10 @@ runtime('install.ps1 (PowerShell, nothing is changed)', () => {
   })
   afterAll(() => revoke())
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'msum-install-ps1-'))
+    // On Windows tmpdir() can be an 8.3 short path (RUNNER~1) and the script prints the long one: use the long one
+    dir = mkdtempSync(
+      join(process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir(), 'msum-install-ps1-'),
+    )
     home = join(dir, 'profile')
     mkdirSync(home)
   })
@@ -347,7 +359,18 @@ runtime('install.ps1 (PowerShell, nothing is changed)', () => {
   const systemRoot = process.env.SystemRoot ?? process.env.windir ?? 'C:\\Windows'
   const systemEnv: Record<string, string> =
     process.platform === 'win32'
-      ? { SystemRoot: systemRoot, windir: systemRoot, ComSpec: join(systemRoot, 'System32', 'cmd.exe') }
+      ? {
+          SystemRoot: systemRoot,
+          windir: systemRoot,
+          ComSpec: join(systemRoot, 'System32', 'cmd.exe'),
+          // install.ps1 reads the architecture from these two (always set on a real Windows)
+          ...Object.fromEntries(
+            ['PROCESSOR_ARCHITECTURE', 'PROCESSOR_ARCHITEW6432'].flatMap((name) => {
+              const value = process.env[name]
+              return value === undefined ? [] : [[name, value]]
+            }),
+          ),
+        }
       : {}
   const systemPath = process.platform === 'win32' ? [join(systemRoot, 'System32'), systemRoot] : ['/usr/bin', '/bin']
 
