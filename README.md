@@ -8,7 +8,35 @@ The first supported platform is **WhatsApp**. The core does not depend on it, so
 
 ## Status
 
-**Early development.** There is no installer yet. A command-line version with a first local web page can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
+**Early development.** There is no published release yet (see [Install](#install) for the installers and their state). A command-line version with a local web page can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
+
+## Install
+
+**There is no release yet.** The installers below are written and tested as far as a Mac allows, but the first published release (v0.1.0) is still to come, and the Windows installer has never run on a real Windows machine. Until then, use Docker from a clone of the repository, or [try it from source](#try-it-early-version). Read the [warning](#important-warning) first.
+
+**Docker (any system, recommended on Windows).** With Docker or Docker Desktop installed, from a clone of the repository:
+
+```sh
+docker compose up -d
+docker compose exec message-summarize msum open --print   # the address of the web page, with its access token
+```
+
+The data lives in the `msum-data` volume and the container restarts by itself. The web page is published only on `127.0.0.1:8787`: do not change it to another address, and use `docker compose exec` (never `docker compose run`) for commands. The `cli` profile (`docker compose --profile cli up -d`) uses an image that also carries Claude Code, Gemini CLI and Codex, for those who want to use a CLI as the provider (you sign in inside the container; Gemini CLI and Codex are disabled for now, see [Use a CLI as the provider](#use-a-cli-as-the-provider)).
+
+**macOS and Linux.** `install.sh` needs no administrator rights and touches nothing outside your home folder. It installs the program (with its own copy of Node.js, checked against the official checksum, if yours is older than 22.16), registers the daemon as a user service, and opens the web page:
+
+```sh
+sh install.sh              # from a clone; --help lists the options
+sh install.sh --uninstall  # removes the program, never your data
+```
+
+Options: `--no-service`, `--no-open`, `--modify-path`, `--prefix <dir>`, `--tarball <file|url>`, `--dry-run`. It refuses a folder that holds or sits inside the data directory.
+
+**Windows.** Two ways, both without administrator rights: the installer `message-summarize-<version>-win-x64-setup.exe` that will come with each release (it is not signed yet, so Windows SmartScreen will warn you), or `install.ps1`, which does the same as `install.sh` (`.\install.ps1 -Help`). Uninstalling keeps your data. Windows on ARM: use Docker.
+
+**Where the data is.** `~/Library/Application Support/message-summarize` on macOS, `~/.local/share/message-summarize` on Linux and `%APPDATA%\message-summarize` on Windows (or the folder in `MSUM_DATA_DIR`). Uninstalling never deletes it; to remove an account's data use `msum unlink`.
+
+**Release checks.** Every release carries a `SHA256SUMS.txt`. The package is not on npm yet: publishing is blocked on purpose until the license of one dependency is settled (see [License](#license)).
 
 ## Try it (early version)
 
@@ -237,7 +265,7 @@ Then check with `msum digest --dry-run --account <id>` and start the daemon.
 - **Send the digest to your own chat** ("Message yourself"), sorted into sections: needs a reply, has pending items, everything else. It is never sent to anyone else, not even to another account in the same installation.
 - **Run on a schedule** you set from the web (for example, 9:00 and 19:00 every day), plus "summarize now" and a preview that does not send anything.
 - **Handle several accounts** in one installation, each with its own data, settings and schedules.
-- **Install with Docker, or natively on macOS and Linux.** Native Windows comes in v1.1; until then, Windows uses Docker.
+- **Install with Docker, or natively on macOS, Linux and Windows** (see [Install](#install)).
 
 ## Important warning
 
@@ -259,9 +287,9 @@ This project is not affiliated with, endorsed by or sponsored by WhatsApp or Met
 | 2 | Daemon, schedules, multiple accounts and import from the personal tool |
 | 3 | LLM providers (API and CLI), fallback provider, local-only conversations, whisper.cpp transcription and `doctor` |
 | 4 | Local web: setup wizard, QR linking, dashboard, settings, history and logs |
-| 5 | Packaging: Docker image, native installers for macOS and Linux, system service |
+| 5 | Packaging: Docker image, installers for macOS, Linux and Windows, system service |
 | 6 | CI, license checks, documentation and the first release (v0.1.0) |
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) for this project's own code. One dependency, `libsignal` (brought in by Baileys, the WhatsApp client), is licensed GPL-3.0; how that fits with the MIT license has to be settled before the first release, and `npm run check:licenses` lists it as a named exception until then.
