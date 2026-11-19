@@ -66,3 +66,61 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test -- --maxWorkers=4 --testTimeout=30000
+
+  # RNF-05/06/07: the installers work from the packed tarball on each OS. Everything goes to a temporary home: no
+  # OS service is registered (--no-service / -NoService) and the PATH is not touched. The only network access is
+  # npm (ci and the install from the local tarball); the runner's Node 22 is used, so nodejs.org is not contacted.
+  install-smoke:
+    name: install-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Pack the package (the prepack script builds it)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --pack-destination "$RUNNER_TEMP/pack"
+
+      - name: Install and verify (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/home" MSUM_DATA_DIR="$RUNNER_TEMP/data"
+          unset XDG_DATA_HOME
+          mkdir -p "$HOME"
+          sh install.sh --tarball "$(ls "$RUNNER_TEMP"/pack/*.tgz)" --prefix "$RUNNER_TEMP/app" \
+            --no-service --no-open --yes
+          node scripts/install-smoke-verify.mjs "$HOME/.local/bin/msum"
+
+      - name: Install and verify (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $home2 = Join-Path $env:RUNNER_TEMP 'home'
+          New-Item -ItemType Directory -Force -Path (Join-Path $home2 'AppData\Local'), (Join-Path $home2 'AppData\Roaming') | Out-Null
+          $env:USERPROFILE = $home2
+          $env:LOCALAPPDATA = Join-Path $home2 'AppData\Local'
+          $env:APPDATA = Join-Path $home2 'AppData\Roaming'
+          $env:MSUM_DATA_DIR = Join-Path $env:RUNNER_TEMP 'data'
+          $tarball = (Get-ChildItem (Join-Path $env:RUNNER_TEMP 'pack') -Filter *.tgz | Select-Object -First 1).FullName
+          $prefix = Join-Path $env:RUNNER_TEMP 'app'
+          & .\install.ps1 -Tarball $tarball -Prefix $prefix -NoService -NoOpen -Yes
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+          node scripts/install-smoke-verify.mjs (Join-Path $prefix 'bin\msum.cmd')
+          if ($LASTEXITCODE -ne 0) { throw "verification exited $LASTEXITCODE" }
