@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { writeDurably } from './config-writer.js'
+import { syncDirectory, writeDurably } from './config-writer.js'
 
 /**
  * Replaces `file` with `text` so a reader sees either the old content or the new one, never an empty or half-written
  * file: written and synced under an unpredictable name in the same directory (mode 0600), then renamed over `file`.
- * When anything fails the temporary file is removed and `file` is left as it was.
+ * When anything fails the temporary file is removed and `file` is left as it was. The directory is synced after the
+ * rename so the replacement survives a crash.
  */
 export async function writeFileAtomic(file: string, text: string): Promise<void> {
   const temporary = join(dirname(file), `.${basename(file)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)
@@ -17,4 +18,7 @@ export async function writeFileAtomic(file: string, text: string): Promise<void>
     await rm(temporary, { force: true }).catch(() => undefined)
     throw error
   }
+  // After the rename (and outside the cleanup above): the new directory entry reaches the disk, so a power cut right
+  // after a block cannot leave the old state in its place.
+  await syncDirectory(dirname(file))
 }

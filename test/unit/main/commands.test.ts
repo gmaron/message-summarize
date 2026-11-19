@@ -9,6 +9,7 @@ import { writeBlocked } from '../../../src/main/blocked.js'
 import { maskAccount } from '../../../src/main/context.js'
 import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
 import { createLogger } from '../../../src/main/logger.js'
+import { writeUnitState } from '../../../src/main/unit-state.js'
 import {
   BA,
   disposeHarnesses,
@@ -819,6 +820,20 @@ describe('msum status', () => {
     await acquireDaemonLock(h.layout.lockFile, process.pid)
     await run(h, 'status')
     expect(h.out.join('\n')).toContain(`running (pid ${process.pid})`)
+  })
+
+  it('a block marker wins over a stale state file: a blocked account is not shown as connected', async () => {
+    const h = await makeHarness({ config: { language: 'en', timezone: BA } })
+    await acquireDaemonLock(h.layout.lockFile, process.pid)
+    await writeUnitState(h.account.stateFile, { state: 'connected', since: NOW })
+    await run(h, 'status')
+    expect(h.out.join('\n')).toMatch(/^Connection: +connected/m) // without a marker it is believed
+    h.out.length = 0
+    await writeBlocked(h.account.blockedFile, 'forbidden', NOW)
+    await run(h, 'status')
+    const text = h.out.join('\n')
+    expect(text).not.toMatch(/^Connection:/m)
+    expect(text).toMatch(/^Blocked:/m)
   })
 
   it('shows a blocked account with its translated reason and what to do', async () => {

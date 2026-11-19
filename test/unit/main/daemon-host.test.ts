@@ -9,7 +9,7 @@ import { type BlockedReason, writeBlocked } from '../../../src/main/blocked.js'
 import { DaemonHost, type DaemonHostTiming } from '../../../src/main/daemon-host.js'
 import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
 import { acquireLinkLock } from '../../../src/main/link-lock.js'
-import { readUnitState } from '../../../src/main/unit-state.js'
+import { readUnitState, writeUnitState } from '../../../src/main/unit-state.js'
 import {
   BA,
   disposeHarnesses,
@@ -78,6 +78,8 @@ interface WorldOptions {
   readonly autoConnect?: boolean
   /** Replaces the writer of `blocked.json`, to see when it is called and to make it fail. */
   readonly writeMarker?: (file: string, reason: BlockedReason, at: number) => Promise<void>
+  /** Replaces the writer of `state.json`, to make it fail. */
+  readonly writeUnitState?: typeof writeUnitState
 }
 
 /** An installation with fake sockets, one per account, and a daemon host over it (not started). */
@@ -134,6 +136,7 @@ async function world(ids: readonly string[], options: WorldOptions = {}): Promis
       language: 'en',
       timing: { ...TIMING, ...options.timing },
       ...(options.writeMarker === undefined ? {} : { writeMarker: options.writeMarker }),
+      ...(options.writeUnitState === undefined ? {} : { writeUnitState: options.writeUnitState }),
     }),
     linked: (id) => link(h, id),
   }
@@ -838,6 +841,56 @@ describe('what the daemon says about each account (RF-04)', () => {
       expect(readFileSync(file, 'utf8')).not.toMatch(/5491100/)
       expect(existsSync(`${file}.tmp`)).toBe(false)
     }
+  })
+
+  /** A writer of `state.json` that fails with `code` for its first `failures` calls, then writes for real. */
+  const flaky = (code: string, failures: number) => {
+    const calls: string[] = []
+    const write: typeof writeUnitState = async (file, record) => {
+      calls.push(record.state)
+      if (calls.length <= failures) throw Object.assign(new Error('the file is open elsewhere'), { code })
+      await writeUnitState(file, record)
+    }
+    return { calls, write }
+  }
+
+  it('writes the state again after a transient failure (EBUSY on Windows), and says it once', async () => {
+    const flake = flaky('EBUSY', 3)
+    const w = await world(['alpha'], { linked: ['alpha'], writeUnitState: flake.write })
+    await w.host.start()
+    // the file ends up with the state the account has, though the first writes failed
+    await vi.waitFor(async () => expect(await stateOf(w, 'alpha')).toBe('connected'), { timeout: 5_000, interval: 50 })
+    expect(flake.calls.length).toBeGreaterThan(3)
+    // the failures of one run are said once, not on every try
+    expect(named(w.h, 'state.writeFailed', 'alpha')).toHaveLength(1)
+    expect(JSON.stringify(named(w.h, 'state.writeFailed', 'alpha'))).not.toMatch(/5491100/)
+  })
+
+  it('gives up after a few tries: a failure that never passes is not tried in a tight loop', async () => {
+    const flake = flaky('EPERM', Number.POSITIVE_INFINITY)
+    const w = await world(['alpha'], { linked: ['alpha'], writeUnitState: flake.write })
+    await w.host.start()
+    await started(w, 'alpha')
+    await waitFor(() => expect(flake.calls.length).toBeGreaterThan(0))
+    // it is tried until the allowed attempts are used up (1 + 5 retries), then never again
+    const connectedTries = () => flake.calls.filter((state) => state === 'connected').length
+    await waitFor(() => expect(connectedTries()).toBe(6))
+    const after = flake.calls.length
+    // many more looks go by (one every 20 ms) and nothing is written any more
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(flake.calls.length).toBe(after)
+    expect(connectedTries()).toBe(6)
+    expect(named(w.h, 'state.writeFailed', 'alpha')).toHaveLength(1)
+  })
+
+  it('does not retry a failure that is not transient', async () => {
+    const flake = flaky('ENOSPC', Number.POSITIVE_INFINITY)
+    const w = await world(['alpha'], { linked: ['alpha'], writeUnitState: flake.write })
+    await w.host.start()
+    await started(w, 'alpha')
+    await waitFor(() => expect(flake.calls.filter((state) => state === 'connected')).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(flake.calls.filter((state) => state === 'connected')).toHaveLength(1)
   })
 
   it('goes through connecting, connected and reconnecting as the socket does', async () => {

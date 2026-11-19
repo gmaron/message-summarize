@@ -1,10 +1,28 @@
-import { existsSync } from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
-import { WEB_RETRY_MIN_WAIT_MS, writeBlocked } from '../../../src/main/blocked.js'
+import { existsSync, writeFileSync } from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readBlocked, WEB_RETRY_MIN_WAIT_MS, writeBlocked } from '../../../src/main/blocked.js'
+import { retryBlock } from '../../../src/main/retry.js'
 import { disposeHarnesses, waitFor } from '../../support/cli-harness.js'
 import { disposeWorlds, type World, world } from '../../support/web-world.js'
 
+// Passes `readBlocked` through; a test can arm a hook that runs right after the read made by `retryAccount` itself.
+const afterRetryAccountRead = vi.hoisted(() => ({ run: null as null | ((file: string) => void) }))
+vi.mock('../../../src/main/blocked.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../../src/main/blocked.js')>()
+  return {
+    ...original,
+    readBlocked: async (file: string) => {
+      const marker = await original.readBlocked(file)
+      // `retryAccount` is in the (async) stack only for the read it makes itself, not for the ones in the poll or in retryBlock
+      if (afterRetryAccountRead.run !== null && new Error().stack?.includes('retryAccount'))
+        afterRetryAccountRead.run(file)
+      return marker
+    },
+  }
+})
+
 afterEach(async () => {
+  afterRetryAccountRead.run = null
   await disposeWorlds()
   disposeHarnesses()
 })
@@ -87,6 +105,36 @@ describe('retrying from the web (POST /api/accounts/:id/retry)', () => {
       // nothing was cleared and nothing reconnected
       expect(existsSync(w.h.accountOf(id).blockedFile)).toBe(true)
     }
+  })
+
+  it('decides on the marker it was given: clearing does not read the file again', async () => {
+    const w = await world({ accounts: ['a'], linked: ['a'], blocked: { a: 'forbidden' } })
+    const file = w.h.accountOf('a').blockedFile
+    await blockedNow(w, 'a', 'forbidden', Date.now() - 60_000)
+    const seen = await readBlocked(file)
+    // the file changes under the caller (a torn write, as the old non-atomic one could leave): a second read would
+    // say `notLinked` and keep the block; the value the caller decided on is the one used
+    writeFileSync(file, '')
+    expect(await retryBlock({ blockedFile: file }, seen)).toEqual({ result: 'cleared', reason: 'forbidden' })
+    expect(existsSync(file)).toBe(false)
+    // and through the route: a recent `forbidden` marker is still refused as too soon
+    await blockedNow(w, 'a', 'forbidden', Date.now() - 60_000)
+    expect((await w.api('POST', '/api/accounts/a/retry')).body).toMatchObject({ error: 'tooSoon' })
+  })
+
+  it('retryAccount reads the marker once: a torn file after its read cannot turn the retry into a relink', async () => {
+    const w = await world({ accounts: ['a'], linked: ['a'], blocked: { a: 'forbidden' } })
+    await blockedNow(w, 'a', 'forbidden', Date.now() - WEB_RETRY_MIN_WAIT_MS - 1_000)
+    // right after the read that decides the wait, the file is left empty (what a non-atomic write could show): a second
+    // read would see `notLinked` and answer needsRelink; the retry must use the marker it decided on
+    afterRetryAccountRead.run = (file) => {
+      afterRetryAccountRead.run = null
+      writeFileSync(file, '')
+    }
+    const answer = await w.api('POST', '/api/accounts/a/retry')
+    expect(answer.status).toBe(200)
+    expect(answer.body).not.toMatchObject({ error: 'needsRelink' })
+    expect(existsSync(w.h.accountOf('a').blockedFile)).toBe(false)
   })
 
   it('allows it once the minimum wait has passed', async () => {
