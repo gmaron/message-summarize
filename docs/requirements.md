@@ -1,6 +1,6 @@
 # message-summarize: requerimientos
 
-Versión 1.3 · 2026-11-05 · Estado: aprobado
+Versión 1.4 · 2026-11-19 · Estado: aprobado
 
 ## 1. Propósito
 
@@ -20,9 +20,9 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella: 
 
 ### 1.2 Alcance de la v1
 
-**Incluye:** una fuente (WhatsApp por Baileys), un destino (el chat propio de WhatsApp), varias cuentas por instalación, proveedores de LLM a elección del usuario (OpenAI, Anthropic, Gemini y Ollama), transcripción de audios local y opcional, web local, CLI, horarios configurables e instalación con Docker y nativa en macOS y Linux.
+**Incluye:** una fuente (WhatsApp por Baileys), un destino (el chat propio de WhatsApp), varias cuentas por instalación, proveedores de LLM a elección del usuario (OpenAI, Anthropic, Gemini y Ollama), transcripción de audios local y opcional, web local, CLI, horarios configurables e instalación con Docker (`docker compose up`) y nativa en macOS, Linux y Windows (instalador `.exe` e `install.ps1`).
 
-**No incluye:** otras plataformas de mensajería, responder mensajes en nombre del usuario, envío a terceros, mandar el digest de una cuenta a otra cuenta (cada digest es personal y solo lo recibe la cuenta resumida), acceso remoto a la web (fuera de la red local), app móvil, sincronización entre máquinas, modo multiusuario ni servicio en la nube. La instalación nativa en Windows queda para la v1.1 (en la v1, Windows usa Docker).
+**No incluye:** otras plataformas de mensajería, responder mensajes en nombre del usuario, envío a terceros, mandar el digest de una cuenta a otra cuenta (cada digest es personal y solo lo recibe la cuenta resumida), acceso remoto a la web (fuera de la red local), app móvil, sincronización entre máquinas, modo multiusuario ni servicio en la nube.
 
 ## 2. Glosario
 
@@ -159,7 +159,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RNF-02 | Privacidad | Antes de activar un proveedor externo, la web muestra qué datos se envían y a quién | Paso obligatorio del asistente; queda registrado el consentimiento |
 | RNF-03 | Seguridad | La web escucha solo en `127.0.0.1` por defecto y exige un token generado en la instalación | Test de integración: sin token responde 401; exponerla en otra interfaz requiere una opción explícita |
 | RNF-04 | Seguridad | Las claves de API y la sesión de WhatsApp se guardan con permisos 600 (o ACL equivalente en Windows) y nunca aparecen en logs | Test que verifica permisos; los logs pasan por una lista de campos a ocultar |
-| RNF-05 | Portabilidad | Funciona en macOS (arm64 y x64), Linux (x64 y arm64) y Docker (amd64 y arm64). Windows 11 nativo en la v1.1; en la v1, por Docker | Matriz de CI con macOS y Linux + build multi-arch; Windows se suma a la matriz en la v1.1 |
+| RNF-05 | Portabilidad | Funciona en macOS (arm64 y x64), Linux (x64 y arm64) y Docker (amd64 y arm64). Windows 11 nativo (x64) con instalador `.exe` o `install.ps1`; también por Docker | Matriz de CI con macOS, Linux y Windows + build multi-arch |
 | RNF-06 | Instalación | Instalación completa en menos de 10 minutos con buena conexión, sin contar la descarga del modelo de whisper | Prueba cronometrada en VMs limpias antes de cada release |
 | RNF-07 | Disponibilidad | El daemon arranca solo con el sistema (servicio del usuario o `restart: unless-stopped`) y se recupera de caídas | Matar el proceso → vuelve en menos de 30 s |
 | RNF-08 | Durabilidad | Ningún mensaje recibido ni digest generado se pierde por un reinicio | SQLite en modo WAL; cola de envíos persistente; test de reinicio en mitad de un digest |
@@ -227,7 +227,7 @@ Cambio respecto del plan original: como WhatsApp es la primera plataforma y no l
 
 1. **Datos de prueba de la fase 0:** conversaciones inventadas que cubren cada regla; nunca datos reales, porque el repo es público.
 2. **CLIs dentro de Docker:** imagen base sin CLIs (API u Ollama) y una variante `-cli` que incluye Claude Code, Gemini CLI y Codex, con la sesión iniciada adentro del contenedor.
-3. **Instaladores nativos:** Docker, macOS y Linux en la v1; Windows nativo en la v1.1.
+3. **Instaladores nativos:** Docker, macOS, Linux y Windows en la v1 (decisión del 2026-11-19, antes Windows quedaba para la v1.1). En Windows el daemon se registra con una entrada de inicio de sesión del usuario (clave `Run`), sin permisos de administrador y sin el planificador de tareas. El instalador `.exe` se arma en CI y se distribuye en los releases de GitHub; `npm` es la vía de distribución del paquete.
 4. **Publicación:** repo público `message-summarize` en la cuenta personal de GitHub del autor, con licencia MIT.
 5. **Idioma:** código, commits y nombres en inglés; README en inglés y español; los documentos de diseño en español hasta la v0.1.0.
 6. **Autoría:** los commits van solo a nombre del autor, sin coautoría de herramientas de IA.
