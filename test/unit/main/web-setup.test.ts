@@ -20,6 +20,10 @@ import { TEST_TRANSCRIPT } from '../../../src/main/provider-test.js'
 import { disposeHarnesses, until } from '../../support/cli-harness.js'
 import { CLAUDE_HELP } from '../../support/fake-cli.js'
 import { allowSubprocess } from '../../support/network-guard.js'
+import { isWindows } from '../../support/platform.js'
+// On Windows the tests that run the fake CLI are skipped: it is a script with a shebang, and the adapters spawn without
+// a shell (RF-49), so Windows cannot execute it (a .cmd wrapper would need `shell: true`, which the rule forbids).
+// The behavior they check is cross-platform code; it is covered on Linux and macOS.
 import { BASE, disposeWorlds, type World, world } from '../../support/web-world.js'
 
 // The only subprocess this file spawns is the fake `claude` script it writes below (a node script that prints canned
@@ -222,7 +226,7 @@ describe('the language step: the one write of the web to the installation file',
     expect(reply.status).toBe(200)
     expect(reply.body).toMatchObject({ step: 'name', language: 'es' })
     expect(rootOf(w)).toEqual({ ...before, language: 'es' })
-    expect(statSync(w.h.layout.configFile).mode & 0o777).toBe(0o600)
+    if (!isWindows) expect(statSync(w.h.layout.configFile).mode & 0o777).toBe(0o600)
     expect((await w.api('GET', '/api/info')).body.language).toBe('es')
   })
 
@@ -512,28 +516,31 @@ describe('POST /api/setup/test-provider (RF-41, RF-49)', () => {
     })
   })
 
-  it('makes a real call as the daemon does: without tools, in an empty directory, with a made-up chat only', async () => {
-    const { w, fake } = await withClaude()
-    const configBefore = readFileSync(w.h.accountOf('alpha').configFile, 'utf8')
-    const reply = await w.api('POST', '/api/setup/test-provider', claude)
-    expect(reply.status).toBe(200)
-    expect(reply.body.ok).toBe(true)
-    expect(typeof reply.body.ms).toBe('number')
-    const [call] = fake.calls()
-    expect(call?.argv).toEqual(
-      expect.arrayContaining(['-p', '--tools', '', '--strict-mcp-config', '--no-session-persistence', '--safe-mode']),
-    )
-    expect(call?.argv[call.argv.indexOf('--tools') + 1]).toBe('')
-    expect(call?.cwdEntries).toEqual([])
-    expect(call?.stdin).toBe(TEST_TRANSCRIPT)
-    // Nothing of the user in what was sent (stdin or arguments), and nothing saved by the test.
-    const sent = `${call?.stdin}\n${call?.argv.join('\n')}`
-    for (const secret of [SECRET_NAME, SECRET_NUMBER, 'alpha']) expect(sent).not.toContain(secret)
-    expect(readFileSync(w.h.accountOf('alpha').configFile, 'utf8')).toBe(configBefore)
-    expect(w.installation.setup.consents('alpha')).toEqual([])
-  })
+  it.skipIf(isWindows)(
+    'makes a real call as the daemon does: without tools, in an empty directory, with a made-up chat only',
+    async () => {
+      const { w, fake } = await withClaude()
+      const configBefore = readFileSync(w.h.accountOf('alpha').configFile, 'utf8')
+      const reply = await w.api('POST', '/api/setup/test-provider', claude)
+      expect(reply.status).toBe(200)
+      expect(reply.body.ok).toBe(true)
+      expect(typeof reply.body.ms).toBe('number')
+      const [call] = fake.calls()
+      expect(call?.argv).toEqual(
+        expect.arrayContaining(['-p', '--tools', '', '--strict-mcp-config', '--no-session-persistence', '--safe-mode']),
+      )
+      expect(call?.argv[call.argv.indexOf('--tools') + 1]).toBe('')
+      expect(call?.cwdEntries).toEqual([])
+      expect(call?.stdin).toBe(TEST_TRANSCRIPT)
+      // Nothing of the user in what was sent (stdin or arguments), and nothing saved by the test.
+      const sent = `${call?.stdin}\n${call?.argv.join('\n')}`
+      for (const secret of [SECRET_NAME, SECRET_NUMBER, 'alpha']) expect(sent).not.toContain(secret)
+      expect(readFileSync(w.h.accountOf('alpha').configFile, 'utf8')).toBe(configBefore)
+      expect(w.installation.setup.consents('alpha')).toEqual([])
+    },
+  )
 
-  it('does not run the claude test without the consent, ticked or recorded', async () => {
+  it.skipIf(isWindows)('does not run the claude test without the consent, ticked or recorded', async () => {
     const { w, fake } = await withClaude()
     expect(await w.api('POST', '/api/setup/test-provider', { provider: 'claude-cli' })).toEqual({
       status: 409,
@@ -547,7 +554,7 @@ describe('POST /api/setup/test-provider (RF-41, RF-49)', () => {
     expect((await w.api('POST', '/api/setup/test-provider', { provider: 'claude-cli' })).body.ok).toBe(true)
   })
 
-  it('reports the codes: timeout, missing command, invalid summary, failed', async () => {
+  it.skipIf(isWindows)('reports the codes: timeout, missing command, invalid summary, failed', async () => {
     const { w, fake } = await withClaude('hang', 300)
     expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'timeout' })
     fake.setMode('bad')
@@ -566,7 +573,7 @@ describe('POST /api/setup/test-provider (RF-41, RF-49)', () => {
     expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'notFound' })
   })
 
-  it('never waits longer than its limit, whatever the timeout of the configuration', async () => {
+  it.skipIf(isWindows)('never waits longer than its limit, whatever the timeout of the configuration', async () => {
     const fake = fakeClaude('hang')
     const w = await testWorld(
       {
@@ -581,7 +588,7 @@ describe('POST /api/setup/test-provider (RF-41, RF-49)', () => {
     expect(Date.now() - started).toBeLessThan(4_000)
   })
 
-  it('runs one test at a time', async () => {
+  it.skipIf(isWindows)('runs one test at a time', async () => {
     const { w, fake } = await withClaude('slow', 5_000)
     const first = w.api('POST', '/api/setup/test-provider', claude)
     await until(() => fake.calls().length === 1, 'the first test to reach the program')
@@ -651,7 +658,7 @@ describe('POST /api/setup/test-provider (RF-41, RF-49)', () => {
 })
 
 describe('a backup of the installation never joins a test (RNF-02)', () => {
-  it('a failed Ollama test is not hidden by a backup that was never agreed to', async () => {
+  it.skipIf(isWindows)('a failed Ollama test is not hidden by a backup that was never agreed to', async () => {
     const fake = fakeClaude('ok')
     const ollama = await fakeOllama((_body, res) => answer(res, { resumen: 3 }))
     const w = await testWorld({

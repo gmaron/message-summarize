@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadEffectiveConfig } from '../../../src/main/config.js'
 import { updateAccountConfig } from '../../../src/main/config-writer.js'
+import { isWindows } from '../../support/platform.js'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -36,7 +37,7 @@ describe('updateAccountConfig (RF-73)', () => {
     expect(result.ok && result.value.digest.unreadOnly).toBe(true)
     expect(result.ok && result.value.provider.claudeCli.model).toBe('opus')
     expect(f.account()).toEqual({ unreadOnly: true, provider: { claudeCli: { model: 'opus' } } })
-    expect(statSync(f.accountFile).mode & 0o777).toBe(0o600)
+    if (!isWindows) expect(statSync(f.accountFile).mode & 0o777).toBe(0o600)
     // The installation's file is never touched.
     expect(JSON.parse(readFileSync(f.rootFile, 'utf8'))).toEqual({
       timezone: 'UTC',

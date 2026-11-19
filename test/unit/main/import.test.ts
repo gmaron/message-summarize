@@ -29,6 +29,7 @@ import {
   TALLER_ME_CHAT,
   tallerOptions,
 } from '../../support/legacy-fixture.js'
+import { isWindows } from '../../support/platform.js'
 
 afterEach(() => {
   disposeHarnesses()
@@ -200,16 +201,17 @@ describe('msum import: the main installation', () => {
     expect(Object.keys(source).sort()).toEqual(['creds.json', 'pre-key-1.json', 'session-5491100000999_1.0.json'])
     expect(hashTree(account.authDir)).toEqual(source)
     // private
-    expect(mode(account.dir)).toBe(0o700)
-    expect(mode(account.authDir)).toBe(0o700)
-    for (const name of readdirSync(account.authDir)) expect(mode(join(account.authDir, name))).toBe(0o600)
-    expect(mode(account.dbFile)).toBe(0o600)
-    expect(mode(account.configFile)).toBe(0o600)
-    expect(mode(join(account.dir, 'prompt.md'))).toBe(0o600)
+    if (!isWindows) expect(mode(account.dir)).toBe(0o700)
+    if (!isWindows) expect(mode(account.authDir)).toBe(0o700)
+    if (!isWindows)
+      for (const name of readdirSync(account.authDir)) expect(mode(join(account.authDir, name))).toBe(0o600)
+    if (!isWindows) expect(mode(account.dbFile)).toBe(0o600)
+    if (!isWindows) expect(mode(account.configFile)).toBe(0o600)
+    if (!isWindows) expect(mode(join(account.dir, 'prompt.md'))).toBe(0o600)
     // our own auth state loads it unchanged
     const auth = await loadSecureAuthState(account.authDir)
     expect(auth.state.creds.me?.id).toBe(MAIN_ME)
-    expect(mode(account.authDir)).toBe(0o700)
+    if (!isWindows) expect(mode(account.authDir)).toBe(0o700)
     // and nothing else was left in the account, or beside it
     expect(readdirSync(account.dir).sort()).toEqual(['auth', 'config.json', 'db.sqlite', 'prompt.md'])
     expect(readdirSync(h.layout.accountsDir)).toEqual(['default'])

@@ -1,3 +1,4 @@
+import { delimiter, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isVersionManaged, stableNodePath } from '../../../src/main/node-path.js'
 
@@ -26,9 +27,10 @@ describe('stableNodePath', () => {
   })
 
   it('falls back to the first node on the PATH that is the same file, never a Cellar path', async () => {
-    const resolve = fsOf({ [CELLAR]: CELLAR, '/opt/homebrew/bin/node': CELLAR, '/other/bin/node': '/else' })
-    const choice = await stableNodePath(CELLAR, ':/other/bin:/opt/homebrew/bin', resolve)
-    expect(choice.path).toBe('/opt/homebrew/bin/node')
+    const homebrewNode = join('/opt/homebrew/bin', 'node')
+    const resolve = fsOf({ [CELLAR]: CELLAR, [homebrewNode]: CELLAR, [join('/other/bin', 'node')]: '/else' })
+    const choice = await stableNodePath(CELLAR, ['', '/other/bin', '/opt/homebrew/bin'].join(delimiter), resolve)
+    expect(choice.path).toBe(homebrewNode)
   })
 
   it('keeps the exec path when nothing stable is found, or when it is not a Cellar path', async () => {

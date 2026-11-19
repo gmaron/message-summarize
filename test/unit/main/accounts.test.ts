@@ -23,6 +23,7 @@ import {
 import { type Installation, openInstallation, selectAccount } from '../../../src/main/accounts.js'
 import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
 import { accountLayoutOf, ensureDataDirs, layoutOf } from '../../../src/main/paths.js'
+import { isWindows } from '../../support/platform.js'
 
 const roots: string[] = []
 afterEach(() => {
@@ -58,9 +59,9 @@ describe('app.db', () => {
     const layout = fresh()
     const installation = await open(layout)
     installation.close()
-    expect(modeOf(layout.appDbFile)).toBe(0o600)
-    expect(modeOf(layout.dataDir)).toBe(0o700)
-    expect(modeOf(layout.accountsDir)).toBe(0o700)
+    if (!isWindows) expect(modeOf(layout.appDbFile)).toBe(0o600)
+    if (!isWindows) expect(modeOf(layout.dataDir)).toBe(0o700)
+    if (!isWindows) expect(modeOf(layout.accountsDir)).toBe(0o700)
     const db = new DatabaseSync(layout.appDbFile)
     try {
       expect(currentVersion(db as never)).toBe(APP_MIGRATIONS.length)
@@ -119,8 +120,8 @@ describe('openInstallation: creating and deleting accounts', () => {
     const alpha = await installation.createAccount('alpha')
     const beta = await installation.createAccount('beta')
     try {
-      expect(modeOf(alpha.dir)).toBe(0o700)
-      expect(modeOf(alpha.authDir)).toBe(0o700)
+      if (!isWindows) expect(modeOf(alpha.dir)).toBe(0o700)
+      if (!isWindows) expect(modeOf(alpha.authDir)).toBe(0o700)
       writeFileSync(alpha.dbFile, 'a-data')
       writeFileSync(beta.dbFile, 'b-data')
       writeFileSync(join(beta.authDir, 'creds.json'), 'b-session')

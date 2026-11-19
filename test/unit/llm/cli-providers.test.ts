@@ -14,6 +14,11 @@ import { type AppConfig, parseConfig } from '../../../src/main/config.js'
 import { buildSummarizer } from '../../../src/main/providers.js'
 import { VALID_SUMMARY } from '../../contract/summarizer.contract.js'
 import { type FakeCli, installFakeCli } from '../../support/fake-cli.js'
+import { isWindows } from '../../support/platform.js'
+
+// On Windows the tests that run the fake CLI are skipped: it is a script with a shebang, and the adapters spawn without
+// a shell (RF-49), so Windows cannot execute it (a .cmd wrapper would need `shell: true`, which the rule forbids).
+// The behavior they check is cross-platform code; it is covered on Linux and macOS.
 
 const created: FakeCli[] = []
 const fake = (text = JSON.stringify(VALID_SUMMARY)): FakeCli => {
@@ -66,7 +71,7 @@ describe('the generic CLI through the configuration', () => {
     return parsed.value
   }
 
-  it('runs the command of the configuration when the risk is acknowledged', async () => {
+  it.skipIf(isWindows)('runs the command of the configuration when the risk is acknowledged', async () => {
     const cli = fake()
     const summarizer = buildSummarizer(
       config({ primary: 'generic-cli', genericCli: { command: [cli.path, '-x'], acknowledgeRisk: true } }),
@@ -122,26 +127,29 @@ describe('every CLI is external: a local-only conversation never reaches one (RF
     expect(cli.calls()).toEqual([])
   })
 
-  it('with the generic CLI configured, a local-only chat goes to Ollama and an ordinary one to the CLI', async () => {
-    const cli = fake()
-    const parsed = parseConfig(
-      {
-        localOnlyPatterns: ['banco'],
-        provider: {
-          primary: 'generic-cli',
-          genericCli: { command: [cli.path], acknowledgeRisk: true },
-          ollama: { model: 'qwen', baseUrl: 'http://127.0.0.1:1' },
+  it.skipIf(isWindows)(
+    'with the generic CLI configured, a local-only chat goes to Ollama and an ordinary one to the CLI',
+    async () => {
+      const cli = fake()
+      const parsed = parseConfig(
+        {
+          localOnlyPatterns: ['banco'],
+          provider: {
+            primary: 'generic-cli',
+            genericCli: { command: [cli.path], acknowledgeRisk: true },
+            ollama: { model: 'qwen', baseUrl: 'http://127.0.0.1:1' },
+          },
         },
-      },
-      'UTC',
-    )
-    if (!parsed.ok) throw new Error(JSON.stringify(parsed.error))
-    const summarizer = buildSummarizer(parsed.value, { PATH: process.env.PATH })
-    const local = await summarizer?.summarize(request('Banco Ana'))
-    expect(local?.ok).toBe(false)
-    if (local && !local.ok) expect(local.error).toMatch(/^could not reach ollama/)
-    expect(cli.calls()).toEqual([])
-    expect((await summarizer?.summarize(request('Trabajo')))?.ok).toBe(true)
-    expect(cli.calls('run')).toHaveLength(1)
-  })
+        'UTC',
+      )
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.error))
+      const summarizer = buildSummarizer(parsed.value, { PATH: process.env.PATH })
+      const local = await summarizer?.summarize(request('Banco Ana'))
+      expect(local?.ok).toBe(false)
+      if (local && !local.ok) expect(local.error).toMatch(/^could not reach ollama/)
+      expect(cli.calls()).toEqual([])
+      expect((await summarizer?.summarize(request('Trabajo')))?.ok).toBe(true)
+      expect(cli.calls('run')).toHaveLength(1)
+    },
+  )
 })

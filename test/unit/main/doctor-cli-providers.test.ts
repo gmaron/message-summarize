@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runMain } from '../../../src/main/app.js'
 import { disposeHarnesses, type Harness, makeHarness } from '../../support/cli-harness.js'
 import { type FakeCli, installFakeCli } from '../../support/fake-cli.js'
+import { isWindows } from '../../support/platform.js'
+
+// On Windows the tests that run the fake CLI are skipped: it is a script with a shebang, and the adapters spawn without
+// a shell (RF-49), so Windows cannot execute it (a .cmd wrapper would need `shell: true`, which the rule forbids).
+// The behavior they check is cross-platform code; it is covered on Linux and macOS.
 
 const created: FakeCli[] = []
 afterEach(() => {
@@ -12,6 +17,9 @@ afterEach(() => {
 
 const run = (h: Harness, ...argv: string[]) => runMain(argv, h.ctx)
 const providerText = (h: Harness) => h.out.filter((line) => /LLM provider|Proveedor/.test(line)).join('\n')
+
+// `it.each` of the tests that run the fake CLI (see the note above).
+const itEach = isWindows ? it.skip.each.bind(it.skip) : it.each.bind(it)
 
 describe('msum doctor with the Claude CLI (RF-49)', () => {
   const base = { language: 'en', provider: { primary: 'claude-cli' } }
@@ -102,7 +110,7 @@ describe('msum doctor with the generic CLI', () => {
     expect(text).toContain('could not run "no-such-tool-xyz"')
   })
 
-  it('only warns when the program is there', async () => {
+  it.skipIf(isWindows)('only warns when the program is there', async () => {
     const cli = installFakeCli()
     created.push(cli)
     const h = await makeHarness({
@@ -118,7 +126,7 @@ describe('msum doctor with the generic CLI', () => {
     expect(cli.calls()).toEqual([])
   })
 
-  it.each([
+  itEach([
     [
       'en',
       'the command uses {{prompt}}: the chat goes in the arguments, where other users of this machine can read it',
@@ -143,7 +151,7 @@ describe('msum doctor with the generic CLI', () => {
 })
 
 describe('the startup warning of the generic CLI', () => {
-  it('msum digest says it before running, in the language of the configuration', async () => {
+  it.skipIf(isWindows)('msum digest says it before running, in the language of the configuration', async () => {
     const cli = installFakeCli({ steps: [{ kind: 'text', text: '{}' }] })
     created.push(cli)
     const config = (language: string, acknowledgeRisk: boolean) => ({

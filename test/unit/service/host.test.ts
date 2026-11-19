@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { assertSingleLine, firstLine, nodeFiles, nodeRunner } from '../../../src/infrastructure/service/host.js'
 import { allowSubprocess } from '../../support/network-guard.js'
+import { isWindows } from '../../support/platform.js'
 
 // The real runner is exercised with this very node (never with a service manager) and the real files in a temp dir.
 
@@ -54,14 +55,14 @@ describe('nodeFiles', () => {
   it('creates the missing directories private (0700)', async () => {
     const root = temp()
     await nodeFiles.write(join(root, 'x', 'f'), 't', 0o600)
-    expect(statSync(join(root, 'x')).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(join(root, 'x')).mode & 0o777).toBe(0o700)
   })
 
   it('ensureDir creates a private directory and leaves an existing one alone', async () => {
     const path = join(temp(), 'logs')
     await nodeFiles.ensureDir(path)
     await nodeFiles.ensureDir(path)
-    expect(statSync(path).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(path).mode & 0o777).toBe(0o700)
   })
 
   it('does not hide an error other than a missing file', async () => {

@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { allowSubprocess } from '../../support/network-guard.js'
+import { isWindows } from '../../support/platform.js'
 
 // install.sh runs under the real /bin/sh with a hermetic PATH: symlinks to the few system tools it needs, plus fakes
 // of uname, curl, node, npm and ldd. Nothing reaches the network (the fake curl serves local files), and everything
@@ -107,6 +108,7 @@ let log: string
 let revoke: () => void = () => undefined
 
 beforeAll(() => {
+  if (isWindows) return
   revoke = allowSubprocess('/bin/sh')
 })
 afterAll(() => revoke())
@@ -117,6 +119,7 @@ function writeExecutable(path: string, content: string): void {
 }
 
 beforeEach(() => {
+  if (isWindows) return
   dir = mkdtempSync(join(tmpdir(), 'msum-install-'))
   home = join(dir, 'home')
   tools = join(dir, 'tools')
@@ -134,7 +137,9 @@ beforeEach(() => {
   }
   writeExecutable(join(fakes, 'uname'), FAKE_UNAME)
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => {
+  if (!isWindows) rmSync(dir, { recursive: true, force: true })
+})
 
 interface Options {
   readonly node?: boolean
@@ -192,6 +197,9 @@ function serveNode(os: string, arch: string, sumOverride?: string): void {
   )
 }
 
+// install.sh is only for macOS and Linux: its tests run it under /bin/sh with symlinks to /usr/bin tools and chmod, none
+// of which exists on Windows, so the describes that execute it are skipped there. The static reads of the script
+// (the pinned Node.js, the last line, the safety basics) run everywhere.
 describe('install.sh', () => {
   it('pins a Node.js that satisfies the engines of the package', () => {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { engines: { node: string } }
@@ -200,7 +208,7 @@ describe('install.sh', () => {
     expect(major === 22 && (minor ?? 0) >= 16).toBe(true)
   })
 
-  describe('--dry-run', () => {
+  describe.skipIf(isWindows)('--dry-run', () => {
     it('changes nothing, with a system node', () => {
       const result = run(['--dry-run'], { node: true })
       expect(result.status).toBe(0)
@@ -225,7 +233,7 @@ describe('install.sh', () => {
     })
   })
 
-  describe('platform', () => {
+  describe.skipIf(isWindows)('platform', () => {
     it('rejects an unsupported system and points at Docker', () => {
       const result = run(['--yes'], { env: { FAKE_OS: 'FreeBSD' } })
       expect(result.status).toBe(3)
@@ -266,7 +274,7 @@ describe('install.sh', () => {
     })
   })
 
-  describe('private Node.js', () => {
+  describe.skipIf(isWindows)('private Node.js', () => {
     it('downloads from nodejs.org, verifies the checksum and uses it in the shims', () => {
       serveNode('darwin', 'arm64')
       const result = run(['--yes', '--no-service', '--no-open'])
@@ -320,7 +328,7 @@ describe('install.sh', () => {
     })
   })
 
-  describe('install', () => {
+  describe.skipIf(isWindows)('install', () => {
     it('installs the tarball with the safe npm flags and creates both commands', () => {
       const tarball = join(dir, 'message-summarize-0.0.0.tgz')
       writeFileSync(tarball, 'x')
@@ -445,7 +453,7 @@ describe('install.sh', () => {
     })
   })
 
-  describe('service and web', () => {
+  describe.skipIf(isWindows)('service and web', () => {
     const fullRun = (extra: string[] = [], env: Record<string, string> = {}) =>
       run(['--yes', ...extra], { node: true, env })
 
@@ -488,7 +496,7 @@ describe('install.sh', () => {
     })
   })
 
-  describe('PATH', () => {
+  describe.skipIf(isWindows)('PATH', () => {
     it('prints the exact line to add when ~/.local/bin is not on the PATH, and edits nothing', () => {
       const result = run(['--yes', '--no-service', '--no-open'], { node: true })
       expect(out(result)).toContain('export PATH="$HOME/.local/bin:$PATH"')
@@ -543,7 +551,7 @@ describe('install.sh', () => {
     })
   })
 
-  describe('--uninstall', () => {
+  describe.skipIf(isWindows)('--uninstall', () => {
     it('removes the program and the commands, keeps the data and says where it is', () => {
       expect(run(['--yes', '--no-service', '--no-open'], { node: true }).status).toBe(0)
       const data = join(home, 'data')

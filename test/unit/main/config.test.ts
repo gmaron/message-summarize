@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { getCatalog } from '../../../src/infrastructure/i18n/index.js'
 import {
@@ -680,7 +680,7 @@ describe('loadEffectiveConfig', () => {
     expect(fromRoot.ok && fromRoot.value.promptFile).toBe(join(onlyRoot.dir, 'prompts', 'root.md'))
     const absolute = setup('{"promptFile":"/srv/prompt.md"}')
     const kept = await loadEffectiveConfig(absolute.rootFile, absolute.accountFile, BA)
-    expect(kept.ok && kept.value.promptFile).toBe('/srv/prompt.md')
+    expect(kept.ok && kept.value.promptFile).toBe(resolve('/srv/prompt.md'))
   })
 
   it('takes the language to talk in from the account file first, then the installation, then the default', async () => {

@@ -22,6 +22,7 @@ import {
   until,
   waitFor,
 } from '../../support/cli-harness.js'
+import { isWindows } from '../../support/platform.js'
 
 const JID: Record<string, string> = {
   alpha: '5491100000011@s.whatsapp.net',
@@ -826,7 +827,7 @@ describe('what the daemon says about each account (RF-04)', () => {
     })
     for (const id of ['alpha', 'beta']) {
       const file = w.h.accountOf(id).stateFile
-      expect(statSync(file).mode & 0o777).toBe(0o600)
+      if (!isWindows) expect(statSync(file).mode & 0o777).toBe(0o600)
       const content = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
       expect(Object.keys(content).sort()).toEqual(['since', 'state'])
       expect(typeof content.since).toBe('number')

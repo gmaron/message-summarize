@@ -10,7 +10,8 @@ const text = (...parts: string[]) => read(...parts).toString('utf8')
 
 const iss = text('packaging', 'windows', 'message-summarize.iss')
 const buildBytes = read('scripts', 'build-windows-installer.ps1')
-const build = buildBytes.toString('utf8')
+// .gitattributes checks the .ps1 out with CRLF: the checks below work on LF text.
+const build = buildBytes.toString('utf8').replace(/\r\n/g, '\n')
 const workflow = text('.github', 'workflows', 'release.yml')
 const installSh = text('install.sh')
 
@@ -328,7 +329,7 @@ function job(name: string): string {
 
 describe('release.yml', () => {
   it('runs on v* tags and by hand, never on pull_request_target', () => {
-    expect(workflow).toMatch(/^on:\n {2}push:\n {4}tags:\n {6}- 'v\*'\n {2}workflow_dispatch:/m)
+    expect(workflow).toMatch(/^on:\n {2}push:\n {4}tags:\n {6}- (["'])v\*\1\n {2}workflow_dispatch:/m)
     expect(workflow).not.toMatch(/pull_request_target|pull_request:|workflow_run/)
   })
 

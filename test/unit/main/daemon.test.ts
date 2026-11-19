@@ -17,6 +17,7 @@ import {
   SUMMARY,
   seedMessages,
 } from '../../support/cli-harness.js'
+import { isWindows } from '../../support/platform.js'
 
 /** The events the logger wrote, as objects. */
 const events = (h: Harness): { event: string; level: string; [key: string]: unknown }[] =>
@@ -449,7 +450,7 @@ async function expectIdle(s: Setup, reason: BlockedReason): Promise<void> {
   expect(harness.connection.calls).toContain('stop')
   const marker = JSON.parse(readFileSync(harness.account.blockedFile, 'utf8'))
   expect(marker).toEqual({ reason, at: Date.now() })
-  expect(statSync(harness.account.blockedFile).mode & 0o777).toBe(0o600)
+  if (!isWindows) expect(statSync(harness.account.blockedFile).mode & 0o777).toBe(0o600)
 
   // idle: no schedule, no digest, no delivery, no new connection, however long it waits
   harness.connection.calls.length = 0

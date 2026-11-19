@@ -13,11 +13,12 @@ import {
   resolveDataDir,
   unsafeAccountPath,
 } from '../../../src/main/paths.js'
+import { isWindows } from '../../support/platform.js'
 
 describe('resolveDataDir', () => {
   const home = '/home/sam'
   it('prefers MSUM_DATA_DIR, as an absolute path', () => {
-    expect(resolveDataDir({ env: { MSUM_DATA_DIR: '/srv/msum' }, platform: 'linux', home })).toBe('/srv/msum')
+    expect(resolveDataDir({ env: { MSUM_DATA_DIR: '/srv/msum' }, platform: 'linux', home })).toBe(resolve('/srv/msum'))
     expect(resolveDataDir({ env: { MSUM_DATA_DIR: 'relative/dir' }, platform: 'linux', home })).toBe(
       resolve('relative/dir'),
     )
@@ -25,21 +26,23 @@ describe('resolveDataDir', () => {
 
   it('ignores an empty MSUM_DATA_DIR', () => {
     expect(resolveDataDir({ env: { MSUM_DATA_DIR: '  ' }, platform: 'linux', home })).toBe(
-      '/home/sam/.local/share/message-summarize',
+      join('/home/sam', '.local', 'share', 'message-summarize'),
     )
   })
 
   it('uses Application Support on macOS', () => {
     expect(resolveDataDir({ env: {}, platform: 'darwin', home: '/Users/sam' })).toBe(
-      '/Users/sam/Library/Application Support/message-summarize',
+      join('/Users/sam', 'Library', 'Application Support', 'message-summarize'),
     )
   })
 
   it('uses XDG_DATA_HOME on Linux, else ~/.local/share', () => {
     expect(resolveDataDir({ env: { XDG_DATA_HOME: '/data/xdg' }, platform: 'linux', home })).toBe(
-      '/data/xdg/message-summarize',
+      join(resolve('/data/xdg'), 'message-summarize'),
     )
-    expect(resolveDataDir({ env: {}, platform: 'linux', home })).toBe('/home/sam/.local/share/message-summarize')
+    expect(resolveDataDir({ env: {}, platform: 'linux', home })).toBe(
+      join('/home/sam', '.local', 'share', 'message-summarize'),
+    )
   })
 
   it('uses APPDATA on Windows', () => {
@@ -55,31 +58,31 @@ describe('layoutOf', () => {
     const layout = layoutOf('/d')
     expect(layout).toEqual({
       dataDir: '/d',
-      configFile: '/d/config.json',
-      secretsFile: '/d/secrets.json',
-      appDbFile: '/d/app.db',
-      accountsDir: '/d/accounts',
-      modelsDir: '/d/models',
-      lockFile: '/d/daemon.pid',
-      legacyAccountDir: '/d/account',
-      legacyQrFile: '/d/qr.png',
-      webTokenFile: '/d/web-token',
-      webAddressFile: '/d/web.json',
+      configFile: join('/d', 'config.json'),
+      secretsFile: join('/d', 'secrets.json'),
+      appDbFile: join('/d', 'app.db'),
+      accountsDir: join('/d', 'accounts'),
+      modelsDir: join('/d', 'models'),
+      lockFile: join('/d', 'daemon.pid'),
+      legacyAccountDir: join('/d', 'account'),
+      legacyQrFile: join('/d', 'qr.png'),
+      webTokenFile: join('/d', 'web-token'),
+      webAddressFile: join('/d', 'web.json'),
     })
     expect(accountLayoutOf(layout, 'work')).toEqual({
       id: 'work',
-      dir: '/d/accounts/work',
-      dbFile: '/d/accounts/work/db.sqlite',
-      authDir: '/d/accounts/work/auth',
-      mediaDir: '/d/accounts/work/media',
-      modelsDir: '/d/models',
-      qrFile: '/d/accounts/work/qr.png',
-      blockedFile: '/d/accounts/work/blocked.json',
-      configFile: '/d/accounts/work/config.json',
-      secretsFile: '/d/accounts/work/secrets.json',
-      installationSecretsFile: '/d/secrets.json',
-      linkLockFile: '/d/accounts/work/link.lock',
-      stateFile: '/d/accounts/work/state.json',
+      dir: join('/d', 'accounts', 'work'),
+      dbFile: join('/d', 'accounts', 'work', 'db.sqlite'),
+      authDir: join('/d', 'accounts', 'work', 'auth'),
+      mediaDir: join('/d', 'accounts', 'work', 'media'),
+      modelsDir: join('/d', 'models'),
+      qrFile: join('/d', 'accounts', 'work', 'qr.png'),
+      blockedFile: join('/d', 'accounts', 'work', 'blocked.json'),
+      configFile: join('/d', 'accounts', 'work', 'config.json'),
+      secretsFile: join('/d', 'accounts', 'work', 'secrets.json'),
+      installationSecretsFile: join('/d', 'secrets.json'),
+      linkLockFile: join('/d', 'accounts', 'work', 'link.lock'),
+      stateFile: join('/d', 'accounts', 'work', 'state.json'),
     })
   })
 
@@ -103,7 +106,8 @@ describe('data directory permissions (RNF-04)', () => {
   }
   const mode = (path: string): number => statSync(path).mode & 0o777
 
-  it('creates the directories with mode 0700', async () => {
+  // `loosePermissions` and the modes are POSIX-only: on Windows it reports nothing and the modes are not set.
+  it.skipIf(isWindows)('creates the directories with mode 0700', async () => {
     const layout = layoutOf(join(temp(), 'new', 'data'))
     const account = accountLayoutOf(layout, 'work')
     await ensureDataDirs(layout)
@@ -112,7 +116,7 @@ describe('data directory permissions (RNF-04)', () => {
     expect(await loosePermissions(layout, [account])).toEqual([])
   })
 
-  it('tightens directories that existed with looser modes, and reports them before', async () => {
+  it.skipIf(isWindows)('tightens directories that existed with looser modes, and reports them before', async () => {
     const layout = layoutOf(join(temp(), 'data'))
     const account = accountLayoutOf(layout, 'work')
     await ensureDataDirs(layout)
@@ -139,7 +143,7 @@ describe('directories that are links', () => {
       const account = accountLayoutOf(layout, 'work')
       symlinkSync(elsewhere, account.dir)
       await expect(ensureAccountDirs(account)).rejects.toThrow('not a real directory')
-      expect(statSync(elsewhere).mode & 0o777).toBe(0o755)
+      if (!isWindows) expect(statSync(elsewhere).mode & 0o777).toBe(0o755)
       expect(await unsafeAccountPath(account)).toBe(account.dir)
       // an auth/ that is a link
       const other = accountLayoutOf(layout, 'other')
@@ -172,7 +176,7 @@ describe('the daemon lock', () => {
     const file = lockFile()
     const first = await acquireDaemonLock(file, 111, alive)
     expect(first.ok).toBe(true)
-    expect(mode(file)).toBe(0o600)
+    if (!isWindows) expect(mode(file)).toBe(0o600)
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: 111, host: 'host-a' })
     expect(await runningDaemonPid(file, alive)).toBe(111)
     const second = await acquireDaemonLock(file, 222, alive)

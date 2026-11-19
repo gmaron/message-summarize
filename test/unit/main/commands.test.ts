@@ -23,6 +23,7 @@ import {
   until,
   waitFor,
 } from '../../support/cli-harness.js'
+import { isWindows } from '../../support/platform.js'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -62,9 +63,9 @@ describe('msum init', () => {
   it('creates the data directory with mode 0700 and a config.json that is valid and private', async () => {
     const h = await makeHarness({ config: null, summarizer: null })
     expect(await run(h, 'init')).toBe(0)
-    expect(statSync(h.layout.dataDir).mode & 0o777).toBe(0o700)
-    expect(statSync(h.layout.accountsDir).mode & 0o777).toBe(0o700)
-    expect(statSync(h.layout.configFile).mode & 0o777).toBe(0o600)
+    if (!isWindows) expect(statSync(h.layout.dataDir).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(h.layout.accountsDir).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(h.layout.configFile).mode & 0o777).toBe(0o600)
     const written = JSON.parse(readFileSync(h.layout.configFile, 'utf8'))
     // RF-41: no default provider
     expect(written.provider.primary).toBeNull()
@@ -878,7 +879,8 @@ describe('msum doctor', () => {
     expect(none.out.join('\n')).toContain('no provider chosen')
   })
 
-  it('reports loose directory permissions', async () => {
+  // The doctor does not check modes on Windows (no POSIX permissions there).
+  it.skipIf(isWindows)('reports loose directory permissions', async () => {
     const h = await makeHarness({ config: { language: 'en', provider: { primary: 'claude-cli' } } })
     const { chmod } = await import('node:fs/promises')
     await chmod(h.account.dir, 0o755)

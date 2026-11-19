@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 // @ts-expect-error plain JavaScript module of the image
 import { dropStaleLock, HEARTBEAT_MS, STALE_AFTER_MS } from '../../../docker/prepare.mjs'
 import { allowSubprocess } from '../../support/network-guard.js'
+import { isWindows } from '../../support/platform.js'
 
 const root = join(import.meta.dirname, '..', '..', '..')
 let dir: string
@@ -62,7 +63,9 @@ describe('dropStaleLock', () => {
   })
 })
 
-describe('entrypoint.sh', () => {
+// docker/entrypoint.sh runs in the Linux image under `sh`, and the last test makes a directory read-only with chmod 0500;
+// neither exists on Windows (no `sh`, and chmod does not remove write access from a directory), so this suite is skipped there.
+describe.skipIf(isWindows)('entrypoint.sh', () => {
   const entrypoint = join(root, 'docker', 'entrypoint.sh')
   // The script runs under the real shell; its own children (`echo`, `node`) are not spawned through the guarded API.
   let revoke: () => void = () => undefined

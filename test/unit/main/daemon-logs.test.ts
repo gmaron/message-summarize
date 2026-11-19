@@ -19,6 +19,7 @@ import { startDaemonLogs } from '../../../src/main/daemon-logs.js'
 import { createTappableLogger } from '../../../src/main/logger.js'
 import { createShutdown, installProcessGuards } from '../../../src/main/process-guard.js'
 import { disposeHarnesses, type Harness, makeHarness, waitFor } from '../../support/cli-harness.js'
+import { isWindows } from '../../support/platform.js'
 
 afterEach(() => disposeHarnesses())
 
@@ -51,8 +52,8 @@ describe('msum daemon: its log file and the web (RF-75, RNF-12)', () => {
     // the same lines went to the sink the caller gave (stdout and stderr in production)
     expect(h.logs.length).toBeGreaterThan(0)
     const dir = logsDir(h)
-    expect(statSync(dir).mode & 0o777).toBe(0o700)
-    expect(statSync(join(dir, 'daemon.log')).mode & 0o777).toBe(0o600)
+    if (!isWindows) expect(statSync(dir).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(join(dir, 'daemon.log')).mode & 0o777).toBe(0o600)
     const inFile = readFileSync(join(dir, 'daemon.log'), 'utf8')
       .split('\n')
       .filter((l) => l !== '')
@@ -131,22 +132,26 @@ describe('startDaemonLogs: logging never stops the daemon (RNF-12)', () => {
     return { out, err, base: createTappableLogger({ write: (t) => out.push(t) }, { write: (t) => err.push(t) }) }
   }
 
-  it('starts, with an empty history, when daemon.log and daemon.log.1 cannot be read (mode 000)', async () => {
-    if (process.getuid?.() === 0) return
-    const dir = temp()
-    mkdirSync(join(dir, 'logs'), { mode: 0o700 })
-    for (const name of ['daemon.log', 'daemon.log.1']) {
-      writeFileSync(join(dir, 'logs', name), '{"time":"2026-11-17T12:00:00.000Z","level":"info","event":"old"}\n')
-      chmodSync(join(dir, 'logs', name), 0o000)
-    }
-    const { base } = sinks()
-    const logs = await startDaemonLogs(base, { dataDir: dir }, 1_048_576)
-    expect(logs.store.query({ limit: 10 })).toEqual([])
-    expect(() => logs.logger.info('after')).not.toThrow()
-    expect(logs.store.query({ limit: 10 }).map((e) => e.event)).toEqual(['after'])
-    await logs.close()
-    chmodSync(join(dir, 'logs', 'daemon.log.1'), 0o600)
-  })
+  // A mode 000 file is a POSIX-only way to make a file unreadable.
+  it.skipIf(isWindows)(
+    'starts, with an empty history, when daemon.log and daemon.log.1 cannot be read (mode 000)',
+    async () => {
+      if (process.getuid?.() === 0) return
+      const dir = temp()
+      mkdirSync(join(dir, 'logs'), { mode: 0o700 })
+      for (const name of ['daemon.log', 'daemon.log.1']) {
+        writeFileSync(join(dir, 'logs', name), '{"time":"2026-11-17T12:00:00.000Z","level":"info","event":"old"}\n')
+        chmodSync(join(dir, 'logs', name), 0o000)
+      }
+      const { base } = sinks()
+      const logs = await startDaemonLogs(base, { dataDir: dir }, 1_048_576)
+      expect(logs.store.query({ limit: 10 })).toEqual([])
+      expect(() => logs.logger.info('after')).not.toThrow()
+      expect(logs.store.query({ limit: 10 }).map((e) => e.event)).toEqual(['after'])
+      await logs.close()
+      chmodSync(join(dir, 'logs', 'daemon.log.1'), 0o600)
+    },
+  )
 
   it('does not use a logs directory that is a link: one warning on stderr, nothing written or read behind it', async () => {
     const dir = temp()

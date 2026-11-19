@@ -12,7 +12,8 @@ import { allowSubprocess } from '../../support/network-guard.js'
 // hand, see the list in the report of the commit.
 const root = join(import.meta.dirname, '..', '..', '..')
 const script = join(root, 'install.ps1')
-const text = readFileSync(script, 'utf8')
+// .gitattributes checks install.ps1 out with CRLF, so the line-based checks below work on LF text.
+const text = readFileSync(script, 'utf8').replace(/\r\n/g, '\n')
 const shText = readFileSync(join(root, 'install.sh'), 'utf8')
 
 /** The script without comments (line comments and the comment-based help block): what is left is what runs. */
@@ -341,13 +342,29 @@ runtime('install.ps1 (PowerShell, nothing is changed)', () => {
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
+  // The environment given to pwsh replaces the whole one. On Windows PowerShell needs SystemRoot and windir, and
+  // System32 on the PATH, to start at all; on Linux and macOS the system tools live in /usr/bin and /bin.
+  const systemRoot = process.env.SystemRoot ?? process.env.windir ?? 'C:\\Windows'
+  const systemEnv: Record<string, string> =
+    process.platform === 'win32'
+      ? { SystemRoot: systemRoot, windir: systemRoot, ComSpec: join(systemRoot, 'System32', 'cmd.exe') }
+      : {}
+  const systemPath = process.platform === 'win32' ? [join(systemRoot, 'System32'), systemRoot] : ['/usr/bin', '/bin']
+
   function run(args: string[], env: Record<string, string> = {}) {
     return spawnSync(pwsh ?? 'pwsh', ['-NoProfile', '-NonInteractive', '-File', script, ...args], {
       encoding: 'utf8',
       cwd: dir,
       env: {
-        PATH: [dirname(process.execPath), dirname(pwsh ?? ''), '/usr/bin', '/bin'].join(delimiter),
+        ...systemEnv,
+        PATH: [dirname(process.execPath), dirname(pwsh ?? ''), ...systemPath].join(delimiter),
         HOME: home,
+        // On Linux and macOS pwsh keeps its own cache and modules under XDG_* (default: inside HOME); they must not
+        // end up in the temporary profile, whose content the tests compare.
+        XDG_CACHE_HOME: join(dir, 'xdg', 'cache'),
+        XDG_DATA_HOME: join(dir, 'xdg', 'data'),
+        XDG_CONFIG_HOME: join(dir, 'xdg', 'config'),
+        POWERSHELL_TELEMETRY_OPTOUT: '1',
         USERPROFILE: home,
         LOCALAPPDATA: join(home, 'AppData', 'Local'),
         APPDATA: join(home, 'AppData', 'Roaming'),

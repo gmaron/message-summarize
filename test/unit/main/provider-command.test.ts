@@ -8,6 +8,11 @@ import { REQUEST, VALID_SUMMARY } from '../../contract/summarizer.contract.js'
 import { disposeHarnesses, type Harness, makeHarness, seedMessages } from '../../support/cli-harness.js'
 import { CLAUDE_HELP, type FakeCli, installFakeCli } from '../../support/fake-cli.js'
 import { type FakeServer, startFakeServer } from '../../support/fake-http-server.js'
+import { isWindows } from '../../support/platform.js'
+
+// On Windows the tests that run the fake CLI are skipped: it is a script with a shebang, and the adapters spawn without
+// a shell (RF-49), so Windows cannot execute it (a .cmd wrapper would need `shell: true`, which the rule forbids).
+// The behavior they check is cross-platform code; it is covered on Linux and macOS.
 
 const servers: FakeServer[] = []
 const clis: FakeCli[] = []
@@ -531,7 +536,7 @@ describe('msum provider test (RF-41: "test the connection")', () => {
     expect(everything(h)).not.toContain(KEY)
   })
 
-  it('tests a CLI: Claude Code through a fake binary, verified first', async () => {
+  it.skipIf(isWindows)('tests a CLI: Claude Code through a fake binary, verified first', async () => {
     const cli = installFakeCli({
       help: CLAUDE_HELP,
       steps: [{ kind: 'text', text: JSON.stringify({ is_error: false, structured_output: VALID_SUMMARY }) }],
@@ -644,7 +649,7 @@ describe('msum provider test (RF-41: "test the connection")', () => {
       expect(text(h)).not.toContain('One call will be made')
     })
 
-    it('a CLI that cannot be verified', async () => {
+    it.skipIf(isWindows)('a CLI that cannot be verified', async () => {
       const cli = installFakeCli({ help: 'Usage: claude -p' })
       clis.push(cli)
       const h = await makeHarness({

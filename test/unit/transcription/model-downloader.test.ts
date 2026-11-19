@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   type DownloadProgress,
@@ -375,13 +375,13 @@ describe('resolveModelPath', () => {
   const models = '/data/models'
   const data = '/data'
   it('takes a bare name or a file name as a model of the models directory', () => {
-    expect(resolveModelPath(models, data, 'base')).toBe('/data/models/ggml-base.bin')
-    expect(resolveModelPath(models, data, 'small.en')).toBe('/data/models/ggml-small.en.bin')
-    expect(resolveModelPath(models, data, 'ggml-base.bin')).toBe('/data/models/ggml-base.bin')
-    expect(resolveModelPath(models, data, 'mine.bin')).toBe('/data/models/mine.bin')
+    expect(resolveModelPath(models, data, 'base')).toBe(join('/data/models', 'ggml-base.bin'))
+    expect(resolveModelPath(models, data, 'small.en')).toBe(join('/data/models', 'ggml-small.en.bin'))
+    expect(resolveModelPath(models, data, 'ggml-base.bin')).toBe(join('/data/models', 'ggml-base.bin'))
+    expect(resolveModelPath(models, data, 'mine.bin')).toBe(join('/data/models', 'mine.bin'))
   })
   it('takes an absolute path as it is, and a relative one with a separator from the data directory', () => {
     expect(resolveModelPath(models, data, '/opt/whisper/ggml-x.bin')).toBe('/opt/whisper/ggml-x.bin')
-    expect(resolveModelPath(models, data, 'custom/ggml-x.bin')).toBe('/data/custom/ggml-x.bin')
+    expect(resolveModelPath(models, data, 'custom/ggml-x.bin')).toBe(resolve('/data', 'custom/ggml-x.bin'))
   })
 })
