@@ -335,7 +335,10 @@ function findPwsh(): string | null {
 const pwsh = findPwsh()
 const runtime = pwsh === null ? describe.skip : describe
 
-runtime('install.ps1 (PowerShell, nothing is changed)', () => {
+// The first pwsh start on a fresh Windows runner builds its module cache and can take longer than the global 30 s.
+const PWSH_TIMEOUT_MS = 120_000
+
+runtime('install.ps1 (PowerShell, nothing is changed)', { timeout: PWSH_TIMEOUT_MS }, () => {
   let dir = ''
   let home = ''
   let revoke: () => void = () => undefined
