@@ -8,7 +8,35 @@ The first supported platform is **WhatsApp**. The core does not depend on it, so
 
 ## Status
 
-**Early development.** There is no installer yet. A command-line version with a first local web page can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
+**Early development.** There is no published release yet (see [Install](#install) for the installers and their state). A command-line version with a local web page can be tried from source (see [Try it](#try-it-early-version)); expect rough edges. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish) and the work is organized in the phases of the [roadmap](#roadmap).
+
+## Install
+
+**There is no release yet.** The installers below are written and tested as far as a Mac allows, but the first published release (v0.1.0) is still to come, and the Windows installer has never run on a real Windows machine. Until then, use Docker from a clone of the repository, or [try it from source](#try-it-early-version). Read the [warning](#important-warning) first.
+
+**Docker (any system, recommended on Windows).** With Docker or Docker Desktop installed, from a clone of the repository:
+
+```sh
+docker compose up -d
+docker compose exec message-summarize msum open --print   # the address of the web page, with its access token
+```
+
+The data lives in the `msum-data` volume and the container restarts by itself. The web page is published only on `127.0.0.1:8787`: do not change it to another address, and use `docker compose exec` (never `docker compose run`) for commands. The `cli` profile (`docker compose --profile cli up -d`) uses an image that also carries Claude Code, Gemini CLI and Codex, for those who want to use a CLI as the provider (you sign in inside the container; Gemini CLI and Codex are disabled for now, see [Use a CLI as the provider](#use-a-cli-as-the-provider)).
+
+**macOS and Linux.** `install.sh` needs no administrator rights and touches nothing outside your home folder. It installs the program (with its own copy of Node.js, checked against the official checksum, if yours is older than 22.16), registers the daemon as a user service, and opens the web page:
+
+```sh
+sh install.sh              # from a clone; --help lists the options
+sh install.sh --uninstall  # removes the program, never your data
+```
+
+Options: `--no-service`, `--no-open`, `--modify-path`, `--prefix <dir>`, `--tarball <file|url>`, `--dry-run`. It refuses a folder that holds or sits inside the data directory.
+
+**Windows.** Two ways, both without administrator rights: the installer `message-summarize-<version>-win-x64-setup.exe` that will come with each release (it is not signed yet, so Windows SmartScreen will warn you), or `install.ps1`, which does the same as `install.sh` (`.\install.ps1 -Help`). Uninstalling keeps your data. Windows on ARM: use Docker.
+
+**Where the data is.** `~/Library/Application Support/message-summarize` on macOS, `~/.local/share/message-summarize` on Linux and `%APPDATA%\message-summarize` on Windows (or the folder in `MSUM_DATA_DIR`). Uninstalling never deletes it; to remove an account's data use `msum unlink`.
+
+**Release checks.** Every release carries a `SHA256SUMS.txt`. The package is not on npm yet: publishing is blocked on purpose until the license of one dependency is settled (see [License](#license)).
 
 ## Try it (early version)
 
@@ -39,7 +67,7 @@ A running daemon picks the changes up within about five seconds, with no restart
 
 4. **`msum digest --dry-run`** generates a digest now and prints it, without saving or sending anything. Without `--dry-run` the digest is queued and the running daemon delivers it. It does not open a WhatsApp connection (the daemon owns the session). Options: `--hours N`, `--from "YYYY-MM-DD HH:MM"`, `--to "YYYY-MM-DD HH:MM"`.
 
-Other commands: `msum status` (account, last digest, pending deliveries, next runs), `msum doctor` (checks Node, permissions, configuration, provider, link and, when it is on, transcription), `msum whisper models|download <name>` (see [Transcribe voice notes](#transcribe-voice-notes-optional)) and `msum unlink`, which **deletes all the data of the account** (its messages, the audios it downloaded, the digest history, pending deliveries and the WhatsApp session; the configuration stays) and asks for confirmation. Afterwards, also remove the device on the phone (WhatsApp, Settings > Linked devices).
+Other commands: `msum status` (account, last digest, pending deliveries, next runs), `msum doctor` (checks Node, permissions, configuration, provider, link and, when it is on, transcription), `msum whisper models|download <name>` (see [Transcribe voice notes](#transcribe-voice-notes-optional)), `msum service install|uninstall|status` (registers only the daemon so it starts with your session and comes back after a crash: launchd on macOS, `systemd --user` on Linux, a `Run` entry of your user on Windows; no administrator rights, and the schedules stay inside the daemon) and `msum unlink`, which **deletes all the data of the account** (its messages, the audios it downloaded, the digest history, pending deliveries and the WhatsApp session; the configuration stays) and asks for confirmation. Afterwards, also remove the device on the phone (WhatsApp, Settings > Linked devices).
 
 **Web page.** While the daemon runs it also serves a local page, by default at `http://127.0.0.1:8787` (option `web` in the installation's `config.json`: `port`, `host`, `enabled`). `msum open` opens it already signed in: the address carries an access token, generated once in the data directory (`web-token`), so do not share it. From the page you can add an account and link it by scanning the QR code, follow the sync of the history, see the state of each account and fix a block (link again, or retry: after a refused or replaced connection the page makes you wait 30 minutes), edit the schedules, run "summarize now" and see a preview that sends nothing and does not move the pointer. It also lists and searches the conversations of an account and marks each one as excluded or local only. You can also edit the prompt of each account (only `{{name}}` is a variable, the format of the response is fixed and added automatically) and go back to the original, which keeps your text in `prompt.previous.md`. **Excluding a chat deletes the messages and the chat row stored so far**; it does not remove the summaries already inside past digests (the history of digests is kept) nor the parts already queued for delivery. Un-excluding restores nothing. A mark covers the ids of that person that WhatsApp has told this computer about (a number and an internal id); if the same person shows up as a second chat, mark that one too. "Local only" needs an Ollama model in the settings. It listens only on this machine; another `host` (for example `0.0.0.0` inside Docker, publishing the port only on `127.0.0.1`) is an explicit choice. The "Logs" button shows the daemon's recent log lines, filterable by level and account; they never include messages, names or secrets. The daemon also writes them to `logs/daemon.log` in the data directory (rotated to `daemon.log.1`), and the two files together stay under `logs.maxBytes` (installation `config.json` only, 50 MB by default, minimum 1 MB). **Setup wizard.** The first time the page opens on an installation with no linked account, it starts a wizard (language, your name, provider, audio, link the phone by QR with the sync, first schedule). It can be closed halfway and resumed (its state is kept in `app.db`), or skipped; an installation that already has a linked account (made with the command line or `msum import`) never sees it. Choosing the provider shows what each one costs, whether data leaves your computer, to whom and what the provider does with it, and has a "Test connection" button that makes one real call with a short made-up chat (it only runs when you click it). A provider that sends the text of your chats out of this machine (today, Claude Code, which sends it to Anthropic under your Claude account) needs an explicit agreement: the box has to be ticked and it is recorded (account, provider, version of the text and time) in `app.db`. The settings ask for the same agreement the first time you pick such a provider for an account; Ollama on your own machine needs none, but an Ollama server whose address is not on this machine (not `localhost`, `127.0.0.0/8` or `::1`) counts as an external recipient too: the page names the host, says that "local only" conversations also go there, and asks for the same agreement. A configuration written by hand or with the command line is not blocked by this: the agreement is about the choice made in the web. The wizard is also the only place where the web writes the installation's `config.json`, and only its `language`. The other providers (API keys, Gemini, Codex, any other command) and local audio transcription come in a next version. Settings, conversations, the prompt, the history, the logs and the setup are all in the web.
 
@@ -237,16 +265,18 @@ Then check with `msum digest --dry-run --account <id>` and start the daemon.
 - **Send the digest to your own chat** ("Message yourself"), sorted into sections: needs a reply, has pending items, everything else. It is never sent to anyone else, not even to another account in the same installation.
 - **Run on a schedule** you set from the web (for example, 9:00 and 19:00 every day), plus "summarize now" and a preview that does not send anything.
 - **Handle several accounts** in one installation, each with its own data, settings and schedules.
-- **Install with Docker, or natively on macOS and Linux.** Native Windows comes in v1.1; until then, Windows uses Docker.
+- **Install with Docker, or natively on macOS, Linux and Windows** (see [Install](#install)).
 
 ## Important warning
 
 Read this before using message-summarize with your account.
 
 - **Your number can be banned.** message-summarize connects to WhatsApp through [Baileys](https://github.com/WhiskeySockets/Baileys), an **unofficial** client. WhatsApp does not allow unofficial clients and may block the number that uses them, temporarily or permanently. The project tries to reduce that risk (read-only behavior, no messages to third parties, not marking itself online), but it cannot remove it.
+- **The program is read-only.** It reads the messages that arrive, never replies, never marks you as online and never sends anything to third parties. The only message it sends is the digest, to your own chat ("Message yourself").
 - **Modifying the program or misusing it makes a ban more likely.** Changes that send messages to other people, send many messages, automate replies or change how the client connects can get your number blocked. If you change the code, you take that risk.
-- **Your chats go to the LLM you choose.** Unless you use a local model (Ollama) or mark a conversation as "local only", the text of your conversations is sent to the provider you configure, under that provider's terms. Some free plans may use that content to improve their products, including human review.
-- **You are responsible** for complying with WhatsApp's terms, your LLM provider's terms and the privacy of the people who write to you.
+- **Your data stays on your machine, except what goes to the LLM you choose.** Unless you use a local model (Ollama) or mark a conversation as "local only", the text of your conversations is sent to the provider you configure, under that provider's terms. Some free plans may use that content to improve their products, including human review.
+- **You are responsible** for complying with WhatsApp's terms, your LLM provider's terms and the privacy law that applies to the conversations of third parties (the people who write to you) that you read and summarize.
+- **There is no warranty.** The software is provided "as is", as the [license](LICENSE) says. The authors are not liable for a blocked number, a leaked conversation or any other damage.
 
 This project is not affiliated with, endorsed by or sponsored by WhatsApp or Meta.
 
@@ -259,9 +289,15 @@ This project is not affiliated with, endorsed by or sponsored by WhatsApp or Met
 | 2 | Daemon, schedules, multiple accounts and import from the personal tool |
 | 3 | LLM providers (API and CLI), fallback provider, local-only conversations, whisper.cpp transcription and `doctor` |
 | 4 | Local web: setup wizard, QR linking, dashboard, settings, history and logs |
-| 5 | Packaging: Docker image, native installers for macOS and Linux, system service |
+| 5 | Packaging: Docker image, installers for macOS, Linux and Windows, system service |
 | 6 | CI, license checks, documentation and the first release (v0.1.0) |
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) for this project's own code. One dependency, `libsignal` (brought in by Baileys, the WhatsApp client), is licensed GPL-3.0; how that fits with the MIT license has to be settled before the first release (the options are to replace it, isolate it or relicense; nothing is decided yet), and `npm run check:licenses` lists it as a named exception until then. Publishing to npm is blocked on purpose until that decision is made. The full list of dependencies and their licenses is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Contributing and security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to set up the repository, the checks and the rules for changes.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): the dependencies and their licenses.

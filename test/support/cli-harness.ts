@@ -323,15 +323,21 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
         summarizer: options.summarizer === undefined ? summarizer : options.summarizer,
       }),
     shutdown: () => stop(),
-    dispose: () => {
-      rmSync(dir, { recursive: true, force: true })
-    },
+    dispose: () => removeDir(dir),
   }
 }
 
 /** Removes every temp directory the harnesses made. Call it in afterEach. */
 export function disposeHarnesses(): void {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs.splice(0)) removeDir(dir)
+}
+
+/**
+ * Windows refuses to delete a file that is still open (EBUSY, EPERM): a database or a socket that is a few milliseconds
+ * away from closing, or something that scans the new file. The standard answer is to try again a few times.
+ */
+function removeDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 }
 
 export interface SeedMessage {

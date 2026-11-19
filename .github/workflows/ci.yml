@@ -1,0 +1,172 @@
+# CI: required on every pull request (RNF-15) and on pushes to main. The test matrix covers macOS, Linux and
+# Windows (RNF-05). No secrets, no telemetry; the only network access is `npm ci`.
+# Third-party actions are pinned by full commit SHA.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - run: npm ci
+      # RNF-18: normal mode (the known libsignal exception is reported, not failed; --strict is for publishing).
+      - run: npm run check:licenses
+      # THIRD_PARTY_NOTICES.md must match the installed production tree (regenerate with `npm run notices`).
+      - run: npm run notices:check
+      - run: npm run lint
+      - run: npm run typecheck
+      # Coverage thresholds (domain 90%, use cases 80%) live in vitest.config.ts.
+      - run: npm run test:coverage -- --maxWorkers=4 --testTimeout=30000
+      - run: npm run build
+      - run: npm run check:dist
+      # RNF-19: the web JS must stay under 100 KB gzipped.
+      - run: npm run check:web-size
+      # RNF-09: informational until there is a baseline; it never blocks the job.
+      - run: node scripts/measure-idle-memory.mjs
+        continue-on-error: true
+        timeout-minutes: 2
+
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --maxWorkers=4 --testTimeout=30000
+
+  # RNF-05/06/07: the installers work from the packed tarball on each OS. Everything goes to a temporary home: no
+  # OS service is registered (--no-service / -NoService) and the PATH is not touched. The only network access is
+  # npm (ci and the install from the local tarball); the runner's Node 22 is used, so nodejs.org is not contacted.
+  install-smoke:
+    name: install-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Pack the package (the prepack script builds it)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --pack-destination "$RUNNER_TEMP/pack"
+
+      - name: Install and verify (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/home" MSUM_DATA_DIR="$RUNNER_TEMP/data"
+          unset XDG_DATA_HOME
+          mkdir -p "$HOME"
+          sh install.sh --tarball "$(ls "$RUNNER_TEMP"/pack/*.tgz)" --prefix "$RUNNER_TEMP/app" \
+            --no-service --no-open --yes
+          node scripts/install-smoke-verify.mjs "$HOME/.local/bin/msum"
+
+      - name: Update and uninstall (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/home" MSUM_DATA_DIR="$RUNNER_TEMP/data"
+          unset XDG_DATA_HOME
+          tarball="$(ls "$RUNNER_TEMP"/pack/*.tgz)"
+          # A second run over the same prefix is an update (the old node_modules is set aside, then dropped).
+          sh install.sh --tarball "$tarball" --prefix "$RUNNER_TEMP/app" --no-service --no-open --yes \
+            || { echo "::error::the second run of install.sh (the update) failed"; exit 1; }
+          node scripts/install-smoke-verify.mjs "$HOME/.local/bin/msum" --version-only \
+            || { echo "::error::msum --version does not answer after the update"; exit 1; }
+          sh install.sh --uninstall --prefix "$RUNNER_TEMP/app" --yes \
+            || { echo "::error::install.sh --uninstall failed"; exit 1; }
+          for gone in "$RUNNER_TEMP/app" "$HOME/.local/bin/msum" "$HOME/.local/bin/message-summarize"; do
+            if [ -e "$gone" ]; then echo "::error::the uninstaller left $gone behind"; exit 1; fi
+          done
+          if [ ! -d "$MSUM_DATA_DIR" ]; then echo "::error::the uninstaller deleted the data folder $MSUM_DATA_DIR"; exit 1; fi
+
+      - name: Install and verify (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $home2 = Join-Path $env:RUNNER_TEMP 'home'
+          New-Item -ItemType Directory -Force -Path (Join-Path $home2 'AppData\Local'), (Join-Path $home2 'AppData\Roaming') | Out-Null
+          $env:USERPROFILE = $home2
+          $env:LOCALAPPDATA = Join-Path $home2 'AppData\Local'
+          $env:APPDATA = Join-Path $home2 'AppData\Roaming'
+          $env:MSUM_DATA_DIR = Join-Path $env:RUNNER_TEMP 'data'
+          $tarball = (Get-ChildItem (Join-Path $env:RUNNER_TEMP 'pack') -Filter *.tgz | Select-Object -First 1).FullName
+          $prefix = Join-Path $env:RUNNER_TEMP 'app'
+          & .\install.ps1 -Tarball $tarball -Prefix $prefix -NoService -NoOpen -Yes
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+          node scripts/install-smoke-verify.mjs (Join-Path $prefix 'bin\msum.cmd')
+          if ($LASTEXITCODE -ne 0) { throw "verification exited $LASTEXITCODE" }
+
+      - name: Update and uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $home2 = Join-Path $env:RUNNER_TEMP 'home'
+          $env:USERPROFILE = $home2
+          $env:LOCALAPPDATA = Join-Path $home2 'AppData\Local'
+          $env:APPDATA = Join-Path $home2 'AppData\Roaming'
+          $env:MSUM_DATA_DIR = Join-Path $env:RUNNER_TEMP 'data'
+          $tarball = (Get-ChildItem (Join-Path $env:RUNNER_TEMP 'pack') -Filter *.tgz | Select-Object -First 1).FullName
+          $prefix = Join-Path $env:RUNNER_TEMP 'app'
+          $shim = Join-Path $prefix 'bin\msum.cmd'
+          # A second run over the same prefix is an update (node_modules.old and the sharp-stub junction).
+          & .\install.ps1 -Tarball $tarball -Prefix $prefix -NoService -NoOpen -Yes
+          if ($LASTEXITCODE -ne 0) { throw "the second run of install.ps1 (the update) exited $LASTEXITCODE" }
+          node scripts/install-smoke-verify.mjs $shim --version-only
+          if ($LASTEXITCODE -ne 0) { throw "msum --version does not answer after the update (exit $LASTEXITCODE)" }
+          & .\install.ps1 -Uninstall -Prefix $prefix -Yes
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 -Uninstall exited $LASTEXITCODE" }
+          if (Test-Path -LiteralPath $prefix) { throw "the uninstaller left the prefix behind: $prefix" }
+          if (Test-Path -LiteralPath $shim) { throw "the uninstaller left the shim behind: $shim" }
+          if (-not (Test-Path -LiteralPath $env:MSUM_DATA_DIR)) { throw "the uninstaller deleted the data folder $($env:MSUM_DATA_DIR)" }

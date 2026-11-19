@@ -156,6 +156,9 @@ Comandos:
                                       línea de progreso). Rechaza un Ollama que no está en esta máquina salvo con --allow-remote
   open [--print]                      Abre la web local en el navegador, ya con la sesión iniciada (la sirve el daemon).
                                       --print solo imprime la dirección
+  service install|uninstall|status    Registra SOLO el daemon para que arranque con tu sesión y vuelva tras una caída
+                                      (launchd en macOS, systemd --user en Linux, una entrada Run en Windows). Sin permisos
+                                      de administrador y sin planificador del sistema: los horarios siguen dentro del daemon
   help                                Muestra esta ayuda
 
 Cuentas: link, unlink, daemon y digest trabajan sobre una cuenta, elegida con --account <id> (letras minúsculas,
@@ -462,6 +465,33 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       cancelled: 'Cancelado. No se cambió nada (usá --yes para no preguntar).',
       done: (id) =>
         `Cuenta "${id}" desvinculada: se borraron sus mensajes, resúmenes y sesión. Falta un paso en el celular: en WhatsApp, Ajustes > Dispositivos vinculados, quitá este dispositivo.`,
+    },
+    service: {
+      installed: (location) =>
+        `Servicio instalado (${location}). El daemon arranca con tu sesión y vuelve solo después de una caída. Los horarios siguen dentro del daemon.`,
+      alreadyInstalled: (location) => `El servicio ya está instalado y al día (${location}). No se cambió nada.`,
+      removed: (location) => `Servicio quitado (${location}). El daemon ya no arranca con tu sesión.`,
+      notInstalled: 'El servicio no está instalado. No se cambió nada.',
+      statusInstalled: (location, running) =>
+        `Servicio instalado (${location})${running === null ? '' : running ? ', corriendo ahora' : ', sin correr ahora'}.`,
+      statusNotInstalled: 'Servicio no instalado. Instalalo con "msum service install".',
+      statusDaemon: (pid) =>
+        pid === null ? 'No hay un daemon corriendo ahora.' : `Hay un daemon corriendo ahora (pid ${pid}).`,
+      hintEnableLinger:
+        'Para que siga corriendo cuando cerrás la sesión, corré una vez: loginctl enable-linger $USER (este comando no lo hace por vos).',
+      hintStartAtNextLogin:
+        'Arranca en tu próximo inicio de sesión. Para arrancarlo ya, corré "msum daemon" en una terminal.',
+      hintStopRunningDaemon:
+        'Un daemon que esté corriendo ahora no se detiene con este comando: termina cuando cerrás la sesión o lo detenés (Administrador de tareas), y no vuelve a arrancar.',
+      hintManualDaemon: (pid) =>
+        `Hay un daemon que arrancaste vos corriendo (pid ${pid}), así que el servicio quedó registrado pero no se arrancó ahora. Detené ese daemon y corré "msum service install" otra vez para arrancarlo, o arranca en tu próximo inicio de sesión.`,
+      hintVersionManager:
+        'Este Node viene de un administrador de versiones (nvm, fnm, Volta o asdf): el servicio sigue usando exactamente esta versión. Corré "msum service install" otra vez cuando la cambies o la quites.',
+      failed: (step, detail) => `No se cambió el servicio: falló "${step}" (${detail}).`,
+      unsupported: (platform) =>
+        `Instalar el servicio no está soportado en "${platform}". Corré "msum daemon" a mano, o usá Docker.`,
+      notBuilt: (entry) =>
+        `El programa no está compilado (${entry} no existe). Corré "npm run build" primero, o instalá el paquete.`,
     },
     daemon: {
       running: (dataDir) => `Daemon corriendo (datos en ${dataDir}). Ctrl+C para detenerlo.`,

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { err, ok } from '../../../src/domain/result.js'
@@ -23,6 +24,7 @@ import {
   until,
   waitFor,
 } from '../../support/cli-harness.js'
+import { isWindows } from '../../support/platform.js'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -62,9 +64,9 @@ describe('msum init', () => {
   it('creates the data directory with mode 0700 and a config.json that is valid and private', async () => {
     const h = await makeHarness({ config: null, summarizer: null })
     expect(await run(h, 'init')).toBe(0)
-    expect(statSync(h.layout.dataDir).mode & 0o777).toBe(0o700)
-    expect(statSync(h.layout.accountsDir).mode & 0o777).toBe(0o700)
-    expect(statSync(h.layout.configFile).mode & 0o777).toBe(0o600)
+    if (!isWindows) expect(statSync(h.layout.dataDir).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(h.layout.accountsDir).mode & 0o777).toBe(0o700)
+    if (!isWindows) expect(statSync(h.layout.configFile).mode & 0o777).toBe(0o600)
     const written = JSON.parse(readFileSync(h.layout.configFile, 'utf8'))
     // RF-41: no default provider
     expect(written.provider.primary).toBeNull()
@@ -214,12 +216,14 @@ describe('msum digest', () => {
   })
 
   it('reports an unreadable promptFile', async () => {
+    // an absolute path that exists on no OS (a path with no drive letter would take the drive of the config on Windows)
+    const missing = join(tmpdir(), 'msum-no-such-dir', 'prompt.md')
     const h = await makeHarness({
-      config: { language: 'en', provider: { primary: 'claude-cli' }, promptFile: '/nonexistent/prompt.md' },
+      config: { language: 'en', provider: { primary: 'claude-cli' }, promptFile: missing },
     })
     await seed(h, { id: 'm1', text: 'hello there' })
     expect(await run(h, 'digest', '--dry-run')).toBe(2)
-    expect(h.err.join('\n')).toContain('/nonexistent/prompt.md')
+    expect(h.err.join('\n')).toContain(missing)
   })
 
   it('uses the custom prompt file, read again on every run', async () => {
@@ -426,7 +430,8 @@ describe('msum link', () => {
     expect(output).toContain('Receiving the initial history')
     expect(output).toContain('Done: account +54')
     expect(output).not.toContain(ME.split('@')[0] as string)
-    expect(pngMode).toBe(0o600)
+    // POSIX file modes do not exist on Windows (the ACL of the profile applies there)
+    if (!isWindows) expect(pngMode).toBe(0o600)
     expect(pngHeader).toBe('PNG')
     expect(existsSync(h.account.qrFile)).toBe(false)
     expect((await stateOf(h)).account).toBe(ME)
@@ -878,7 +883,8 @@ describe('msum doctor', () => {
     expect(none.out.join('\n')).toContain('no provider chosen')
   })
 
-  it('reports loose directory permissions', async () => {
+  // The doctor does not check modes on Windows (no POSIX permissions there).
+  it.skipIf(isWindows)('reports loose directory permissions', async () => {
     const h = await makeHarness({ config: { language: 'en', provider: { primary: 'claude-cli' } } })
     const { chmod } = await import('node:fs/promises')
     await chmod(h.account.dir, 0o755)

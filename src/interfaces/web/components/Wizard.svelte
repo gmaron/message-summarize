@@ -30,6 +30,7 @@
   import type { AccountView, Language, SchedulesView, SetupStep, SetupView } from '../lib/types.js'
   import Disclosure from './Disclosure.svelte'
   import Icon from './Icon.svelte'
+  import LinkStart from './LinkStart.svelte'
   import LinkView from './LinkView.svelte'
   import ProviderTest from './ProviderTest.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
@@ -414,7 +415,7 @@
         {#if linkView === 'linked'}
           <p class="notice ok">{texts.ui.link.done}</p>
         {:else if linkView === 'start'}
-          <div><button type="button" class="btn primary" onclick={startLink}>{w.link.start}</button></div>
+          <LinkStart {texts} onstart={startLink} idSuffix="wizard" />
         {:else}
           <LinkView {controller} {api} {texts} id={account} link={app.links[account]} oncancel={() => undefined} />
         {/if}

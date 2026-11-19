@@ -267,6 +267,19 @@ export const webEs: WebTexts = {
       tryAgain: 'Volver a intentar',
       cancel: 'Cancelar vinculación',
     },
+    risk: {
+      heading: 'Antes de vincular una cuenta de WhatsApp',
+      unofficial:
+        'message-summarize se conecta a WhatsApp a través de Baileys, un cliente no oficial. WhatsApp no permite clientes no oficiales y puede bloquear tu número, de forma temporal o permanente.',
+      readOnly:
+        'El programa es de solo lectura: nunca responde, nunca te muestra en línea y solo envía el digest a tu propio chat. Eso reduce el riesgo pero no lo elimina.',
+      notAffiliated: 'Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por Meta.',
+      responsibility: 'La responsabilidad de cumplir los términos de WhatsApp es tuya.',
+      learnMore: 'Leé el aviso completo en el README',
+      learnMoreUrl: 'https://github.com/gmaron/message-summarize/blob/main/README.es.md#aviso-importante',
+      checkbox: 'Entiendo el riesgo',
+      start: 'Empezar a vincular',
+    },
     schedules: {
       timezoneLabel: 'Zona horaria',
       tzHint: 'Respeta los cambios de horario de verano. Se cambia en Ajustes.',
@@ -648,7 +661,6 @@ export const webEs: WebTexts = {
         heading: 'Vincular el teléfono',
         intro:
           'Escaneá el código QR desde WhatsApp en tu teléfono (Dispositivos vinculados). Después se sincroniza el historial; puede tardar unos minutos.',
-        start: 'Mostrar el código QR',
         needsLink: 'Vinculá la cuenta para continuar.',
       },
       schedule: {

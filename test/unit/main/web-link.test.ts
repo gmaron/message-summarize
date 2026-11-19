@@ -528,14 +528,20 @@ describe('progress of the initial history sync (RF-02)', () => {
   it('after the history reports complete it still waits for the quiet period (a late chunk is captured first)', async () => {
     const w = await world({ accounts: ['alpha'] })
     await syncing(w, 'alpha')
-    Object.assign(w.h.ctx.linkTiming, { quietMs: 400, minAfterConnectMs: 10_000 })
+    // First a quiet period that cannot pass: a complete history alone must not end the wait, however slow the machine.
+    const quietMs = 1_000
+    Object.assign(w.h.ctx.linkTiming, { quietMs: 3_600_000, minAfterConnectMs: 10_000 })
+    const isDone = () => w.eventsOf('link').some((e) => e.data.state === 'done')
     w.h.connection.emitHistory({ percent: 100, complete: true, explicit: true })
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    expect(w.eventsOf('link').some((e) => e.data.state === 'done')).toBe(false)
+    const reportedAt = Date.now()
+    await until(() => Date.now() - reportedAt >= 200, 'some polls of the flow') // many polls (5 ms each)
+    expect(isDone()).toBe(false)
+    // Then a normal one: the late chunk is captured first, and the wait ends a full quiet period after it.
+    Object.assign(w.h.ctx.linkTiming, { quietMs })
+    const beforeLate = Date.now()
     expect(await w.h.connection.receive(message('LATE', 'ana'))).toBe(true)
-    const lastActivity = Date.now()
-    await until(() => w.eventsOf('link').some((e) => e.data.state === 'done'), 'done')
-    expect(Date.now() - lastActivity).toBeGreaterThanOrEqual(350)
+    await until(isDone, 'done')
+    expect(Date.now() - beforeLate).toBeGreaterThanOrEqual(quietMs)
     expect(syncEvents(w).at(-1)).toMatchObject({ done: true, messages: 1 })
   })
 
@@ -676,8 +682,12 @@ describe('the handover of the socket', () => {
     await waitingForQr(w, 'alpha')
     writeFileSync(join(w.h.accountOf('alpha').authDir, 'creds.json'), JSON.stringify({ me: { id: ME } }))
     w.h.connection.emit({ state: 'connected' })
-    await waitFor(() => expect(existsSync(w.h.accountOf('alpha').blockedFile)).toBe(true))
-    expect(JSON.parse(readFileSync(w.h.accountOf('alpha').blockedFile, 'utf8'))).toMatchObject({ reason: 'loggedOut' })
+    // The marker is written in place, so it can be seen empty for a moment: read it until it is complete.
+    await waitFor(() =>
+      expect(JSON.parse(readFileSync(w.h.accountOf('alpha').blockedFile, 'utf8'))).toMatchObject({
+        reason: 'loggedOut',
+      }),
+    )
     await waitFor(() => expect(w.host.accountState('alpha')?.state).toBe('blocked'))
     expect(w.host.running).toEqual([])
     expect(startsOf(w)).toBe(1)

@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { LOG_FILE_NAME, LOG_ROTATED_NAME, openLogFile } from '../../../src/main/log-file.js'
 import { NotARealDirectoryError } from '../../../src/main/paths.js'
+import { isWindows } from '../../support/platform.js'
 
 const dirs: string[] = []
 const temp = (): string => {
@@ -40,8 +41,8 @@ describe('the daemon log file (RNF-12)', () => {
     file.write('{"a":1}\n')
     file.write('{"a":2}\n')
     await file.close()
-    expect(mode(dir)).toBe(0o700)
-    expect(mode(join(dir, LOG_FILE_NAME))).toBe(0o600)
+    if (!isWindows) expect(mode(dir)).toBe(0o700)
+    if (!isWindows) expect(mode(join(dir, LOG_FILE_NAME))).toBe(0o600)
     expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe('{"a":1}\n{"a":2}\n')
   })
 
@@ -64,7 +65,7 @@ describe('the daemon log file (RNF-12)', () => {
     await file.close()
     expect(readFileSync(join(dir, LOG_ROTATED_NAME), 'utf8').startsWith('0011')).toBe(true)
     expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe(line(21))
-    expect(mode(join(dir, LOG_ROTATED_NAME))).toBe(0o600)
+    if (!isWindows) expect(mode(join(dir, LOG_ROTATED_NAME))).toBe(0o600)
   })
 
   it('never takes more than the maximum, however much is written (one burst, no awaiting)', async () => {
@@ -87,7 +88,7 @@ describe('the daemon log file (RNF-12)', () => {
     file.write(line(2))
     await file.close()
     expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe(`${line(1)}{"half":\n${line(2)}`)
-    expect(mode(join(dir, LOG_FILE_NAME))).toBe(0o600)
+    if (!isWindows) expect(mode(join(dir, LOG_FILE_NAME))).toBe(0o600)
 
     // and the existing size counts: this one rotates at once
     const big = temp()
@@ -99,30 +100,34 @@ describe('the daemon log file (RNF-12)', () => {
     expect(readFileSync(join(big, LOG_FILE_NAME), 'utf8')).toBe(line(2, 100))
   })
 
-  it('does not throw when the directory cannot be written: it counts the lost lines and recovers', async () => {
-    const root = temp()
-    const dir = join(root, 'logs')
-    const file = await openLogFile({ dir, maxBytes: 1_048_576 })
-    file.write('one\n')
-    await file.flush()
-    // the file cannot be written to (a full disk or a permissions problem fail the same way)
-    const path = join(dir, LOG_FILE_NAME)
-    chmodSync(path, 0o400)
-    const canFail = process.getuid?.() !== 0
-    expect(() => {
-      file.write('two\n')
-      file.write('three\n')
-    }).not.toThrow()
-    await expect(file.flush()).resolves.toBeUndefined()
-    expect(file.lost).toBe(canFail ? 2 : 0)
-    chmodSync(path, 0o600)
-    file.write('four\n')
-    await file.close()
-    const text = readFileSync(path, 'utf8')
-    expect(text.startsWith('one\n')).toBe(true)
-    expect(text.endsWith('four\n')).toBe(true)
-    if (canFail) expect(text).not.toContain('two')
-  })
+  // chmod 0400 and a mode 000 file are POSIX-only ways to make a file unwritable or unreadable.
+  it.skipIf(isWindows)(
+    'does not throw when the directory cannot be written: it counts the lost lines and recovers',
+    async () => {
+      const root = temp()
+      const dir = join(root, 'logs')
+      const file = await openLogFile({ dir, maxBytes: 1_048_576 })
+      file.write('one\n')
+      await file.flush()
+      // the file cannot be written to (a full disk or a permissions problem fail the same way)
+      const path = join(dir, LOG_FILE_NAME)
+      chmodSync(path, 0o400)
+      const canFail = process.getuid?.() !== 0
+      expect(() => {
+        file.write('two\n')
+        file.write('three\n')
+      }).not.toThrow()
+      await expect(file.flush()).resolves.toBeUndefined()
+      expect(file.lost).toBe(canFail ? 2 : 0)
+      chmodSync(path, 0o600)
+      file.write('four\n')
+      await file.close()
+      const text = readFileSync(path, 'utf8')
+      expect(text.startsWith('one\n')).toBe(true)
+      expect(text.endsWith('four\n')).toBe(true)
+      if (canFail) expect(text).not.toContain('two')
+    },
+  )
 
   it('refuses a path that is a file where the directory should be', async () => {
     const root = temp()
@@ -141,7 +146,7 @@ describe('the daemon log file (RNF-12)', () => {
     file.write('two\n')
     await file.close()
     expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe('two\n')
-    expect(mode(dir)).toBe(0o700)
+    if (!isWindows) expect(mode(dir)).toBe(0o700)
     mkdirSync(dir, { recursive: true })
   })
 
@@ -166,7 +171,7 @@ describe('the log file and links', () => {
       NotARealDirectoryError,
     )
     expect(readdirSync(target)).toEqual([])
-    expect(mode(target)).toBe(0o755)
+    if (!isWindows) expect(mode(target)).toBe(0o755)
   })
 
   it('refuses a daemon.log that is a link, and never writes or tightens the file it points to', async () => {
@@ -177,26 +182,31 @@ describe('the log file and links', () => {
     symlinkSync(victim, join(dir, LOG_FILE_NAME))
     await expect(openLogFile({ dir, maxBytes: 1_048_576 })).rejects.toBeInstanceOf(NotARealDirectoryError)
     expect(readFileSync(victim, 'utf8')).toBe('precious\n')
-    expect(mode(victim)).toBe(0o644)
+    if (!isWindows) expect(mode(victim)).toBe(0o644)
   })
 
-  it('does not follow a link that replaces daemon.log while running: the line is lost, the target is untouched', async () => {
-    const dir = temp()
-    const victim = join(temp(), 'victim.txt')
-    writeFileSync(victim, 'precious\n', { mode: 0o644 })
-    chmodSync(victim, 0o644)
-    const file = await openLogFile({ dir, maxBytes: 1_048_576 })
-    file.write('one\n')
-    await file.flush()
-    rmSync(join(dir, LOG_FILE_NAME))
-    symlinkSync(victim, join(dir, LOG_FILE_NAME))
-    file.write('two\n')
-    await file.flush()
-    expect(file.lost).toBe(1)
-    expect(readFileSync(victim, 'utf8')).toBe('precious\n')
-    expect(mode(victim)).toBe(0o644)
-    await file.close()
-  })
+  // Skipped on Windows: O_NOFOLLOW does not exist there, and an open handle to a deleted file keeps accepting writes, so the
+  // line is not counted as lost. Creating a link needs a privilege there, and the log folder belongs to the user. Not verified.
+  it.skipIf(isWindows)(
+    'does not follow a link that replaces daemon.log while running: the line is lost, the target is untouched',
+    async () => {
+      const dir = temp()
+      const victim = join(temp(), 'victim.txt')
+      writeFileSync(victim, 'precious\n', { mode: 0o644 })
+      chmodSync(victim, 0o644)
+      const file = await openLogFile({ dir, maxBytes: 1_048_576 })
+      file.write('one\n')
+      await file.flush()
+      rmSync(join(dir, LOG_FILE_NAME))
+      symlinkSync(victim, join(dir, LOG_FILE_NAME))
+      file.write('two\n')
+      await file.flush()
+      expect(file.lost).toBe(1)
+      expect(readFileSync(victim, 'utf8')).toBe('precious\n')
+      if (!isWindows) expect(mode(victim)).toBe(0o644)
+      await file.close()
+    },
+  )
 })
 
 describe('the queue and close', () => {
@@ -259,17 +269,20 @@ describe('rotation failures and the starting size', () => {
     expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe(line(13))
   })
 
-  it('uses the size of the file when its last byte cannot be read, and closes the possible half line', async () => {
-    if (process.getuid?.() === 0) return
-    const dir = temp()
-    writeFileSync(join(dir, LOG_FILE_NAME), line(1, 450), { mode: 0o000 })
-    chmodSync(join(dir, LOG_FILE_NAME), 0o000)
-    const file = await openLogFile({ dir, maxBytes: 1_000 })
-    // 450 + 100 passes the half (500): it rotates although the file could not be read
-    file.write(line(2))
-    await file.close()
-    chmodSync(join(dir, LOG_ROTATED_NAME), 0o600)
-    expect(statSync(join(dir, LOG_ROTATED_NAME)).size).toBe(450)
-    expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe(line(2))
-  })
+  it.skipIf(isWindows)(
+    'uses the size of the file when its last byte cannot be read, and closes the possible half line',
+    async () => {
+      if (process.getuid?.() === 0) return
+      const dir = temp()
+      writeFileSync(join(dir, LOG_FILE_NAME), line(1, 450), { mode: 0o000 })
+      chmodSync(join(dir, LOG_FILE_NAME), 0o000)
+      const file = await openLogFile({ dir, maxBytes: 1_000 })
+      // 450 + 100 passes the half (500): it rotates although the file could not be read
+      file.write(line(2))
+      await file.close()
+      chmodSync(join(dir, LOG_ROTATED_NAME), 0o600)
+      expect(statSync(join(dir, LOG_ROTATED_NAME)).size).toBe(450)
+      expect(readFileSync(join(dir, LOG_FILE_NAME), 'utf8')).toBe(line(2))
+    },
+  )
 })

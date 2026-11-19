@@ -9,6 +9,7 @@ import { layoutOf, resolveDataDir } from './paths.js'
 import { realProbes } from './probes.js'
 import { createShutdown, installProcessGuards } from './process-guard.js'
 import { systemClock } from './runtime.js'
+import { versionCommand } from './version.js'
 import { createWhatsAppConnectionFor } from './whatsapp.js'
 
 /** Asks a yes/no question on the terminal. Without a terminal (a pipe, a service) the answer is no. */
@@ -54,6 +55,14 @@ const logger = createTappableLogger(process.stdout, process.stderr)
 
 /** The composition root: the real process, file system and WhatsApp wired into the commands. */
 async function main(): Promise<void> {
+  const versionCode = versionCommand(process.argv.slice(2), {
+    out: (line) => process.stdout.write(`${line}\n`),
+    err: (line) => process.stderr.write(`${line}\n`),
+  })
+  if (versionCode !== null) {
+    process.exitCode = versionCode
+    return
+  }
   const shutdown = createShutdown()
   installProcessGuards({ proc: process as never, logger, shutdown })
   const code = await runMain(process.argv.slice(2), {

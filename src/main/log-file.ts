@@ -13,7 +13,12 @@ export const MAX_QUEUE_BYTES = 1_048_576
 /** How long `close()` waits for the disk before giving up on what is still queued (the shutdown has a budget). */
 export const CLOSE_TIMEOUT_MS = 1_500
 
-/** Never follow a link at the last component of a log file (a link there would make us write somewhere else). */
+/**
+ * Never follow a link at the last component of a log file (a link there would make us write somewhere else).
+ * On Windows `O_NOFOLLOW` does not exist, so this is 0 and the lstat check only runs when the file is opened. The risk
+ * is low: swapping `daemon.log` for a link needs write access to the user's own logs folder, and creating links on
+ * Windows needs a privilege.
+ */
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | NOFOLLOW
 

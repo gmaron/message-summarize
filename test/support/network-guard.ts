@@ -58,6 +58,9 @@ function assertAllowed(host: string | undefined | null): void {
 function assertSubprocessAllowed(command: unknown): void {
   const text = command instanceof URL ? command.href : String(command)
   if (allowedCommands.has(text) || allowedCommands.has(text.trim().split(/\s+/)[0] ?? '')) return
+  // Vite on Windows runs exactly `net use` (it lists mapped network drives, no data traffic) to resolve real paths.
+  // Only that exact command, only on win32; any other `net ...` stays blocked.
+  if (process.platform === 'win32' && text === 'net use') return
   throw new Error(`Undeclared subprocess: ${text}`)
 }
 

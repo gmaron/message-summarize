@@ -29,6 +29,7 @@ import {
   seedMessages,
   waitFor,
 } from '../../support/cli-harness.js'
+import { isWindows } from '../../support/platform.js'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -266,7 +267,7 @@ describe('msum link --account', () => {
       expect(text(h.err)).toContain('is a link or a file')
     }
     expect(readFileSync(join(elsewhere, 'precious.txt'), 'utf8')).toBe('data that must survive')
-    expect(statSync(elsewhere).mode & 0o777).not.toBe(0o700)
+    if (!isWindows) expect(statSync(elsewhere).mode & 0o777).not.toBe(0o700)
     expect(h.connection.calls).toEqual([])
     expect(lstatSync(h.accountOf('x').dir).isSymbolicLink()).toBe(true)
     expect(lstatSync(h.accountOf('y').dir).isSymbolicLink()).toBe(true)
@@ -486,7 +487,8 @@ describe('msum doctor with accounts', () => {
     expect(text(h.out)).toContain('beta')
   })
 
-  it('reports loose permissions of an account directory', async () => {
+  // The doctor does not check modes on Windows (no POSIX permissions there).
+  it.skipIf(isWindows)('reports loose permissions of an account directory', async () => {
     const h = await makeHarness({ config: CONFIG, accounts: ['alpha'] })
     link(h, 'alpha', ME)
     const { chmod } = await import('node:fs/promises')
@@ -495,21 +497,24 @@ describe('msum doctor with accounts', () => {
     expect(text(h.out)).toContain(`${h.accountOf('alpha').authDir} has permissions 755`)
   })
 
-  it('reports a data directory and accounts/ that are too open, before opening the installation tightens them', async () => {
-    const h = await makeHarness({ config: CONFIG, accounts: ['alpha'] })
-    link(h, 'alpha', ME)
-    const { chmod } = await import('node:fs/promises')
-    await chmod(h.layout.accountsDir, 0o755)
-    expect(await run(h, 'doctor')).toBe(1)
-    expect(text(h.out)).toContain(`${h.layout.accountsDir} has permissions 755`)
-    h.out.length = 0
-    await chmod(h.layout.dataDir, 0o755)
-    expect(await run(h, 'doctor')).toBe(1)
-    expect(text(h.out)).toContain(`${h.layout.dataDir} has permissions 755`)
-    // and the next run finds them tightened
-    h.out.length = 0
-    expect(await run(h, 'doctor')).toBe(0)
-  })
+  it.skipIf(isWindows)(
+    'reports a data directory and accounts/ that are too open, before opening the installation tightens them',
+    async () => {
+      const h = await makeHarness({ config: CONFIG, accounts: ['alpha'] })
+      link(h, 'alpha', ME)
+      const { chmod } = await import('node:fs/promises')
+      await chmod(h.layout.accountsDir, 0o755)
+      expect(await run(h, 'doctor')).toBe(1)
+      expect(text(h.out)).toContain(`${h.layout.accountsDir} has permissions 755`)
+      h.out.length = 0
+      await chmod(h.layout.dataDir, 0o755)
+      expect(await run(h, 'doctor')).toBe(1)
+      expect(text(h.out)).toContain(`${h.layout.dataDir} has permissions 755`)
+      // and the next run finds them tightened
+      h.out.length = 0
+      expect(await run(h, 'doctor')).toBe(0)
+    },
+  )
 
   it('reports both layouts present, and entries of accounts/ that are not accounts', async () => {
     const h = await makeHarness({ config: CONFIG, accounts: ['default'] })

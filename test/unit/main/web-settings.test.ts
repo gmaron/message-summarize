@@ -402,6 +402,8 @@ describe('a change of the settings applies to the running unit without reconnect
     writeFileSync(accountFile(w, 'beta'), JSON.stringify({ language: 'es' }))
     await started(w, 'beta')
     expect(w.host.runtimeOf('beta')?.config.language).toBe('es')
+    // the unit exists before its socket is asked to start: wait for that call, then check it was made once
+    await until(() => w.h.connection.calls.includes('start'), 'the socket of beta to start')
     expect(w.h.connection.calls.filter((call) => call === 'start')).toHaveLength(1)
   })
 

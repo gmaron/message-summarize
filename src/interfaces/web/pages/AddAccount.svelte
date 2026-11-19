@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { WebTexts } from '../../../infrastructure/i18n/catalog.js'
   import Icon from '../components/Icon.svelte'
+  import LinkStart from '../components/LinkStart.svelte'
   import LinkView from '../components/LinkView.svelte'
   import ScheduleForm from '../components/ScheduleForm.svelte'
   import { isAccountIdValid } from '../lib/accounts.js'
   import { type Api, ApiError } from '../lib/api.js'
   import type { Controller } from '../lib/controller.js'
   import { errorText } from '../lib/digest.js'
+  import { linkNotStarted } from '../lib/risk.js'
   import { hrefOf } from '../lib/router.js'
   import { newDraft, type ScheduleDraft, scheduleIssueOf, validateDraft } from '../lib/schedules.js'
   import type { AppState } from '../lib/state.js'
@@ -44,8 +46,8 @@
       code = result.code
       return
     }
+    // The link starts when the legal notice is accepted (LinkStart), not when the account is created.
     created = name
-    void controller.startLink(name)
   }
 
   const open = (id: string): void => {
@@ -108,6 +110,8 @@
       </div>
       <div><button type="submit" class="btn primary" disabled={!valid || sending}>{t.submit}</button></div>
     </form>
+  {:else if step < 3 && created !== null && linkNotStarted(app.links[created])}
+    <LinkStart {texts} idSuffix="add-account" onstart={() => void controller.startLink(created ?? '')} />
   {:else if step < 3 && created !== null}
     <LinkView {controller} {api} {texts} id={created} link={app.links[created]} oncancel={() => open(created ?? '')} />
   {:else if created !== null}

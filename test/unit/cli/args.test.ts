@@ -103,6 +103,15 @@ describe('parseCommandLine', () => {
     })
   })
 
+  it('parses service install, uninstall and status (status by default)', () => {
+    for (const action of ['install', 'uninstall', 'status'] as const) {
+      expect(parse('service', action)).toEqual({ ok: true, value: { name: 'service', action } })
+    }
+    expect(parse('service')).toEqual({ ok: true, value: { name: 'service', action: 'status' } })
+    expect(parse('service', 'restart')).toEqual({ ok: false, error: { kind: 'unknownSubcommand', value: 'restart' } })
+    expect(parse('service', 'install', 'x')).toEqual({ ok: false, error: { kind: 'unexpectedArgument', value: 'x' } })
+  })
+
   it('parses whisper: the list of models by default, and download with a model name', () => {
     expect(parse('whisper')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
     expect(parse('whisper', 'models')).toEqual({ ok: true, value: { name: 'whisper', action: 'models' } })
@@ -258,6 +267,7 @@ describe('runCli', () => {
     secret: handler('secret'),
     provider: handler('provider'),
     ollama: handler('ollama'),
+    service: handler('service'),
     open: handler('open'),
   }
   const texts = getCatalog('en').cli

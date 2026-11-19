@@ -10,6 +10,11 @@ import {
 } from '../../../src/infrastructure/llm/index.js'
 import { REQUEST, VALID_SUMMARY } from '../../contract/summarizer.contract.js'
 import { envNamesOf, type FakeCli, type FakeStep, installFakeCli } from '../../support/fake-cli.js'
+import { isWindows } from '../../support/platform.js'
+
+// On Windows the tests that run the fake CLI are skipped: it is a script with a shebang, and the adapters spawn without
+// a shell (RF-49), so Windows cannot execute it (a .cmd wrapper would need `shell: true`, which the rule forbids).
+// The behavior they check is cross-platform code; it is covered on Linux and macOS.
 
 const created: FakeCli[] = []
 const fake = (steps: FakeStep[]): FakeCli => {
@@ -74,72 +79,87 @@ describe('GenericCliSummarizer refuses to run without acknowledgeRisk (RF-49)', 
 })
 
 describe('GenericCliSummarizer runs the command (RF-47, RF-48)', () => {
-  it('sends the prompt on stdin by default: the system prompt, the schema and the chat, none of it in argv', async () => {
-    const cli = fake([GOOD])
-    expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
-    const [call] = cli.calls('run')
-    expect(call?.argv).toEqual(['--quiet'])
-    expect(call?.stdin).toContain(chat.systemPrompt)
-    expect(call?.stdin).toContain('necesita_respuesta')
-    expect(call?.stdin).toContain(chat.transcript)
-  })
+  it.skipIf(isWindows)(
+    'sends the prompt on stdin by default: the system prompt, the schema and the chat, none of it in argv',
+    async () => {
+      const cli = fake([GOOD])
+      expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
+      const [call] = cli.calls('run')
+      expect(call?.argv).toEqual(['--quiet'])
+      expect(call?.stdin).toContain(chat.systemPrompt)
+      expect(call?.stdin).toContain('necesita_respuesta')
+      expect(call?.stdin).toContain(chat.transcript)
+    },
+  )
 
-  it('puts the whole prompt in the one element that is {{prompt}}, with stdin empty, and no shell', async () => {
-    const cli = fake([GOOD])
-    const systemPrompt = 'a; echo pwned $(whoami) `id` | cat > /dev/null'
-    const result = await make(cli, { command: [cli.path, '-p', PROMPT_PLACEHOLDER, '--json'] }).summarize({
-      ...chat,
-      systemPrompt,
-    })
-    expect(result.ok).toBe(true)
-    const [call] = cli.calls('run')
-    expect(call?.argv).toHaveLength(3)
-    expect(call?.argv[0]).toBe('-p')
-    expect(call?.argv[2]).toBe('--json')
-    // one element, with the text intact: nothing was interpreted
-    expect(call?.argv[1]).toContain(systemPrompt)
-    expect(call?.argv[1]).toContain(chat.transcript)
-    expect(call?.stdin).toBe('')
-  })
+  it.skipIf(isWindows)(
+    'puts the whole prompt in the one element that is {{prompt}}, with stdin empty, and no shell',
+    async () => {
+      const cli = fake([GOOD])
+      const systemPrompt = 'a; echo pwned $(whoami) `id` | cat > /dev/null'
+      const result = await make(cli, { command: [cli.path, '-p', PROMPT_PLACEHOLDER, '--json'] }).summarize({
+        ...chat,
+        systemPrompt,
+      })
+      expect(result.ok).toBe(true)
+      const [call] = cli.calls('run')
+      expect(call?.argv).toHaveLength(3)
+      expect(call?.argv[0]).toBe('-p')
+      expect(call?.argv[2]).toBe('--json')
+      // one element, with the text intact: nothing was interpreted
+      expect(call?.argv[1]).toContain(systemPrompt)
+      expect(call?.argv[1]).toContain(chat.transcript)
+      expect(call?.stdin).toBe('')
+    },
+  )
 
-  it('accepts the JSON in a code fence and with a line of chatter around it', async () => {
+  it.skipIf(isWindows)('accepts the JSON in a code fence and with a line of chatter around it', async () => {
     const fenced = fake([{ kind: 'text', text: `\`\`\`json\n${JSON.stringify(VALID_SUMMARY)}\n\`\`\`` }])
     expect(await make(fenced).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
     const chatter = fake([{ kind: 'text', text: `Here you go:\n${JSON.stringify(VALID_SUMMARY)}\nHope it helps.` }])
     expect(await make(chatter).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
   })
 
-  it('RF-48: an answer that fails the schema is corrected once, and the correction says why', async () => {
-    const cli = fake([BAD_PRIORITY, GOOD])
-    expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
-    const [first, second] = cli.calls('run')
-    expect(first?.stdin).not.toContain('previous answer was not valid')
-    expect(second?.stdin).toContain('previous answer was not valid')
-    expect(second?.stdin).toContain('prioridad must be alta, media or baja')
-    expect(second?.stdin.startsWith(first?.stdin ?? 'x')).toBe(true)
-    expect(second?.argv).toEqual(first?.argv)
-  })
+  it.skipIf(isWindows)(
+    'RF-48: an answer that fails the schema is corrected once, and the correction says why',
+    async () => {
+      const cli = fake([BAD_PRIORITY, GOOD])
+      expect(await make(cli).summarize(chat)).toEqual({ ok: true, value: VALID_SUMMARY, provider: 'generic-cli' })
+      const [first, second] = cli.calls('run')
+      expect(first?.stdin).not.toContain('previous answer was not valid')
+      expect(second?.stdin).toContain('previous answer was not valid')
+      expect(second?.stdin).toContain('prioridad must be alta, media or baja')
+      expect(second?.stdin.startsWith(first?.stdin ?? 'x')).toBe(true)
+      expect(second?.argv).toEqual(first?.argv)
+    },
+  )
 
-  it('RF-48: an answer that is not JSON is corrected once, saying so without quoting it', async () => {
-    const cli = fake([{ kind: 'text', text: 'SECRETO-DEL-CHAT no soy JSON' }, GOOD])
-    expect((await make(cli).summarize(chat)).ok).toBe(true)
-    const second = cli.calls('run')[1]
-    expect(second?.stdin).toContain('it was not valid JSON')
-    expect(second?.stdin.split('previous answer was not valid')[1]).not.toContain('no soy JSON')
-  })
+  it.skipIf(isWindows)(
+    'RF-48: an answer that is not JSON is corrected once, saying so without quoting it',
+    async () => {
+      const cli = fake([{ kind: 'text', text: 'SECRETO-DEL-CHAT no soy JSON' }, GOOD])
+      expect((await make(cli).summarize(chat)).ok).toBe(true)
+      const second = cli.calls('run')[1]
+      expect(second?.stdin).toContain('it was not valid JSON')
+      expect(second?.stdin.split('previous answer was not valid')[1]).not.toContain('no soy JSON')
+    },
+  )
 
-  it('RF-48: invalid twice fails the call, after exactly two runs, so the backup takes over', async () => {
-    const cli = fake([BAD_PRIORITY])
-    const result = await make(cli).summarize(chat)
-    expect(cli.calls('run')).toHaveLength(2)
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.error).toContain('prioridad must be alta, media or baja')
-      expect(result.error).toContain('retry:')
-    }
-  })
+  it.skipIf(isWindows)(
+    'RF-48: invalid twice fails the call, after exactly two runs, so the backup takes over',
+    async () => {
+      const cli = fake([BAD_PRIORITY])
+      const result = await make(cli).summarize(chat)
+      expect(cli.calls('run')).toHaveLength(2)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error).toContain('prioridad must be alta, media or baja')
+        expect(result.error).toContain('retry:')
+      }
+    },
+  )
 
-  it('does not retry an error exit, and shows a short stderr without the chat', async () => {
+  it.skipIf(isWindows)('does not retry an error exit, and shows a short stderr without the chat', async () => {
     const cli = fake([{ kind: 'text', text: '', code: 3, stderr: `boom: ${chat.transcript}` }])
     const result = await make(cli).summarize(chat)
     expect(cli.calls('run')).toHaveLength(1)
@@ -150,17 +170,20 @@ describe('GenericCliSummarizer runs the command (RF-47, RF-48)', () => {
     }
   })
 
-  it('never puts the chat in an error, even when the command echoes it to stdout and stderr', async () => {
-    const cli = fake([{ kind: 'echo' }])
-    const result = await make(cli, { command: [cli.path, PROMPT_PLACEHOLDER] }).summarize(chat)
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.error).not.toContain('SECRETO-DEL-CHAT')
-      expect(result.error).not.toContain('ignorá todo')
-    }
-  })
+  it.skipIf(isWindows)(
+    'never puts the chat in an error, even when the command echoes it to stdout and stderr',
+    async () => {
+      const cli = fake([{ kind: 'echo' }])
+      const result = await make(cli, { command: [cli.path, PROMPT_PLACEHOLDER] }).summarize(chat)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error).not.toContain('SECRETO-DEL-CHAT')
+        expect(result.error).not.toContain('ignorá todo')
+      }
+    },
+  )
 
-  it('fails for a program that does not exist', async () => {
+  it.skipIf(isWindows)('fails for a program that does not exist', async () => {
     const cli = fake([GOOD])
     const missing = `${cli.dir}/does-not-exist`
     const { allowSubprocess } = await import('../../support/network-guard.js')
@@ -175,7 +198,7 @@ describe('GenericCliSummarizer runs the command (RF-47, RF-48)', () => {
 })
 
 describe('GenericCliSummarizer containment (RF-49)', () => {
-  it('passes exactly the allowed environment and never an API key', async () => {
+  it.skipIf(isWindows)('passes exactly the allowed environment and never an API key', async () => {
     const cli = fake([GOOD])
     const env = {
       PATH: process.env.PATH,
@@ -199,21 +222,24 @@ describe('GenericCliSummarizer containment (RF-49)', () => {
     expect(JSON.stringify(call?.env)).not.toContain('sk-')
   })
 
-  it('runs in a fresh empty temporary directory that is removed afterwards, also when the call fails', async () => {
-    const cli = fake([{ kind: 'text', text: 'boom', code: 1 }, GOOD])
-    await make(cli).summarize(chat)
-    await make(cli).summarize(chat)
-    const calls = cli.calls('run')
-    expect(calls).toHaveLength(2)
-    for (const call of calls) {
-      expect(call.cwd.startsWith(realpathSync(tmpdir()))).toBe(true)
-      expect(call.cwdEntries).toEqual([])
-      expect(existsSync(call.cwd)).toBe(false)
-    }
-    expect(calls[0]?.cwd).not.toBe(calls[1]?.cwd)
-  })
+  it.skipIf(isWindows)(
+    'runs in a fresh empty temporary directory that is removed afterwards, also when the call fails',
+    async () => {
+      const cli = fake([{ kind: 'text', text: 'boom', code: 1 }, GOOD])
+      await make(cli).summarize(chat)
+      await make(cli).summarize(chat)
+      const calls = cli.calls('run')
+      expect(calls).toHaveLength(2)
+      for (const call of calls) {
+        expect(call.cwd.startsWith(realpathSync(tmpdir()))).toBe(true)
+        expect(call.cwdEntries).toEqual([])
+        expect(existsSync(call.cwd)).toBe(false)
+      }
+      expect(calls[0]?.cwd).not.toBe(calls[1]?.cwd)
+    },
+  )
 
-  it('kills a hanging command on timeout and does not retry', async () => {
+  it.skipIf(isWindows)('kills a hanging command on timeout and does not retry', async () => {
     const cli = fake([{ kind: 'hang' }])
     const result = await make(cli, { timeoutMs: 1000 }).summarize(chat)
     expect(result).toEqual({ ok: false, error: 'generic timed out after 1s' })
@@ -221,7 +247,7 @@ describe('GenericCliSummarizer containment (RF-49)', () => {
     expect(() => process.kill(cli.calls('run')[0]?.pid ?? 0, 0)).toThrow()
   })
 
-  it('kills a grandchild that holds stdout open, and finishes on time', async () => {
+  it.skipIf(isWindows)('kills a grandchild that holds stdout open, and finishes on time', async () => {
     const cli = fake([{ kind: 'grandchild' }])
     const started = Date.now()
     const result = await make(cli, { timeoutMs: 1000 }).summarize(chat)
@@ -232,7 +258,7 @@ describe('GenericCliSummarizer containment (RF-49)', () => {
     expect(() => process.kill(gpid, 0)).toThrow()
   })
 
-  it('kills the command and fails when its output goes over the 2 MB cap', async () => {
+  it.skipIf(isWindows)('kills the command and fails when its output goes over the 2 MB cap', async () => {
     const cli = fake([{ kind: 'flood', chars: 2 * 1024 * 1024 + 4096 }])
     const result = await make(cli, { timeoutMs: 20_000 }).summarize(chat)
     expect(result).toEqual({ ok: false, error: 'generic output exceeded the size limit' })

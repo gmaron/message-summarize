@@ -435,28 +435,47 @@ describe('the WhatsApp connection, the capture and SQLite together (RF-15, RNF-0
       const socket = await c.open()
       let running = 0
       let most = 0
+      let served = 0
       ;(socket.socket as { openAudio: unknown }).openAudio = async () => {
         running++
         most = Math.max(most, running)
         await new Promise((resolve) => setImmediate(resolve))
         running--
+        served++
         return Readable.from([Buffer.from('voice note')])
       }
       const messages = Array.from({ length: 300 }, (_, i) =>
         audio(`h${String(i).padStart(3, '0')}`, { messageTimestamp: SECONDS - 3600 + i }),
       )
       socket.ev.emit('messaging-history.set', history(...messages))
+      // Legitimately slow on a loaded runner (300 downloads, each with its own writes). So the wait is not a fixed total
+      // time but a stall check: it fails only when no download completes for 30 s. Progress is read from a counter, not
+      // by scanning the 300 rows every few milliseconds, which would itself slow the work down.
+      let seen = -1
+      let lastProgress = Date.now()
+      await until(
+        () => {
+          if (served !== seen) {
+            seen = served
+            lastProgress = Date.now()
+          }
+          if (Date.now() - lastProgress > 30_000) throw new Error(`no audio was downloaded for 30 s (${served} of 300)`)
+          return served === 300
+        },
+        'all 300 audios to be downloaded',
+        600_000,
+      )
       await until(
         () => w.rows().filter((r) => r.transcribe_status === 'pending').length === 300,
-        'all 300 audios to be downloaded',
-        60_000,
+        'all 300 audios to be stored as pending',
+        30_000,
       )
       expect(most).toBe(1)
       expect(w.files()).toHaveLength(300)
       expect(await w.queue.countDownloads()).toBe(0)
       expect(w.rows().every((r) => r.has_descriptor === 0)).toBe(true)
       await c.connection.stop()
-    }, 90_000)
+    }, 660_000) // only the ceiling: the stall check above fails a stuck queue after 30 s
 
     it('a restart in the middle of the queue resumes where it stopped: all are downloaded, none twice', async () => {
       const w = world()

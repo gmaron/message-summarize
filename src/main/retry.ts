@@ -1,4 +1,4 @@
-import { type BlockedReason, clearBlocked, FIXED_BY_LINKING, readBlocked } from './blocked.js'
+import { type Blocked, type BlockedReason, clearBlocked, FIXED_BY_LINKING, readBlocked } from './blocked.js'
 import type { AccountLayout } from './paths.js'
 
 export type RetryOutcome =
@@ -15,8 +15,12 @@ export type RetryOutcome =
  * linked) is kept: retrying would only be blocked again, and reconnecting a dead session is what could get a number
  * banned. Shared by `msum retry` and `msum daemon --retry`, so both clear exactly the same reasons.
  */
-export async function retryBlock(account: Pick<AccountLayout, 'blockedFile'>): Promise<RetryOutcome> {
-  const marker = await readBlocked(account.blockedFile)
+export async function retryBlock(
+  account: Pick<AccountLayout, 'blockedFile'>,
+  /** The marker the caller already read (null: none). Passed so a decision made on it and the clearing use one value. */
+  read?: Blocked | null,
+): Promise<RetryOutcome> {
+  const marker = read === undefined ? await readBlocked(account.blockedFile) : read
   if (marker === null) return { result: 'notBlocked' }
   if (FIXED_BY_LINKING.includes(marker.reason)) return { result: 'needsRelink', reason: marker.reason }
   await clearBlocked(account.blockedFile)

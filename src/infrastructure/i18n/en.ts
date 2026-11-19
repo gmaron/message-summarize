@@ -155,6 +155,9 @@ Commands:
                                       line). Refuses an Ollama that is not on this machine unless --allow-remote
   open [--print]                      Opens the local web in the browser, already signed in (the daemon serves it).
                                       --print only prints the address
+  service install|uninstall|status    Registers ONLY the daemon so it starts with your session and comes back after a crash
+                                      (launchd on macOS, systemd --user on Linux, a Run entry on Windows). No administrator
+                                      rights and no OS job scheduler: the schedules stay inside the daemon
   help                                Shows this help
 
 Accounts: link, unlink, daemon and digest work on one account, chosen with --account <id> (lowercase letters, digits
@@ -460,6 +463,33 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       cancelled: 'Cancelled. Nothing was changed (use --yes to skip the question).',
       done: (id) =>
         `Account "${id}" unlinked: its messages, digests and session were deleted. One step is left on the phone: in WhatsApp, Settings > Linked devices, remove this device.`,
+    },
+    service: {
+      installed: (location) =>
+        `Service installed (${location}). The daemon starts with your session and comes back after a crash. Schedules stay inside the daemon.`,
+      alreadyInstalled: (location) =>
+        `The service is already installed and up to date (${location}). Nothing was changed.`,
+      removed: (location) => `Service removed (${location}). The daemon no longer starts with your session.`,
+      notInstalled: 'The service is not installed. Nothing was changed.',
+      statusInstalled: (location, running) =>
+        `Service installed (${location})${running === null ? '' : running ? ', running now' : ', not running now'}.`,
+      statusNotInstalled: 'Service not installed. Install it with "msum service install".',
+      statusDaemon: (pid) => (pid === null ? 'No daemon is running now.' : `A daemon is running now (pid ${pid}).`),
+      hintEnableLinger:
+        'To keep it running when you are logged out, run once: loginctl enable-linger $USER (this command does not do it for you).',
+      hintStartAtNextLogin:
+        'It starts at your next login. To start it now without waiting, run "msum daemon" in a terminal.',
+      hintStopRunningDaemon:
+        'A daemon that is running now is not stopped by this command: it ends when you log out or stop it (Task Manager), and it is not started again.',
+      hintManualDaemon: (pid) =>
+        `A daemon you started yourself is running (pid ${pid}), so the service was registered but not started now. Stop that daemon and run "msum service install" again to start it, or it starts at your next login.`,
+      hintVersionManager:
+        'This Node comes from a version manager (nvm, fnm, Volta or asdf): the service keeps using this exact version. Run "msum service install" again after you change or remove it.',
+      failed: (step, detail) => `The service was not changed: "${step}" failed (${detail}).`,
+      unsupported: (platform) =>
+        `Installing the service is not supported on "${platform}". Run "msum daemon" yourself, or use Docker.`,
+      notBuilt: (entry) =>
+        `The program is not built (${entry} does not exist). Run "npm run build" first, or install the package.`,
     },
     daemon: {
       running: (dataDir) => `Daemon running (data in ${dataDir}). Press Ctrl+C to stop it.`,

@@ -8,7 +8,35 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella, 
 
 ## Estado
 
-**Desarrollo temprano.** Todavía no hay instalador. Se puede probar desde el código fuente una versión de línea de comandos con una primera página web local (ver [Probarlo](#probarlo-versión-temprana)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
+**Desarrollo temprano.** Todavía no hay una versión publicada (ver [Instalación](#instalación) para los instaladores y su estado). Se puede probar desde el código fuente una versión de línea de comandos con una página web local (ver [Probarlo](#probarlo-versión-temprana)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
+
+## Instalación
+
+**Todavía no hay una versión publicada.** Los instaladores de abajo están escritos y probados hasta donde permite una Mac, pero falta la primera versión publicada (v0.1.0), y el instalador de Windows nunca corrió en una máquina Windows real. Hasta entonces, usá Docker desde una copia del repositorio, o [probalo desde el código fuente](#probarlo-versión-temprana). Leé primero el [aviso importante](#aviso-importante).
+
+**Docker (cualquier sistema, lo recomendado en Windows).** Con Docker o Docker Desktop instalado, desde una copia del repositorio:
+
+```sh
+docker compose up -d
+docker compose exec message-summarize msum open --print   # la dirección de la página web, con su token de acceso
+```
+
+Los datos viven en el volumen `msum-data` y el contenedor se reinicia solo. La página web se publica solo en `127.0.0.1:8787`: no la cambies a otra dirección, y usá `docker compose exec` (nunca `docker compose run`) para los comandos. El perfil `cli` (`docker compose --profile cli up -d`) usa una imagen que además trae Claude Code, Gemini CLI y Codex, para quien quiera usar una CLI como proveedor (la sesión se inicia adentro del contenedor; Gemini CLI y Codex están deshabilitadas por ahora, ver [Usar una CLI como proveedor](#usar-una-cli-como-proveedor)).
+
+**macOS y Linux.** `install.sh` no necesita permisos de administrador y no toca nada fuera de tu carpeta personal. Instala el programa (con su propia copia de Node.js, verificada contra el checksum oficial, si el tuyo es anterior a 22.16), registra el daemon como servicio de usuario y abre la página web:
+
+```sh
+sh install.sh              # desde una copia; --help lista las opciones
+sh install.sh --uninstall  # quita el programa, nunca tus datos
+```
+
+Opciones: `--no-service`, `--no-open`, `--modify-path`, `--prefix <carpeta>`, `--tarball <archivo|url>`, `--dry-run`. Rechaza una carpeta que contenga o esté dentro del directorio de datos.
+
+**Windows.** Dos caminos, ambos sin permisos de administrador: el instalador `message-summarize-<versión>-win-x64-setup.exe` que acompañará cada versión (todavía no está firmado, así que Windows SmartScreen va a avisar), o `install.ps1`, que hace lo mismo que `install.sh` (`.\install.ps1 -Help`). Al desinstalar se conservan tus datos. Windows en ARM: usá Docker.
+
+**Dónde están los datos.** `~/Library/Application Support/message-summarize` en macOS, `~/.local/share/message-summarize` en Linux y `%APPDATA%\message-summarize` en Windows (o la carpeta de `MSUM_DATA_DIR`). Desinstalar nunca los borra; para quitar los datos de una cuenta usá `msum unlink`.
+
+**Verificación de las versiones.** Cada versión trae un `SHA256SUMS.txt`. El paquete todavía no está en npm: la publicación está bloqueada a propósito hasta resolver la licencia de una dependencia (ver [Licencia](#licencia)).
 
 ## Probarlo (versión temprana)
 
@@ -39,7 +67,7 @@ Un daemon en marcha toma los cambios en unos cinco segundos, sin reiniciar. Esto
 
 4. **`msum digest --dry-run`** genera un resumen ahora y lo muestra, sin guardar ni enviar nada. Sin `--dry-run` el resumen queda en cola y lo entrega el daemon que esté corriendo. No abre una conexión a WhatsApp (la sesión es del daemon). Opciones: `--hours N`, `--from "AAAA-MM-DD HH:MM"`, `--to "AAAA-MM-DD HH:MM"`.
 
-Otros comandos: `msum status` (cuenta, último resumen, envíos pendientes, próximas ejecuciones), `msum doctor` (revisa Node, permisos, configuración, proveedor, vinculación y, si está activada, la transcripción), `msum whisper models|download <nombre>` (mirá [Transcribir notas de voz](#transcribir-notas-de-voz-opcional)) y `msum unlink`, que **borra todos los datos de la cuenta** (sus mensajes, los audios que descargó, el historial de resúmenes, los envíos pendientes y la sesión de WhatsApp; la configuración queda) y pide confirmación. Después, quitá también el dispositivo en el celular (WhatsApp, Ajustes > Dispositivos vinculados).
+Otros comandos: `msum status` (cuenta, último resumen, envíos pendientes, próximas ejecuciones), `msum doctor` (revisa Node, permisos, configuración, proveedor, vinculación y, si está activada, la transcripción), `msum whisper models|download <nombre>` (mirá [Transcribir notas de voz](#transcribir-notas-de-voz-opcional)), `msum service install|uninstall|status` (registra solo el daemon para que arranque con tu sesión y vuelva tras una caída: launchd en macOS, `systemd --user` en Linux, una entrada `Run` de tu usuario en Windows; sin permisos de administrador, y los horarios siguen dentro del daemon) y `msum unlink`, que **borra todos los datos de la cuenta** (sus mensajes, los audios que descargó, el historial de resúmenes, los envíos pendientes y la sesión de WhatsApp; la configuración queda) y pide confirmación. Después, quitá también el dispositivo en el celular (WhatsApp, Ajustes > Dispositivos vinculados).
 
 **Página web.** Mientras corre, el daemon también sirve una página local, por defecto en `http://127.0.0.1:8787` (opción `web` del `config.json` de la instalación: `port`, `host`, `enabled`). `msum open` la abre con la sesión ya iniciada: la dirección lleva un token de acceso, generado una sola vez en el directorio de datos (`web-token`), así que no la compartas. Desde la página podés agregar una cuenta y vincularla escaneando el QR, seguir la sincronización del historial, ver el estado de cada cuenta y destrabar un bloqueo (vincular de nuevo o reintentar: después de una conexión rechazada o reemplazada, la página hace esperar 30 minutos), editar los horarios, usar "resumir ahora" y ver una vista previa que no envía nada ni mueve el puntero. También lista y busca las conversaciones de una cuenta y marca cada una como excluida o solo local. También podés editar el prompt de cada cuenta (la única variable es `{{name}}`; el formato de la respuesta es fijo y se agrega solo) y volver al original, que guarda tu texto en `prompt.previous.md`. **Excluir un chat borra los mensajes y la fila del chat guardados hasta ese momento**; no quita los resúmenes que ya están dentro de digests pasados (el historial de digests se conserva) ni las partes que ya esperan en la cola de envío. Quitar la exclusión no recupera nada. Una marca cubre los ids de esa persona que WhatsApp le contó a esta computadora (un número y un id interno); si la misma persona aparece como un segundo chat, marcá también ese. "Solo local" necesita un modelo de Ollama en la configuración. Escucha solo en esta máquina; otro `host` (por ejemplo `0.0.0.0` dentro de Docker, publicando el puerto solo en `127.0.0.1`) es una elección explícita. El botón "Logs" muestra las últimas líneas de log del daemon, filtrables por nivel y cuenta; nunca incluyen mensajes, nombres ni secretos. El daemon además las escribe en `logs/daemon.log` dentro del directorio de datos (rota a `daemon.log.1`), y los dos archivos juntos quedan por debajo de `logs.maxBytes` (solo en el `config.json` de la instalación, 50 MB por defecto, mínimo 1 MB). **Asistente de primer uso.** La primera vez que se abre la página en una instalación sin ninguna cuenta vinculada, empieza un asistente (idioma, tu nombre, proveedor, audios, vincular el teléfono por QR con la sincronización, primer horario). Se puede cerrar a mitad y retomar (su estado se guarda en `app.db`), o saltear; una instalación que ya tiene una cuenta vinculada (hecha con la línea de comandos o con `msum import`) nunca lo ve. Al elegir el proveedor muestra cuánto cuesta cada uno, si los datos salen de tu computadora, hacia quién y qué hace el proveedor con ellos, y tiene un botón "Probar conexión" que hace una llamada real con un chat corto inventado (solo corre cuando hacés clic). Un proveedor que envía el texto de tus chats fuera de esta máquina (hoy, Claude Code, que lo manda a Anthropic bajo tu cuenta de Claude) necesita una aceptación explícita: hay que marcar la casilla y queda registrada (cuenta, proveedor, versión del texto y hora) en `app.db`. La configuración pide la misma aceptación la primera vez que elegís un proveedor así para una cuenta; Ollama en tu propia máquina no necesita ninguna, pero un servidor de Ollama cuya dirección no es de esta máquina (ni `localhost`, ni `127.0.0.0/8`, ni `::1`) también cuenta como destinatario externo: la página nombra el equipo, avisa que las conversaciones "solo locales" también van ahí y pide la misma aceptación. Una configuración escrita a mano o con la línea de comandos no se bloquea por esto: la aceptación se refiere a la elección hecha en la web. El asistente es además el único lugar donde la web escribe el `config.json` de la instalación, y solo su `language`. Los demás proveedores (claves de API, Gemini, Codex, cualquier otro comando) y la transcripción local de audios llegan en una próxima versión. La configuración, las conversaciones, el prompt, el historial, los logs y la configuración inicial ya están en la web.
 
@@ -237,16 +265,18 @@ Después comprobalo con `msum digest --dry-run --account <id>` y arrancá el dae
 - **Mandarte el resumen a tu propio chat** ("Mensaje a mí mismo"), ordenado en secciones: necesitan respuesta, tienen pendientes, el resto. Nunca se envía a nadie más, ni siquiera a otra cuenta de la misma instalación.
 - **Correr en los horarios** que definas desde la web (por ejemplo, 9:00 y 19:00 todos los días), además de "resumir ahora" y una vista previa que no envía nada.
 - **Manejar varias cuentas** en una misma instalación, cada una con sus datos, configuración y horarios.
-- **Instalarse con Docker o de forma nativa en macOS y Linux.** Windows nativo llega en la v1.1; mientras tanto, en Windows se usa Docker.
+- **Instalarse con Docker o de forma nativa en macOS, Linux y Windows** (ver [Instalación](#instalación)).
 
 ## Aviso importante
 
 Leé esto antes de usar message-summarize con tu cuenta.
 
 - **WhatsApp puede bloquear tu número.** message-summarize se conecta a WhatsApp a través de [Baileys](https://github.com/WhiskeySockets/Baileys), un cliente **no oficial**. WhatsApp no permite clientes no oficiales y puede bloquear el número que los usa, de forma temporal o permanente. El proyecto intenta reducir ese riesgo (solo lectura, sin mensajes a terceros, sin marcarse en línea), pero no lo puede eliminar.
+- **El programa es de solo lectura.** Lee los mensajes que llegan, nunca responde, nunca te marca en línea y nunca manda nada a terceros. El único mensaje que envía es el resumen, a tu propio chat ("Mensaje a mí mismo").
 - **Modificar el programa o usarlo mal aumenta la probabilidad de un bloqueo.** Cambios que manden mensajes a otras personas, manden muchos mensajes, automaticen respuestas o cambien la forma en que el cliente se conecta pueden hacer que WhatsApp bloquee tu número. Si modificás el código, el riesgo es tuyo.
-- **Tus chats van al LLM que elijas.** Salvo que uses un modelo local (Ollama) o marques una conversación como "solo local", el texto de tus conversaciones se envía al proveedor que configures, bajo sus términos. Algunos planes gratuitos pueden usar ese contenido para mejorar sus productos, incluida la revisión humana.
-- **La responsabilidad es tuya** de cumplir los términos de WhatsApp, los de tu proveedor de LLM y la privacidad de las personas que te escriben.
+- **Tus datos se quedan en tu máquina, salvo lo que va al LLM que elijas.** Salvo que uses un modelo local (Ollama) o marques una conversación como "solo local", el texto de tus conversaciones se envía al proveedor que configures, bajo sus términos. Algunos planes gratuitos pueden usar ese contenido para mejorar sus productos, incluida la revisión humana.
+- **La responsabilidad es tuya** de cumplir los términos de WhatsApp, los de tu proveedor de LLM y la ley de privacidad que se aplique a las conversaciones de terceros (las personas que te escriben) que leés y resumís.
+- **No hay garantía.** El software se entrega "tal cual", como dice la [licencia](LICENSE). Los autores no responden por un número bloqueado, una conversación filtrada ni ningún otro daño.
 
 Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por Meta.
 
@@ -259,9 +289,15 @@ Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por M
 | 2 | Daemon, horarios, varias cuentas e importación desde la herramienta personal |
 | 3 | Proveedores de LLM (API y CLI), proveedor de respaldo, conversaciones solo locales, transcripción con whisper.cpp y `doctor` |
 | 4 | Web local: asistente de primer uso, vinculación por QR, panel, configuración, historial y logs |
-| 5 | Empaquetado: imagen de Docker, instaladores nativos para macOS y Linux, servicio del sistema |
+| 5 | Empaquetado: imagen de Docker, instaladores para macOS, Linux y Windows, servicio del sistema |
 | 6 | CI, chequeo de licencias, documentación y primera versión (v0.1.0) |
 
 ## Licencia
 
-[MIT](LICENSE)
+[MIT](LICENSE) para el código propio del proyecto. Una dependencia, `libsignal` (que trae Baileys, el cliente de WhatsApp), tiene licencia GPL-3.0; cómo se concilia con la licencia MIT hay que resolverlo antes de la primera versión (las opciones son reemplazarla, aislarla o cambiar la licencia; todavía no hay nada decidido), y `npm run check:licenses` la lista como excepción con nombre hasta entonces. La publicación en npm está bloqueada a propósito hasta que se decida. La lista completa de dependencias y sus licencias está en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Contribuir y seguridad
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): cómo preparar el repositorio, los chequeos y las reglas para los cambios (en inglés).
+- [SECURITY.md](SECURITY.md): cómo reportar una vulnerabilidad de forma privada (en inglés).
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): las dependencias y sus licencias.

@@ -1,6 +1,6 @@
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import type { BlockedReason } from '../infrastructure/i18n/index.js'
-import { FILE_MODE } from './paths.js'
+import { writeFileAtomic } from './atomic-write.js'
 
 export type { BlockedReason }
 
@@ -40,7 +40,8 @@ export async function readBlocked(file: string): Promise<Blocked | null> {
 }
 
 export async function writeBlocked(file: string, reason: BlockedReason, at: number): Promise<void> {
-  await writeFile(file, `${JSON.stringify({ reason, at })}\n`, { mode: FILE_MODE })
+  // Atomic: a reader (or a crash) must not leave an empty marker, which reads as `notLinked` and loses the reason.
+  await writeFileAtomic(file, `${JSON.stringify({ reason, at })}\n`)
 }
 
 export async function clearBlocked(file: string): Promise<void> {

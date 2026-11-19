@@ -94,6 +94,8 @@ export type Command =
     } & AccountArg)
   /** `msum open [--print]`: the web in the browser; `print` only prints the address. */
   | { readonly name: 'open'; readonly print: boolean }
+  /** `msum service install|uninstall|status`: the daemon as a service of the user's session (RF-80, RNF-07). */
+  | { readonly name: 'service'; readonly action: 'install' | 'uninstall' | 'status' }
   | ({ readonly name: 'schedule'; readonly action: 'ls' } & AccountArg)
   | ({
       readonly name: 'schedule'
@@ -137,6 +139,7 @@ const COMMANDS = [
   'provider',
   'ollama',
   'open',
+  'service',
 ] as const
 /** The flags each command accepts (besides --help). */
 const FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -212,6 +215,7 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     command !== 'secret' &&
     command !== 'provider' &&
     command !== 'ollama' &&
+    command !== 'service' &&
     rest.length > 0
   ) {
     return err({ kind: 'unexpectedArgument', value: rest[0] as string })
@@ -284,6 +288,8 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
       return parseSecret(rest, account)
     case 'provider':
       return parseProvider(rest, values, account)
+    case 'service':
+      return parseService(rest)
     case 'import':
       return parseImport(values, account)
     case 'ollama':
@@ -303,6 +309,16 @@ export function parseCommandLine(argv: readonly string[]): Result<Command, ArgEr
     default:
       return ok({ name: command as 'init' | 'accounts' })
   }
+}
+
+/** `msum service install|uninstall|status`. */
+function parseService(rest: readonly string[]): Result<Command, ArgError> {
+  const [action = 'status', ...more] = rest
+  if (action !== 'install' && action !== 'uninstall' && action !== 'status') {
+    return err({ kind: 'unknownSubcommand', value: action })
+  }
+  if (more.length > 0) return err({ kind: 'unexpectedArgument', value: more[0] as string })
+  return ok({ name: 'service', action })
 }
 
 /** `msum whisper [models|download <name>]`. The name is checked against the table of models by the command. */

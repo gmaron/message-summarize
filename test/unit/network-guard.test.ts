@@ -6,6 +6,7 @@ import net, { type AddressInfo } from 'node:net'
 import { Worker } from 'node:worker_threads'
 import { afterEach, describe, expect, it } from 'vitest'
 import { allowNetwork, allowSubprocess } from '../support/network-guard.js'
+import { isWindows } from '../support/platform.js'
 
 const external = (host: string) => `Undeclared network call to ${host}`
 
@@ -121,6 +122,15 @@ describe('network guard (RNF-01)', () => {
       expect(() => childProcess.execFile('curl')).toThrow(subprocess('curl'))
       expect(() => childProcess.execFileSync('curl')).toThrow(subprocess('curl'))
       expect(() => childProcess.fork('child.js')).toThrow(subprocess('child.js'))
+    })
+
+    it('allows only the exact `net use` (what Vite runs), and only on Windows', () => {
+      // any other net command, or `net use` with arguments, stays blocked everywhere
+      expect(() => childProcess.exec('net view')).toThrow(subprocess('net view'))
+      expect(() => childProcess.exec('net use Z: \\\\host\\share')).toThrow(/Undeclared subprocess: net use Z:/)
+      expect(() => childProcess.execSync('net user')).toThrow(subprocess('net user'))
+      // off Windows not even the exact command goes through (on Windows it would run the real, harmless one)
+      if (!isWindows) expect(() => childProcess.exec('net use')).toThrow(subprocess('net use'))
     })
 
     it('rejects worker_threads Worker', () => {

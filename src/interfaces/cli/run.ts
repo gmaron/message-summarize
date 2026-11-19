@@ -22,6 +22,9 @@ export type SecretCommand = Extract<Command, { name: 'secret' }>
 /** The `provider` command with its subcommand. */
 export type ProviderCommand = Extract<Command, { name: 'provider' }>
 
+/** The `service` command with its subcommand. */
+export type ServiceCommand = Extract<Command, { name: 'service' }>
+
 /** The `ollama` command with its subcommand. */
 export type OllamaCommand = Extract<Command, { name: 'ollama' }>
 
@@ -49,6 +52,7 @@ export interface CliHandlers {
   secret(command: SecretCommand): Promise<number>
   provider(command: ProviderCommand): Promise<number>
   ollama(command: OllamaCommand): Promise<number>
+  service(command: ServiceCommand): Promise<number>
 }
 
 export const EXIT_OK = 0
@@ -122,6 +126,8 @@ function dispatch(command: Exclude<Command, { name: 'help' }>, handlers: CliHand
       return handlers.provider(command)
     case 'ollama':
       return handlers.ollama(command)
+    case 'service':
+      return handlers.service(command)
   }
 }
 

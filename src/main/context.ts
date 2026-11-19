@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Clock } from '../application/ports/clock.js'
+import type { ServiceInstaller } from '../application/ports/service-installer.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import type { Transcriber } from '../application/ports/transcriber.js'
 import type { Result } from '../domain/result.js'
@@ -121,6 +122,15 @@ export interface CommandContext {
   readonly afterLock?: () => void | Promise<void>
   /** Called after each step of an import (session, database, config, built, renamed). For tests: they interrupt it. */
   readonly afterImportStep?: (step: 'session' | 'database' | 'config' | 'built' | 'renamed') => void | Promise<void>
+  /**
+   * Replaces what `msum service` talks to and what it registers. For tests: they give a fake installer and an entry
+   * point, so no launchd, systemd or registry is touched.
+   */
+  readonly service?: {
+    readonly installer?: ServiceInstaller
+    /** The program and the script that start the CLI, without `daemon`: `[node, cli.js]`. */
+    readonly entry?: readonly string[]
+  }
   readonly web?: WebOverrides
   readonly daemonTiming?: {
     readonly heartbeatMs?: number

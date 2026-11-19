@@ -10,6 +10,7 @@ import {
   settleAuthWrites,
   temporaryName,
 } from '../../../src/infrastructure/whatsapp/auth-state.js'
+import { isWindows } from '../../support/platform.js'
 
 const mode = (path: string): number => statSync(path).mode & 0o777
 
@@ -24,7 +25,8 @@ afterEach(() => {
 })
 
 describe('secure auth state (RNF-04)', () => {
-  it('creates the directory 0700 and writes every file 0600, whatever the umask', async () => {
+  // RF-46: POSIX modes do not exist on Windows, so the check of 0700/0600 is skipped there (the code is untouched).
+  it.skipIf(isWindows)('creates the directory 0700 and writes every file 0600, whatever the umask', async () => {
     const previous = process.umask(0o000)
     try {
       const dir = join(root(), 'session')
@@ -39,15 +41,18 @@ describe('secure auth state (RNF-04)', () => {
     }
   })
 
-  it('tightens an existing directory and its files (an older version, or another tool, left them open)', async () => {
-    const dir = join(root(), 'old')
-    mkdirSync(dir, { mode: 0o755 })
-    writeFileSync(join(dir, 'creds.json'), '{}', { mode: 0o644 })
-    chmodSync(join(dir, 'creds.json'), 0o644)
-    await loadSecureAuthState(dir)
-    expect(mode(dir)).toBe(AUTH_DIR_MODE)
-    expect(mode(join(dir, 'creds.json'))).toBe(AUTH_FILE_MODE)
-  })
+  it.skipIf(isWindows)(
+    'tightens an existing directory and its files (an older version, or another tool, left them open)',
+    async () => {
+      const dir = join(root(), 'old')
+      mkdirSync(dir, { mode: 0o755 })
+      writeFileSync(join(dir, 'creds.json'), '{}', { mode: 0o644 })
+      chmodSync(join(dir, 'creds.json'), 0o644)
+      await loadSecureAuthState(dir)
+      expect(mode(dir)).toBe(AUTH_DIR_MODE)
+      expect(mode(join(dir, 'creds.json'))).toBe(AUTH_FILE_MODE)
+    },
+  )
 
   it('what is saved is loaded back, buffers included, and a deleted key is gone', async () => {
     const dir = join(root(), 'session')

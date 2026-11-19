@@ -1,0 +1,6 @@
+{
+  "libsignal": {
+    "license": "GPL-3.0",
+    "reason": "Dependency of Baileys, the WhatsApp adapter. Incompatible with an MIT distribution: decide before v0.1.0 (replace, isolate or relicense), RNF-18 in docs/requirements.md requires compatible licenses. Blocks 'npm publish': prepublishOnly runs check-licenses with --strict, which rejects every exception."
+  }
+}
