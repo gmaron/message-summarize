@@ -46,34 +46,18 @@
   }
 </script>
 
-<div class="test">
-  <button type="button" onclick={run} disabled={running || blocked}>{t.button}</button>
-  <p class="muted note-text">{t.note}</p>
+<div class="stack-sm">
+  <div><button type="button" class="btn" onclick={run} disabled={running || blocked}>{t.button}</button></div>
+  <p class="muted small">{t.note}</p>
   <div aria-live="polite">
     {#if running}
-      <p class="note" role="status">{t.running}</p>
+      <p class="notice info" role="status">{t.running}</p>
     {:else if result !== null && result.ok}
-      <p class="note ok" role="status">{fmt(t.ok, { ms: result.ms })}</p>
+      <p class="notice ok" role="status">{fmt(t.ok, { ms: result.ms })}</p>
     {:else if result !== null}
-      <p class="note error" role="alert">{t.errors[result.error] ?? texts.errors.internal}</p>
+      <p class="notice bad" role="alert">{t.errors[result.error] ?? texts.errors.internal}</p>
     {:else if failure !== null}
-      <p class="note error" role="alert">{failure}</p>
+      <p class="notice bad" role="alert">{failure}</p>
     {/if}
   </div>
 </div>
-
-<style>
-  .test {
-    display: grid;
-    gap: 0.4rem;
-    justify-items: start;
-  }
-
-  p {
-    margin: 0;
-  }
-
-  .note-text {
-    font-size: 0.85rem;
-  }
-</style>

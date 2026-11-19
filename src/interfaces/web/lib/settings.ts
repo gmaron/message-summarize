@@ -91,13 +91,44 @@ export function buildPatch(view: SettingsView, draft: Draft): PatchResult {
   return { ok: true, patch }
 }
 
+/** Options the page shows in seconds while the daemon keeps them in milliseconds. */
+export const SECONDS_OPTIONS: readonly string[] = ['provider.claudeCli.timeoutMs']
+
+/** "120000" ms as the "120" the page shows; anything that is not a number is left as it is. */
+export function secondsFromMs(ms: string): string {
+  const value = Number(ms)
+  return ms.trim() === '' || !Number.isFinite(value) ? ms : String(value / 1000)
+}
+
+/** The "120" typed as the "120000" the daemon keeps; anything that is not a number is left as it is (the daemon refuses it). */
+export function msFromSeconds(seconds: string): string {
+  const value = Number(seconds)
+  return seconds.trim() === '' || !Number.isFinite(value) ? seconds : String(Math.round(value * 1000))
+}
+
+/** The draft as the form shows it: the options in seconds converted from the milliseconds of the view. */
+export function shownDraft(view: SettingsView): Draft {
+  const draft: Record<string, string | boolean> = { ...draftOf(view) }
+  for (const option of SECONDS_OPTIONS) draft[option] = secondsFromMs(String(draft[option] ?? ''))
+  return draft
+}
+
+/** The draft as `buildPatch` compares it with the view: seconds back to milliseconds. */
+export function storedDraft(draft: Draft): Draft {
+  const stored: Record<string, string | boolean> = { ...draft }
+  for (const option of SECONDS_OPTIONS) stored[option] = msFromSeconds(String(stored[option] ?? ''))
+  return stored
+}
+
 export const isEmptyPatch = (patch: Record<string, unknown>): boolean => Object.keys(patch).length === 0
 
 /** The reason of an issue, in the language of the page. A code the page does not know (a newer daemon) says only the option. */
 export function issueReason(issue: SettingsIssue, texts: WebTexts): string {
   const table = texts.configIssues as Readonly<Record<string, string>>
   const template = Object.hasOwn(table, issue.code) ? (table[issue.code] as string) : null
-  return template === null ? texts.errors.invalidConfig : fmt(template, { allowed: (issue.allowed ?? []).join(', ') })
+  return template === null
+    ? texts.errors.invalidConfig
+    : fmt(template, { allowed: (issue.allowed ?? []).join(texts.ui.text.listSeparator) })
 }
 
 const keyOf = (option: string): SettingsFieldKey | null => FIELDS.find((field) => field.option === option)?.key ?? null
