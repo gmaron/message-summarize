@@ -26,6 +26,7 @@
     "LICENSE",
     "README.md",
     "README.es.md",
+    "THIRD_PARTY_NOTICES.md",
     "vendor/sharp-stub"
   ],
   "engines": {
@@ -46,6 +47,8 @@
     "eval:ollama": "node test/eval/run.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
     "check:dist": "node scripts/check-dist.mjs",
+    "notices": "node scripts/check-licenses.mjs --notices",
+    "notices:check": "node scripts/check-licenses.mjs --notices --check",
     "check:web-size": "node scripts/check-web-size.mjs",
     "prepack": "npm run build && npm run check:dist",
     "prepublishOnly": "node scripts/check-licenses.mjs --strict"

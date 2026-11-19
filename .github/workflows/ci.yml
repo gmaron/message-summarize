@@ -32,6 +32,8 @@ jobs:
       - run: npm ci
       # RNF-18: normal mode (the known libsignal exception is reported, not failed; --strict is for publishing).
       - run: npm run check:licenses
+      # THIRD_PARTY_NOTICES.md must match the installed production tree (regenerate with `npm run notices`).
+      - run: npm run notices:check
       - run: npm run lint
       - run: npm run typecheck
       # Coverage thresholds (domain 90%, use cases 80%) live in vitest.config.ts.

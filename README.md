@@ -272,9 +272,11 @@ Then check with `msum digest --dry-run --account <id>` and start the daemon.
 Read this before using message-summarize with your account.
 
 - **Your number can be banned.** message-summarize connects to WhatsApp through [Baileys](https://github.com/WhiskeySockets/Baileys), an **unofficial** client. WhatsApp does not allow unofficial clients and may block the number that uses them, temporarily or permanently. The project tries to reduce that risk (read-only behavior, no messages to third parties, not marking itself online), but it cannot remove it.
+- **The program is read-only.** It reads the messages that arrive, never replies, never marks you as online and never sends anything to third parties. The only message it sends is the digest, to your own chat ("Message yourself").
 - **Modifying the program or misusing it makes a ban more likely.** Changes that send messages to other people, send many messages, automate replies or change how the client connects can get your number blocked. If you change the code, you take that risk.
-- **Your chats go to the LLM you choose.** Unless you use a local model (Ollama) or mark a conversation as "local only", the text of your conversations is sent to the provider you configure, under that provider's terms. Some free plans may use that content to improve their products, including human review.
-- **You are responsible** for complying with WhatsApp's terms, your LLM provider's terms and the privacy of the people who write to you.
+- **Your data stays on your machine, except what goes to the LLM you choose.** Unless you use a local model (Ollama) or mark a conversation as "local only", the text of your conversations is sent to the provider you configure, under that provider's terms. Some free plans may use that content to improve their products, including human review.
+- **You are responsible** for complying with WhatsApp's terms, your LLM provider's terms and the privacy law that applies to the conversations of third parties (the people who write to you) that you read and summarize.
+- **There is no warranty.** The software is provided "as is", as the [license](LICENSE) says. The authors are not liable for a blocked number, a leaked conversation or any other damage.
 
 This project is not affiliated with, endorsed by or sponsored by WhatsApp or Meta.
 
@@ -292,4 +294,10 @@ This project is not affiliated with, endorsed by or sponsored by WhatsApp or Met
 
 ## License
 
-[MIT](LICENSE) for this project's own code. One dependency, `libsignal` (brought in by Baileys, the WhatsApp client), is licensed GPL-3.0; how that fits with the MIT license has to be settled before the first release, and `npm run check:licenses` lists it as a named exception until then.
+[MIT](LICENSE) for this project's own code. One dependency, `libsignal` (brought in by Baileys, the WhatsApp client), is licensed GPL-3.0; how that fits with the MIT license has to be settled before the first release (the options are to replace it, isolate it or relicense; nothing is decided yet), and `npm run check:licenses` lists it as a named exception until then. Publishing to npm is blocked on purpose until that decision is made. The full list of dependencies and their licenses is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Contributing and security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to set up the repository, the checks and the rules for changes.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): the dependencies and their licenses.

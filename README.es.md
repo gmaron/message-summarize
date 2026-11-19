@@ -272,9 +272,11 @@ Después comprobalo con `msum digest --dry-run --account <id>` y arrancá el dae
 Leé esto antes de usar message-summarize con tu cuenta.
 
 - **WhatsApp puede bloquear tu número.** message-summarize se conecta a WhatsApp a través de [Baileys](https://github.com/WhiskeySockets/Baileys), un cliente **no oficial**. WhatsApp no permite clientes no oficiales y puede bloquear el número que los usa, de forma temporal o permanente. El proyecto intenta reducir ese riesgo (solo lectura, sin mensajes a terceros, sin marcarse en línea), pero no lo puede eliminar.
+- **El programa es de solo lectura.** Lee los mensajes que llegan, nunca responde, nunca te marca en línea y nunca manda nada a terceros. El único mensaje que envía es el resumen, a tu propio chat ("Mensaje a mí mismo").
 - **Modificar el programa o usarlo mal aumenta la probabilidad de un bloqueo.** Cambios que manden mensajes a otras personas, manden muchos mensajes, automaticen respuestas o cambien la forma en que el cliente se conecta pueden hacer que WhatsApp bloquee tu número. Si modificás el código, el riesgo es tuyo.
-- **Tus chats van al LLM que elijas.** Salvo que uses un modelo local (Ollama) o marques una conversación como "solo local", el texto de tus conversaciones se envía al proveedor que configures, bajo sus términos. Algunos planes gratuitos pueden usar ese contenido para mejorar sus productos, incluida la revisión humana.
-- **La responsabilidad es tuya** de cumplir los términos de WhatsApp, los de tu proveedor de LLM y la privacidad de las personas que te escriben.
+- **Tus datos se quedan en tu máquina, salvo lo que va al LLM que elijas.** Salvo que uses un modelo local (Ollama) o marques una conversación como "solo local", el texto de tus conversaciones se envía al proveedor que configures, bajo sus términos. Algunos planes gratuitos pueden usar ese contenido para mejorar sus productos, incluida la revisión humana.
+- **La responsabilidad es tuya** de cumplir los términos de WhatsApp, los de tu proveedor de LLM y la ley de privacidad que se aplique a las conversaciones de terceros (las personas que te escriben) que leés y resumís.
+- **No hay garantía.** El software se entrega "tal cual", como dice la [licencia](LICENSE). Los autores no responden por un número bloqueado, una conversación filtrada ni ningún otro daño.
 
 Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por Meta.
 
@@ -292,4 +294,10 @@ Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por M
 
 ## Licencia
 
-[MIT](LICENSE) para el código propio del proyecto. Una dependencia, `libsignal` (que trae Baileys, el cliente de WhatsApp), tiene licencia GPL-3.0; cómo se concilia con la licencia MIT hay que resolverlo antes de la primera versión, y `npm run check:licenses` la lista como excepción con nombre hasta entonces.
+[MIT](LICENSE) para el código propio del proyecto. Una dependencia, `libsignal` (que trae Baileys, el cliente de WhatsApp), tiene licencia GPL-3.0; cómo se concilia con la licencia MIT hay que resolverlo antes de la primera versión (las opciones son reemplazarla, aislarla o cambiar la licencia; todavía no hay nada decidido), y `npm run check:licenses` la lista como excepción con nombre hasta entonces. La publicación en npm está bloqueada a propósito hasta que se decida. La lista completa de dependencias y sus licencias está en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Contribuir y seguridad
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): cómo preparar el repositorio, los chequeos y las reglas para los cambios (en inglés).
+- [SECURITY.md](SECURITY.md): cómo reportar una vulnerabilidad de forma privada (en inglés).
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): las dependencias y sus licencias.

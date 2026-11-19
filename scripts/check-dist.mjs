@@ -9,6 +9,11 @@ for (const path of ['dist/main/cli.js', 'dist/web/index.html']) {
   if (!existsSync(new URL(path, root))) problems.push(`missing ${path}`)
 }
 
+// The packaged files named in package.json must exist (README, notices and license ship with the package).
+for (const path of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'README.es.md']) {
+  if (!existsSync(new URL(path, root))) problems.push(`missing ${path}`)
+}
+
 if (existsSync(new URL('dist/main/cli.js', root))) {
   const first = readFileSync(new URL('dist/main/cli.js', root), 'utf8').split('\n', 1)[0]
   if (first !== '#!/usr/bin/env node') problems.push('dist/main/cli.js lost its shebang')
