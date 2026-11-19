@@ -1,0 +1,258 @@
+# Release: the Windows installer and the npm tarball, attached to a GitHub Release (OBJ-1, RNF-05).
+#
+# - Push a tag v* (it must equal "v" + the version in package.json): builds everything and creates the Release.
+# - Run it by hand (workflow_dispatch) for a dry run: builds, smoke-tests and uploads the artifacts, releases nothing.
+#
+# It does NOT publish to npm: `prepublishOnly` runs the strict license check, which blocks publishing by design
+# until the libsignal (GPL) decision is made. Third-party actions are pinned by full commit SHA.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Least privilege: read-only by default. Only the release job can write (contents), and only on a tag.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Check that the tag matches package.json
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "The tag $env:GITHUB_REF_NAME does not match the version $version in package.json"
+          }
+
+      - run: npm ci
+
+      # Stage first: npm and the scripts of the dependencies run here, WITHOUT the signing secrets.
+      - name: Stage the payload
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1 -Stage -WorkDir "$env:RUNNER_TEMP\msum-installer"
+
+      # Pinned version of the Chocolatey package (Inno Setup 6). choco verifies the package checksum. The runner image
+      # may already have another Inno Setup: --allow-downgrade makes choco install exactly this one, and the version is
+      # checked afterwards.
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --version 6.7.1 --allow-downgrade --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'choco install innosetup failed' }
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc)) { throw 'ISCC.exe not found after the install' }
+          $banner = (& $iscc 2>&1 | Out-String)
+          if ($banner -notmatch '6\.7\.1') { throw "Unexpected Inno Setup version: $banner" }
+
+      # Only this step sees the signing secrets (optional: without them the installer is unsigned and SmartScreen warns).
+      - name: Compile and sign the installer
+        shell: pwsh
+        env:
+          WINDOWS_SIGN_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
+          WINDOWS_SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_PFX_PASSWORD }}
+        run: ./scripts/build-windows-installer.ps1 -Compile -WorkDir "$env:RUNNER_TEMP\msum-installer"
+
+      # Installs the built setup silently into a folder with a space in its name with every task OFF (no PATH change,
+      # no service, no web), checks the commands, and uninstalls it. The data folder is a temporary one. Tasks are
+      # deselected one by one with /MERGETASKS and "!": that is the documented way to switch a task off in a silent
+      # install (an empty task list is not relied on).
+      - name: Smoke test the installer (no tasks)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $setup = Join-Path $PWD "dist-installer\message-summarize-$version-win-x64-setup.exe"
+          $root = Join-Path $env:RUNNER_TEMP 'msum smoke'
+          $app = Join-Path $root 'app dir'
+          $log = Join-Path $root 'setup.log'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $env:MSUM_DATA_DIR = Join-Path $root 'data'
+          $userPathBefore = [Environment]::GetEnvironmentVariable('Path', 'User')
+          try {
+            # Start-Process does not quote the elements of ArgumentList: the values with spaces or quotes are quoted here.
+            $install = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$app`"",
+              '/MERGETASKS="!addtopath,!service,!openweb"', "/LOG=`"$log`"")
+            if ($install.ExitCode -ne 0) { throw "The setup exited with $($install.ExitCode)" }
+            foreach ($shim in 'msum.cmd', 'message-summarize.cmd') {
+              $reported = (& (Join-Path $app "bin\$shim") --version | Out-String).Trim()
+              if ($LASTEXITCODE -ne 0 -or $reported -ne $version) { throw "$shim --version gave '$reported', expected $version" }
+            }
+            if ([Environment]::GetEnvironmentVariable('Path', 'User') -ne $userPathBefore) { throw 'The user PATH changed without the task' }
+            if (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'message-summarize' -ErrorAction SilentlyContinue) { throw 'The Run value exists without the service task' }
+            if (-not (Test-Path -LiteralPath (Join-Path $env:MSUM_DATA_DIR 'config.json'))) { throw 'msum init did not create the configuration' }
+
+            $uninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
+            if ($uninstall.ExitCode -ne 0) { throw "The uninstaller exited with $($uninstall.ExitCode)" }
+            # The uninstaller continues from a copy of itself: wait for the program folders to go.
+            $deadline = (Get-Date).AddSeconds(60)
+            while ((Test-Path -LiteralPath (Join-Path $app 'node')) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+            if (Test-Path -LiteralPath (Join-Path $app 'node')) { throw 'The uninstaller did not remove the program' }
+            if (-not (Test-Path -LiteralPath (Join-Path $env:MSUM_DATA_DIR 'config.json'))) { throw 'The uninstaller deleted the data folder' }
+          } finally {
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+          }
+
+      # The same with the service and PATH tasks: a real daemon runs, the same setup is run again as an upgrade over
+      # it, and the uninstall must leave no node.exe of the install running, no Run value, the PATH as it was, and the
+      # data folder.
+      - name: Smoke test the installer (service, upgrade, uninstall)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $setup = Join-Path $PWD "dist-installer\message-summarize-$version-win-x64-setup.exe"
+          $root = Join-Path $env:RUNNER_TEMP 'msum smoke service'
+          $app = Join-Path $root 'app dir'
+          $log = Join-Path $root 'setup.log'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $env:MSUM_DATA_DIR = Join-Path $root 'data'
+          $userPathBefore = [string][Environment]::GetEnvironmentVariable('Path', 'User')
+          function Install-Setup {
+            $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$app`"",
+              '/MERGETASKS="service,addtopath,!openweb"', "/LOG=`"$log`"")
+            if ($p.ExitCode -ne 0) { throw "The setup exited with $($p.ExitCode)" }
+          }
+          function Wait-Web {
+            # `msum open --print` succeeds only while a daemon holds the lock; its output (the token) is discarded.
+            for ($i = 0; $i -lt 90; $i++) {
+              & (Join-Path $app 'bin\msum.cmd') open --print *> $null
+              if ($LASTEXITCODE -eq 0) { return }
+              Start-Sleep -Seconds 1
+            }
+            throw 'The web did not come up'
+          }
+          function Get-InstallNodes {
+            @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($app + '\', [StringComparison]::OrdinalIgnoreCase) })
+          }
+          try {
+            Install-Setup
+            if (-not (Get-ItemProperty -Path $runKey -Name 'message-summarize' -ErrorAction SilentlyContinue)) { throw 'The Run value was not written' }
+            if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -ieq (Join-Path $app 'bin') })) { throw 'The bin folder is not on the user PATH' }
+            Wait-Web
+            if ((Get-InstallNodes).Count -eq 0) { throw 'No daemon of the install is running' }
+
+            Install-Setup # an upgrade in place, over the running daemon
+            if (-not (Get-ItemProperty -Path $runKey -Name 'message-summarize' -ErrorAction SilentlyContinue)) { throw 'The Run value is gone after the upgrade' }
+            $entries = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -ieq (Join-Path $app 'bin') })
+            if ($entries.Count -ne 1) { throw "The bin folder is $($entries.Count) times on the user PATH after the upgrade" }
+            Wait-Web
+            if (-not (Test-Path -LiteralPath (Join-Path $env:MSUM_DATA_DIR 'config.json'))) { throw 'The upgrade lost the configuration' }
+
+            $uninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
+            if ($uninstall.ExitCode -ne 0) { throw "The uninstaller exited with $($uninstall.ExitCode)" }
+            $deadline = (Get-Date).AddSeconds(60)
+            while ((Test-Path -LiteralPath (Join-Path $app 'node')) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+            if (Test-Path -LiteralPath (Join-Path $app 'node')) { throw 'The uninstaller did not remove the program' }
+            if ((Get-InstallNodes).Count -ne 0) { throw 'A node.exe of the install is still running after the uninstall' }
+            if (Get-ItemProperty -Path $runKey -Name 'message-summarize' -ErrorAction SilentlyContinue) { throw 'The Run value is still there after the uninstall' }
+            if ([string][Environment]::GetEnvironmentVariable('Path', 'User') -ne $userPathBefore) { throw 'The user PATH was not restored' }
+            if (-not (Test-Path -LiteralPath (Join-Path $env:MSUM_DATA_DIR 'config.json'))) { throw 'The uninstaller deleted the data folder' }
+          } finally {
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+          }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installer
+          path: dist-installer
+          if-no-files-found: error
+          retention-days: 14
+
+  source-tarball:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Check that the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match the version $version in package.json" >&2
+            exit 1
+          fi
+
+      - run: npm ci
+
+      # prepack builds and checks dist/. No publish: see the note at the top of this file.
+      - name: Pack
+        run: |
+          mkdir out
+          npm pack --pack-destination out
+          cd out
+          sha256sum -- *.tgz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source-tarball
+          path: out
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: [windows-installer, source-tarball]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-installer
+          path: assets/windows-installer
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: source-tarball
+          path: assets/source-tarball
+
+      - name: Verify the checksums and make one SHA256SUMS.txt
+        run: |
+          set -eu
+          (cd assets/windows-installer && sha256sum -c SHA256SUMS.txt)
+          (cd assets/source-tarball && sha256sum -c SHA256SUMS.txt)
+          mkdir release
+          cp assets/windows-installer/*-setup.exe assets/source-tarball/*.tgz release/
+          (cd release && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          # shellcheck disable=SC2086
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes $flags
