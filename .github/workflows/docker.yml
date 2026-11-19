@@ -1,0 +1,106 @@
+# Docker (RNF-05, RNF-07): the image builds, starts under compose and becomes healthy. Nothing is published: no
+# login to a registry, no push, no secrets. No third-party cache. The only network access is what the build itself
+# needs (the base image, the Dockerfile frontend, the BuildKit image, apt, npm, the whisper.cpp sources). The QEMU
+# (binfmt) and BuildKit images are pulled by tag, not by digest: a known gap, harmless here (read-only token, no secrets).
+# Third-party actions are pinned by full commit SHA.
+name: docker
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Every pull request: linux/amd64, native on the runner. Uses only the Docker and Compose that the runner already has.
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: msum-smoke
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # compose.yaml names an image on ghcr.io and builds it when it is not there: build it locally and never pull.
+      - name: Build the image (linux/amd64)
+        run: docker compose -f compose.yaml build message-summarize
+
+      # The override keeps the web on the loopback of the runner only (RNF-03) and gives the container its own name.
+      # No account is linked, no provider is configured (the default), so nothing goes out to the network.
+      # The data is a named volume of this project (a temporary one): `down -v` deletes it.
+      - name: Start with compose and wait for the healthcheck
+        run: |
+          set -eu
+          cat > "$RUNNER_TEMP/compose.smoke.yaml" <<'YAML'
+          services:
+            message-summarize:
+              container_name: msum-smoke
+              restart: "no"
+              ports: !override
+                - "127.0.0.1:8787:8787"
+          YAML
+          docker compose -f compose.yaml -f "$RUNNER_TEMP/compose.smoke.yaml" up -d --no-build --pull never message-summarize
+          status=""
+          for i in $(seq 1 40); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' msum-smoke)"
+            echo "attempt $i: $status"
+            [ "$status" = healthy ] && break
+            [ "$(docker inspect --format '{{.State.Running}}' msum-smoke)" = true ] || break
+            sleep 5
+          done
+          docker compose -f compose.yaml -f "$RUNNER_TEMP/compose.smoke.yaml" ps
+          [ "$status" = healthy ]
+
+      # GET / serves the static web bundle without a token (only /api needs it), so anything but 200 is a regression.
+      - name: The web answers on the loopback and only there
+        run: |
+          set -eu
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8787/)"
+          echo "GET http://127.0.0.1:8787/ -> $code"
+          case "$code" in 200) ;; *) echo "unexpected status $code" >&2; exit 1 ;; esac
+          published="$(docker port msum-smoke 8787/tcp)"
+          echo "published: $published"
+          [ "$published" = "127.0.0.1:8787" ]
+
+      - name: Container logs
+        if: failure()
+        run: docker logs msum-smoke || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.yaml down -v --remove-orphans || true
+
+  # Pushes to main and manual runs only: arm64 runs under QEMU, which is slow. Both architectures, nothing is exported
+  # (cacheonly) or pushed. The cli variant follows the base one in the same builder, so it only adds its own layer.
+  docker-multiarch:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      # buildx is already on the runner. The default driver cannot build several platforms without exporting them.
+      - name: Create a multi-platform builder
+        run: docker buildx create --name msum-multiarch --driver docker-container --use
+
+      - name: Build the image (linux/amd64 and linux/arm64, no push)
+        run: docker buildx build --builder msum-multiarch --platform linux/amd64,linux/arm64 --output type=cacheonly .
+
+      - name: Build the cli image (linux/amd64 and linux/arm64, no push)
+        run: docker buildx build --builder msum-multiarch --platform linux/amd64,linux/arm64 --target cli --output type=cacheonly .
