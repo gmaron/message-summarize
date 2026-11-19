@@ -30,12 +30,20 @@ jobs:
           node-version: 22
 
       - run: npm ci
+      # RNF-18: normal mode (the known libsignal exception is reported, not failed; --strict is for publishing).
+      - run: npm run check:licenses
       - run: npm run lint
       - run: npm run typecheck
       # Coverage thresholds (domain 90%, use cases 80%) live in vitest.config.ts.
       - run: npm run test:coverage -- --maxWorkers=4 --testTimeout=30000
       - run: npm run build
       - run: npm run check:dist
+      # RNF-19: the web JS must stay under 100 KB gzipped.
+      - run: npm run check:web-size
+      # RNF-09: informational until there is a baseline; it never blocks the job.
+      - run: node scripts/measure-idle-memory.mjs
+        continue-on-error: true
+        timeout-minutes: 2
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})

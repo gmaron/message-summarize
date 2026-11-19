@@ -46,6 +46,7 @@
     "eval:ollama": "node test/eval/run.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
     "check:dist": "node scripts/check-dist.mjs",
+    "check:web-size": "node scripts/check-web-size.mjs",
     "prepack": "npm run build && npm run check:dist",
     "prepublishOnly": "node scripts/check-licenses.mjs --strict"
   },
