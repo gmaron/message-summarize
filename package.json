@@ -1,9 +1,33 @@
 {
   "name": "message-summarize",
   "version": "0.0.0",
-  "private": true,
+  "description": "Summarizes the conversations of a messaging account with an LLM and delivers a periodic digest to your own chat.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gmaron/message-summarize.git"
+  },
+  "homepage": "https://github.com/gmaron/message-summarize#readme",
+  "bugs": {
+    "url": "https://github.com/gmaron/message-summarize/issues"
+  },
+  "keywords": [
+    "whatsapp",
+    "summary",
+    "digest",
+    "llm",
+    "baileys",
+    "cli"
+  ],
+  "author": "Gaston Maron",
   "type": "module",
   "license": "MIT",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "README.es.md",
+    "vendor/sharp-stub"
+  ],
   "engines": {
     "node": ">=22.16"
   },
@@ -17,9 +41,13 @@
     "format": "biome check --write .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "build": "tsc -p tsconfig.build.json && npm run build:web",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && npm run build:web",
     "build:web": "vite build --config vite.web.config.ts",
-    "eval:ollama": "node test/eval/run.mjs"
+    "eval:ollama": "node test/eval/run.mjs",
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "check:dist": "node scripts/check-dist.mjs",
+    "prepack": "npm run build && npm run check:dist",
+    "prepublishOnly": "node scripts/check-licenses.mjs --strict"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",
@@ -37,6 +65,7 @@
   "dependencies": {
     "baileys": "7.0.0-rc14",
     "croner": "11.0.1",
-    "qrcode": "1.5.4"
+    "qrcode": "1.5.4",
+    "sharp": "file:vendor/sharp-stub"
   }
 }

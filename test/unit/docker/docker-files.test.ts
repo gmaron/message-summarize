@@ -50,6 +50,15 @@ function exposedPorts(text: string): string[] {
   )
 }
 
+describe('Dockerfile vendored sharp stub', () => {
+  it('copies the stub before npm ci and into the runtime image, so node_modules/sharp does not dangle', () => {
+    const buildStage = dockerfile.split('AS whisper')[0] ?? ''
+    expect(buildStage.indexOf('COPY vendor/sharp-stub ./vendor/sharp-stub')).toBeGreaterThan(-1)
+    expect(buildStage.indexOf('COPY vendor/sharp-stub')).toBeLessThan(buildStage.indexOf('RUN npm ci'))
+    expect(baseStage).toContain('COPY --from=build --chown=root:root /app/vendor ./vendor')
+  })
+})
+
 describe('compose.yaml', () => {
   it('publishes ports on 127.0.0.1 only (RNF-03)', () => {
     expect(portEntries(compose).length).toBeGreaterThan(0)

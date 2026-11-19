@@ -17,7 +17,9 @@ ARG NODE_IMAGE=node:22-bookworm-slim
 # ---- build: compile the daemon and the web, then keep only the production dependencies -------------------------------
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
+# vendor/sharp-stub: node_modules/sharp is a link to it (see package.json), so it must exist before npm ci.
 COPY package.json package-lock.json .npmrc ./
+COPY vendor/sharp-stub ./vendor/sharp-stub
 RUN npm ci
 COPY tsconfig.json tsconfig.build.json tsconfig.core.json tsconfig.web.json vite.web.config.ts ./
 COPY src ./src
@@ -57,6 +59,7 @@ WORKDIR /app
 COPY --from=whisper /src/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=build --chown=root:root /app/package.json ./package.json
 COPY --from=build --chown=root:root /app/node_modules ./node_modules
+COPY --from=build --chown=root:root /app/vendor ./vendor
 COPY --from=build --chown=root:root /app/dist ./dist
 COPY --chown=root:root docker ./docker
 RUN chmod +x /app/docker/entrypoint.sh /app/dist/main/cli.js
