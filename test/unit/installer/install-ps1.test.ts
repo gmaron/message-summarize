@@ -400,7 +400,14 @@ runtime('install.ps1 (PowerShell, nothing is changed)', () => {
     })
   }
   const out = (result: { stdout: string; stderr: string }): string => `${result.stdout}${result.stderr}`
-  const tree = (path: string): string[] => readdirSync(path, { recursive: true }).map(String).sort()
+  // On Windows pwsh itself writes its module-analysis and startup caches under %LOCALAPPDATA% (the temporary profile),
+  // whatever the script does; those two folders are not the script's doing and are left out of "nothing changed".
+  const pwshOwn = /^AppData(\\Local(\\Microsoft(\\(PowerShell|Windows)(\\.*)?)?)?)?$/
+  const tree = (path: string): string[] =>
+    readdirSync(path, { recursive: true })
+      .map(String)
+      .filter((entry) => !(process.platform === 'win32' && pwshOwn.test(entry)))
+      .sort()
 
   it('parses (the real parser of PowerShell)', () => {
     const result = spawnSync(
