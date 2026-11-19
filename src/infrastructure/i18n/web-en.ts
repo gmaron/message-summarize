@@ -193,6 +193,19 @@ export const webEn: WebTexts = {
       tryAgain: 'Try again',
       cancel: 'Cancel linking',
     },
+    risk: {
+      heading: 'Before you link a WhatsApp account',
+      unofficial:
+        'message-summarize connects to WhatsApp through Baileys, an unofficial client. WhatsApp does not allow unofficial clients and may block your number, temporarily or permanently.',
+      readOnly:
+        'The program is read-only: it never replies, never shows you as online and only sends the digest to your own chat. That reduces the risk but does not remove it.',
+      notAffiliated: 'This project is not affiliated with, endorsed by or sponsored by WhatsApp or Meta.',
+      responsibility: 'You are responsible for complying with the terms of WhatsApp.',
+      learnMore: 'Read the full warning in the README',
+      learnMoreUrl: 'https://github.com/gmaron/message-summarize#important-warning',
+      checkbox: 'I understand the risk',
+      start: 'Start linking',
+    },
     schedules: {
       title: 'Schedules of {account}',
       timezone: 'Time zone: {timezone}',
@@ -507,7 +520,6 @@ export const webEn: WebTexts = {
         heading: 'Link your phone',
         intro:
           'Scan the QR code from WhatsApp on your phone (Linked devices). Then the history syncs; it can take a few minutes.',
-        start: 'Show the QR code',
         needsLink: 'Link the account to continue.',
       },
       schedule: {

@@ -859,6 +859,19 @@ export interface WebTexts {
       readonly tryAgain: string
       readonly cancel: string
     }
+    /** The legal notice shown before a WhatsApp account is linked for the first time (README, "Important warning"). */
+    readonly risk: {
+      readonly heading: string
+      readonly unofficial: string
+      readonly readOnly: string
+      readonly notAffiliated: string
+      readonly responsibility: string
+      readonly learnMore: string
+      /** The README section of the language, on GitHub (a plain link: the page makes no request for it). */
+      readonly learnMoreUrl: string
+      readonly checkbox: string
+      readonly start: string
+    }
     readonly schedules: {
       /** `{account}`. */
       readonly title: string
@@ -1151,7 +1164,6 @@ export interface WebTexts {
       readonly link: {
         readonly heading: string
         readonly intro: string
-        readonly start: string
         readonly needsLink: string
       }
       readonly schedule: {

@@ -15,6 +15,7 @@
   import type { Controller } from './lib/controller.js'
   import { errorText } from './lib/digest.js'
   import { textsFor } from './lib/i18n.js'
+  import { linkNeedsNotice } from './lib/risk.js'
   import type { AppState } from './lib/state.js'
 
   let { controller, api }: { controller: Controller; api: Api } = $props()
@@ -36,8 +37,10 @@
 
   function openLink(id: string) {
     dialog = { kind: 'link', id }
-    if (accountOf(id)?.state === 'linking') controller.restoreLink(id)
-    else controller.startLink(id)
+    const account = accountOf(id)
+    if (account?.state === 'linking') controller.restoreLink(id)
+    // A new account starts when the legal notice is accepted (in the dialog); linking again starts at once.
+    else if (account !== null && !linkNeedsNotice(account)) controller.startLink(id)
   }
   function openPreview(id: string) {
     dialog = { kind: 'preview', id }
@@ -122,7 +125,7 @@
   {@const account = accountOf(dialog.id)}
   {#if account !== null}
     {#if dialog.kind === 'link'}
-      <LinkDialog {controller} {api} {texts} id={account.id} link={app.links[account.id]} onclose={close} />
+      <LinkDialog {controller} {api} {texts} id={account.id} link={app.links[account.id]} needsNotice={linkNeedsNotice(account)} onclose={close} />
     {:else if dialog.kind === 'schedules'}
       <SchedulesDialog {api} {texts} {account} onclose={close} />
     {:else if dialog.kind === 'conversations'}
