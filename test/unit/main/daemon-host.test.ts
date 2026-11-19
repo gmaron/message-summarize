@@ -967,7 +967,7 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     let current: World | null = null
     const writer = async (file: string, reason: BlockedReason, at: number): Promise<void> => {
       const w = current as World
-      const id = file.split('/').slice(-2)[0] as string
+      const id = file.split(/[\\/]/).slice(-2)[0] as string
       observed.push({
         id,
         reason,

@@ -15,6 +15,7 @@ import {
   systemdUnit,
   WindowsRunKeyInstaller,
 } from '../../../src/infrastructure/service/index.js'
+import { isWindows } from '../../support/platform.js'
 
 // Nothing here reaches a real service manager: the runner is a recorder and the files live in a Map.
 
@@ -74,7 +75,9 @@ const definition: ServiceDefinition = {
   startNow: true,
 }
 
-describe('launchd (macOS)', () => {
+// Skipped on Windows: the launchd and systemd adapters build their paths with node:path (separators of the running OS) and only
+// ever run on macOS and Linux, where the expectations below hold. Not a behavior of Windows.
+describe.skipIf(isWindows)('launchd (macOS)', () => {
   const plistPath = `/Users/ana maria/Library/LaunchAgents/${LAUNCHD_LABEL}.plist`
   const target = `gui/501/${LAUNCHD_LABEL}`
 
@@ -328,7 +331,9 @@ describe('launchd (macOS)', () => {
   })
 })
 
-describe('systemd --user (Linux)', () => {
+// Skipped on Windows: the launchd and systemd adapters build their paths with node:path (separators of the running OS) and only
+// ever run on macOS and Linux, where the expectations below hold. Not a behavior of Windows.
+describe.skipIf(isWindows)('systemd --user (Linux)', () => {
   const unitPath = '/home/ana maria/.config/systemd/user/message-summarize.service'
 
   it('writes the exact unit: quoted words, Restart=always, SuccessExitStatus, environment, WantedBy=default.target', () => {

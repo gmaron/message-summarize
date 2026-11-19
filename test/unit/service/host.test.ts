@@ -69,8 +69,11 @@ describe('nodeFiles', () => {
     const root = temp()
     mkdirSync(join(root, 'dir'))
     await expect(nodeFiles.read(join(root, 'dir'))).rejects.toThrow()
-    writeFileSync(join(root, 'plain'), '')
-    await expect(nodeFiles.remove(join(root, 'plain', 'inside'))).rejects.toThrow()
+    // Windows answers ENOENT (not ENOTDIR) for a path below a regular file, which is the "missing file" case
+    if (!isWindows) {
+      writeFileSync(join(root, 'plain'), '')
+      await expect(nodeFiles.remove(join(root, 'plain', 'inside'))).rejects.toThrow()
+    }
   })
 })
 

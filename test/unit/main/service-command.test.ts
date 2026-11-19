@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type {
   ServiceDefinition,
@@ -54,7 +55,7 @@ describe('msum service', () => {
         command: ['/fake/node', '/fake/dist/main/cli.js', 'daemon'],
         env: { MSUM_DATA_DIR: h.layout.dataDir, PATH: '/bin:/usr/bin' },
         dataDir: h.layout.dataDir,
-        logsDir: `${h.layout.dataDir}/logs`,
+        logsDir: join(h.layout.dataDir, 'logs'),
         startNow: true,
       },
     ])

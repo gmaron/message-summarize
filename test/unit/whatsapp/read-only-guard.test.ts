@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { FORBIDDEN_SOCKET_METHODS } from '../../support/whatsapp-fakes.js'
@@ -131,7 +131,8 @@ describe('the adapter is read only (RNF-17)', () => {
     const all = walk(src)
     expect(all.length).toBeGreaterThan(20)
     const offenders = all.filter(
-      (file) => !file.startsWith(`${dir}/`) && /['"]baileys(\/[^'"]*)?['"]/.test(code(readFileSync(file, 'utf-8'))),
+      (file) =>
+        !file.startsWith(`${dir}${sep}`) && /['"]baileys(\/[^'"]*)?['"]/.test(code(readFileSync(file, 'utf-8'))),
     )
     expect(offenders).toEqual([])
   })

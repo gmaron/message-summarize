@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { err, ok } from '../../../src/domain/result.js'
 import { parseConfig } from '../../../src/main/config.js'
@@ -76,13 +76,13 @@ async function setup(transcriber: FakeTranscriber | null) {
 describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
   it('works through the audios that were waiting when it starts, oldest first, one at a time', async () => {
     const transcriber = new FakeTranscriber()
-    transcriber.answer = async (r) => ok(`text of ${r.audioPath.split('/').at(-1)}`)
+    transcriber.answer = async (r) => ok(`text of ${basename(r.audioPath)}`)
     const t = await setup(transcriber)
     await t.queued('late', NOW - 1_000)
     await t.queued('early', NOW - 9_000)
     await t.daemon.start()
     await until(() => t.outcomes.length === 2, 'both audios handled')
-    expect(transcriber.calls.map((c) => c.audioPath.split('/').at(-1))).toEqual(['early.ogg', 'late.ogg'])
+    expect(transcriber.calls.map((c) => basename(c.audioPath))).toEqual(['early.ogg', 'late.ogg'])
     expect(transcriber.maxInFlight).toBe(1)
     expect(t.transcriptOf('early')).toBe('text of early.ogg')
     expect(t.status('late')).toBe('done')

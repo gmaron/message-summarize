@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { err, ok } from '../../../src/domain/result.js'
@@ -215,12 +216,14 @@ describe('msum digest', () => {
   })
 
   it('reports an unreadable promptFile', async () => {
+    // an absolute path that exists on no OS (a path with no drive letter would take the drive of the config on Windows)
+    const missing = join(tmpdir(), 'msum-no-such-dir', 'prompt.md')
     const h = await makeHarness({
-      config: { language: 'en', provider: { primary: 'claude-cli' }, promptFile: '/nonexistent/prompt.md' },
+      config: { language: 'en', provider: { primary: 'claude-cli' }, promptFile: missing },
     })
     await seed(h, { id: 'm1', text: 'hello there' })
     expect(await run(h, 'digest', '--dry-run')).toBe(2)
-    expect(h.err.join('\n')).toContain('/nonexistent/prompt.md')
+    expect(h.err.join('\n')).toContain(missing)
   })
 
   it('uses the custom prompt file, read again on every run', async () => {
@@ -427,7 +430,8 @@ describe('msum link', () => {
     expect(output).toContain('Receiving the initial history')
     expect(output).toContain('Done: account +54')
     expect(output).not.toContain(ME.split('@')[0] as string)
-    expect(pngMode).toBe(0o600)
+    // POSIX file modes do not exist on Windows (the ACL of the profile applies there)
+    if (!isWindows) expect(pngMode).toBe(0o600)
     expect(pngHeader).toBe('PNG')
     expect(existsSync(h.account.qrFile)).toBe(false)
     expect((await stateOf(h)).account).toBe(ME)

@@ -678,9 +678,12 @@ describe('loadEffectiveConfig', () => {
     const onlyRoot = setup('{"promptFile":"prompts/root.md"}', '{}')
     const fromRoot = await loadEffectiveConfig(onlyRoot.rootFile, onlyRoot.accountFile, BA)
     expect(fromRoot.ok && fromRoot.value.promptFile).toBe(join(onlyRoot.dir, 'prompts', 'root.md'))
-    const absolute = setup('{"promptFile":"/srv/prompt.md"}')
+    // an absolute path is kept as it is (on Windows a path with no drive letter takes the drive of the config file, so the
+    // test names the drive)
+    const abs = process.platform === 'win32' ? 'C:\\srv\\prompt.md' : '/srv/prompt.md'
+    const absolute = setup(JSON.stringify({ promptFile: abs }))
     const kept = await loadEffectiveConfig(absolute.rootFile, absolute.accountFile, BA)
-    expect(kept.ok && kept.value.promptFile).toBe(resolve('/srv/prompt.md'))
+    expect(kept.ok && kept.value.promptFile).toBe(resolve(abs))
   })
 
   it('takes the language to talk in from the account file first, then the installation, then the default', async () => {

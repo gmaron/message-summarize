@@ -82,6 +82,8 @@ describe('openDatabase and migrations', () => {
     expect(() =>
       upgraded.exec("INSERT INTO digest_runs (trigger_kind, started_at, outcome) VALUES ('cli', 10, 'failed')"),
     ).toThrow()
+    // opened here, not through t.open(): Windows cannot delete a database file that is still open
+    upgraded.close()
   })
 
   it('upgrades a database at version 1 to the latest without touching its data', () => {

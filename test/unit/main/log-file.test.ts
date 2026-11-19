@@ -185,23 +185,28 @@ describe('the log file and links', () => {
     if (!isWindows) expect(mode(victim)).toBe(0o644)
   })
 
-  it('does not follow a link that replaces daemon.log while running: the line is lost, the target is untouched', async () => {
-    const dir = temp()
-    const victim = join(temp(), 'victim.txt')
-    writeFileSync(victim, 'precious\n', { mode: 0o644 })
-    chmodSync(victim, 0o644)
-    const file = await openLogFile({ dir, maxBytes: 1_048_576 })
-    file.write('one\n')
-    await file.flush()
-    rmSync(join(dir, LOG_FILE_NAME))
-    symlinkSync(victim, join(dir, LOG_FILE_NAME))
-    file.write('two\n')
-    await file.flush()
-    expect(file.lost).toBe(1)
-    expect(readFileSync(victim, 'utf8')).toBe('precious\n')
-    if (!isWindows) expect(mode(victim)).toBe(0o644)
-    await file.close()
-  })
+  // Skipped on Windows: O_NOFOLLOW does not exist there, and an open handle to a deleted file keeps accepting writes, so the
+  // line is not counted as lost. Creating a link needs a privilege there, and the log folder belongs to the user. Not verified.
+  it.skipIf(isWindows)(
+    'does not follow a link that replaces daemon.log while running: the line is lost, the target is untouched',
+    async () => {
+      const dir = temp()
+      const victim = join(temp(), 'victim.txt')
+      writeFileSync(victim, 'precious\n', { mode: 0o644 })
+      chmodSync(victim, 0o644)
+      const file = await openLogFile({ dir, maxBytes: 1_048_576 })
+      file.write('one\n')
+      await file.flush()
+      rmSync(join(dir, LOG_FILE_NAME))
+      symlinkSync(victim, join(dir, LOG_FILE_NAME))
+      file.write('two\n')
+      await file.flush()
+      expect(file.lost).toBe(1)
+      expect(readFileSync(victim, 'utf8')).toBe('precious\n')
+      if (!isWindows) expect(mode(victim)).toBe(0o644)
+      await file.close()
+    },
+  )
 })
 
 describe('the queue and close', () => {
