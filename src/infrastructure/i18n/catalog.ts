@@ -477,6 +477,29 @@ export interface Catalog {
       readonly cancelled: string
       done(id: string): string
     }
+    /** `msum service install|uninstall|status` (RF-80): the daemon as a service of the user's session. */
+    readonly service: {
+      installed(location: string): string
+      alreadyInstalled(location: string): string
+      removed(location: string): string
+      readonly notInstalled: string
+      /** `running` is null when the system cannot tell. */
+      statusInstalled(location: string, running: boolean | null): string
+      readonly statusNotInstalled: string
+      /** What the daemon lock says, whatever started the daemon: `pid` is null when none runs. */
+      statusDaemon(pid: number | null): string
+      readonly hintEnableLinger: string
+      readonly hintStartAtNextLogin: string
+      readonly hintStopRunningDaemon: string
+      /** A daemon started by hand holds the installation, so the service was registered but not started now. */
+      hintManualDaemon(pid: number): string
+      /** The node of the service is inside a version manager's directory. */
+      readonly hintVersionManager: string
+      failed(step: string, detail: string): string
+      unsupported(platform: string): string
+      /** The compiled entry point is missing (running from the sources): there is nothing to register. */
+      notBuilt(entry: string): string
+    }
     readonly daemon: {
       running(dataDir: string): string
       /** An account the daemon leaves idle because nothing is linked to it. */

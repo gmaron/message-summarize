@@ -13,6 +13,7 @@ import { providerCommand } from './commands/provider.js'
 import { retryCommand } from './commands/retry.js'
 import { scheduleCommand } from './commands/schedule.js'
 import { secretCommand } from './commands/secret.js'
+import { serviceCommand } from './commands/service.js'
 import { statusCommand } from './commands/status.js'
 import { unlinkCommand } from './commands/unlink.js'
 import { whisperCommand } from './commands/whisper.js'
@@ -38,6 +39,7 @@ export function createHandlers(ctx: CommandContext): CliHandlers {
     secret: (command) => secretCommand(ctx, command),
     provider: (command) => providerCommand(ctx, command),
     ollama: (command) => ollamaCommand(ctx, command),
+    service: (command) => serviceCommand(ctx, command),
   }
 }
 
