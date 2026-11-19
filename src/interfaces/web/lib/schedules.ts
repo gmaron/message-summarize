@@ -2,6 +2,7 @@ import { makeSchedule, type ScheduleIssue } from '../../../domain/schedule.js'
 import type { WebTexts } from '../../../infrastructure/i18n/catalog.js'
 import { ApiError } from './api.js'
 import { weekdayName } from './format.js'
+import { fmt } from './i18n.js'
 
 /** Monday first, as the page shows the week; the API numbers the days from Sunday (0). */
 export const UI_DAY_ORDER: readonly number[] = [1, 2, 3, 4, 5, 6, 0]
@@ -58,5 +59,32 @@ export function dayLabel(days: readonly number[], texts: WebTexts): string {
   if (preset !== null) return texts.ui.schedules[preset]
   return inUiOrder(days)
     .map((day) => weekdayName(day, texts.locale, 'short'))
-    .join(', ')
+    .join(texts.ui.text.listSeparator)
+}
+
+/** "9:00" for "09:00": the way the page says a time. */
+export const shortTime = (time: string): string => time.replace(/^0(?=\d:)/, '')
+
+/**
+ * What the schedules say in one line: "Every day · 9:00 and 19:00". Schedules that do not share their days are listed
+ * one by one ("9:00 Every day; 12:30 Weekdays"). Empty text when there are none.
+ */
+export function scheduleSummary(
+  schedules: readonly { days: readonly number[]; time: string }[],
+  texts: WebTexts,
+): string {
+  if (schedules.length === 0) return ''
+  const sortedByTime = [...schedules].sort((a, b) => a.time.localeCompare(b.time))
+  const first = sortedByTime[0]
+  if (first !== undefined && sortedByTime.every((one) => sameDays(one.days, first.days))) {
+    const times = sortedByTime.map((one) => shortTime(one.time))
+    const joined =
+      times.length === 1
+        ? (times[0] ?? '')
+        : `${times.slice(0, -1).join(texts.ui.text.listSeparator)} ${texts.ui.schedules.and} ${times[times.length - 1]}`
+    return fmt(texts.ui.schedules.summary, { days: dayLabel(first.days, texts), times: joined })
+  }
+  return sortedByTime
+    .map((one) => fmt(texts.ui.schedules.summaryItem, { time: shortTime(one.time), days: dayLabel(one.days, texts) }))
+    .join(texts.ui.schedules.summarySeparator)
 }

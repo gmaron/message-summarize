@@ -11,7 +11,11 @@ import {
   isRemoteUrl,
   issueReason,
   issuesOf,
+  msFromSeconds,
   optionLabel,
+  secondsFromMs,
+  shownDraft,
+  storedDraft,
   timeZoneChoices,
 } from '../../../src/interfaces/web/lib/settings.js'
 import type { SettingsView } from '../../../src/interfaces/web/lib/types.js'
@@ -176,5 +180,30 @@ describe('the issues of a refused save', () => {
     // Not an address at all: the server says what is wrong, the page does not warn.
     expect(isRemoteUrl('')).toBe(false)
     expect(isRemoteUrl('nope')).toBe(false)
+  })
+})
+
+describe('the timeout in seconds', () => {
+  it('shows the milliseconds of the daemon as seconds and keeps what is typed as it is until it is sent', () => {
+    expect(secondsFromMs('180000')).toBe('180')
+    expect(secondsFromMs('1500')).toBe('1.5')
+    expect(secondsFromMs('')).toBe('')
+    expect(secondsFromMs('abc')).toBe('abc')
+    expect(msFromSeconds('180')).toBe('180000')
+    expect(msFromSeconds('1.5')).toBe('1500')
+    expect(msFromSeconds('')).toBe('')
+    expect(msFromSeconds('abc')).toBe('abc')
+  })
+
+  it('a form that was not touched has nothing to save, and a change of seconds is saved as milliseconds', () => {
+    const v = view()
+    const shown = shownDraft(v)
+    expect(shown['provider.claudeCli.timeoutMs']).toBe('180')
+    const same = buildPatch(v, storedDraft(shown))
+    expect(same.ok && isEmptyPatch(same.patch)).toBe(true)
+    const changed = buildPatch(v, storedDraft({ ...shown, 'provider.claudeCli.timeoutMs': '90' }))
+    expect(changed).toEqual({ ok: true, patch: { provider: { claudeCli: { timeoutMs: 90000 } } } })
+    const broken = buildPatch(v, storedDraft({ ...shown, 'provider.claudeCli.timeoutMs': 'abc' }))
+    expect(broken.ok).toBe(false)
   })
 })

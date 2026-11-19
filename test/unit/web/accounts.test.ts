@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { accountActions, badgeOf, isAccountIdValid, retryWaitUntil } from '../../../src/interfaces/web/lib/accounts.js'
+import {
+  accountActions,
+  badgeOf,
+  fixKind,
+  hasProblem,
+  initialOf,
+  isAccountIdValid,
+  isDigestRunning,
+  pillOf,
+  pillText,
+  problemsFirst,
+  railStatus,
+  retryWaitUntil,
+} from '../../../src/interfaces/web/lib/accounts.js'
 import {
   blockedText,
   digestMessage,
@@ -43,7 +56,7 @@ describe('the buttons of a card', () => {
 
   it('offers neither link nor schedules for an account whose configuration is not valid', () => {
     const a = account({ state: 'idle', maskedNumber: null, configValid: false })
-    expect(accountActions(a)).toMatchObject({ link: false, schedules: false, preview: false, settings: true })
+    expect(accountActions(a)).toMatchObject({ link: false, schedules: false, preview: false })
   })
 
   it('checks the id as the daemon does', () => {
@@ -84,5 +97,85 @@ describe('texts of codes the page does not know (a newer daemon)', () => {
     expect(errorText(undefined, texts)).toBe(texts.errors.internal)
     expect(stateText('madeUp', texts)).toBe('madeUp')
     expect(digestMessage({ kind: 'failed', error: 'madeUp' as never }, texts).text).toBe(texts.ui.digest.failed)
+  })
+})
+
+describe('the pill and the order of the accounts', () => {
+  it('says what is wrong before the state', () => {
+    expect(pillOf(account({ configValid: false }), false)).toEqual({ tone: 'bad', key: 'invalidConfig' })
+    expect(pillOf(account({ state: 'blocked', blockedReason: 'loggedOut', fix: 'relink' }), false)).toEqual({
+      tone: 'bad',
+      key: 'sessionClosed',
+    })
+    expect(pillOf(account({ state: 'blocked', blockedReason: 'forbidden' }), false)).toEqual({
+      tone: 'bad',
+      key: 'blocked',
+    })
+  })
+
+  it('says that a digest is being made only for a connected account', () => {
+    expect(pillOf(account(), true)).toEqual({ tone: 'busy', key: 'running' })
+    expect(pillOf(account(), false)).toEqual({ tone: 'ok', key: 'connected' })
+    expect(pillOf(account({ state: 'reconnecting' }), true)).toEqual({ tone: 'busy', key: 'reconnecting' })
+    expect(pillOf(account({ state: 'idle', maskedNumber: null }), false)).toEqual({ tone: 'idle', key: 'notLinked' })
+  })
+
+  it('puts the accounts with a problem first and keeps the order of the rest', () => {
+    const list = [
+      account({ id: 'a' }),
+      account({ id: 'b', state: 'blocked', blockedReason: 'loggedOut' }),
+      account({ id: 'c' }),
+      account({ id: 'd', configValid: false }),
+    ]
+    expect(problemsFirst(list).map((one) => one.id)).toEqual(['b', 'd', 'a', 'c'])
+    expect(hasProblem(account())).toBe(false)
+  })
+
+  it('draws the avatar letter in capitals', () => {
+    expect(initialOf('personal')).toBe('P')
+    expect(initialOf('')).toBe('?')
+  })
+})
+
+describe('the one fix an account offers', () => {
+  it('is what the daemon says, then linking for an account that is not linked, then the settings', () => {
+    expect(fixKind(account({ state: 'blocked', blockedReason: 'loggedOut', fix: 'relink' }))).toBe('relink')
+    expect(fixKind(account({ state: 'blocked', blockedReason: 'socketFailed', fix: 'retry' }))).toBe('retry')
+    expect(fixKind(account({ state: 'idle', maskedNumber: null }))).toBe('link')
+    expect(fixKind(account({ configValid: false }))).toBe('settings')
+    expect(fixKind(account())).toBeNull()
+  })
+
+  it('names a pill in the language of the page', () => {
+    expect(pillText('sessionClosed', textsFor('es'))).toBe('Sesión cerrada')
+    expect(pillText('connected', textsFor('en'))).toBe('Connected')
+    expect(pillText('running', textsFor('en'))).toBe('Summarizing')
+  })
+})
+
+describe('the line of an account in the rail', () => {
+  const now = Date.UTC(2026, 10, 18, 15, 0)
+  const es = textsFor('es')
+
+  it('says what is wrong in red, before anything else', () => {
+    const closed = account({ state: 'blocked', blockedReason: 'loggedOut', fix: 'relink', nextRun: now + 3_600_000 })
+    expect(railStatus(closed, false, es, now)).toEqual({ text: 'Sesión cerrada', bad: true })
+  })
+
+  it('says that a digest is being made, then when the next one is, then that there is no schedule', () => {
+    expect(railStatus(account(), true, es, now)).toEqual({ text: 'Resumiendo…', bad: false })
+    // 22:00 UTC is 19:00 in Buenos Aires, the same day
+    const next = account({ nextRun: Date.UTC(2026, 10, 18, 22, 0) })
+    expect(railStatus(next, false, es, now)).toEqual({ text: 'Próximo hoy 19:00', bad: false })
+    expect(railStatus(account(), false, es, now)).toEqual({ text: 'Sin horarios', bad: false })
+  })
+
+  it('knows when a digest is under way from what the daemon said', () => {
+    expect(isDigestRunning({ kind: 'requesting' })).toBe(true)
+    expect(isDigestRunning({ kind: 'started' })).toBe(true)
+    for (const kind of ['deferred', 'done', 'empty', 'failed', 'busy', 'error'] as const) {
+      expect(isDigestRunning({ kind })).toBe(false)
+    }
+    expect(isDigestRunning(undefined)).toBe(false)
   })
 })

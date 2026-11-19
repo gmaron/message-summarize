@@ -83,14 +83,17 @@ export async function statusCommand(ctx: CommandContext, args: AccountArg): Prom
       lines.push(texts.account(id, masked))
       // What the daemon says about this account (RF-04): only believed while the daemon is alive.
       const reported = daemonPid === null ? null : await readUnitState(account.stateFile)
-      if (reported !== null) {
+      const blocked = await readBlocked(account.blockedFile)
+      // The marker wins over a state file that may be stale (its write can fail): a blocked account is not connected.
+      const contradicted =
+        blocked !== null && ['connecting', 'connected', 'reconnecting'].includes(reported?.state ?? '')
+      if (reported !== null && !contradicted) {
         lines.push(
           texts.connection(texts.stateName(reported.state), formatInstant(reported.since, catalog, config.timezone)),
         )
       }
       lines.push(texts.lastDigest(pointer === null ? null : formatInstant(pointer, catalog, config.timezone)))
       lines.push(texts.pending(pending))
-      const blocked = await readBlocked(account.blockedFile)
       if (blocked !== null) {
         const when = blocked.at === 0 ? '-' : formatInstant(blocked.at, catalog, config.timezone)
         lines.push(texts.blocked(catalog.cli.blockedReasons[blocked.reason](id), when))

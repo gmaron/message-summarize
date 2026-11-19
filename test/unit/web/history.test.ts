@@ -9,9 +9,9 @@ import {
   failureReasonText,
   mergeNewest,
   outcomeKey,
-  outcomeTone,
   providersText,
   runErrorText,
+  runPill,
 } from '../../../src/interfaces/web/lib/history.js'
 import type { HistoryDetail, HistoryRun, HistoryView } from '../../../src/interfaces/web/lib/types.js'
 import { fakeFetch } from './support.js'
@@ -43,8 +43,9 @@ describe('texts of a run', () => {
   })
 
   it('lists the providers biggest first, and names the unknown one', () => {
-    expect(providersText({ ollama: 2, 'claude-cli': 12 }, webEn)).toBe('claude-cli: 12, ollama: 2')
+    expect(providersText({ ollama: 2, 'claude-cli': 12 }, webEn)).toBe('Claude (command line): 12, Ollama (local): 2')
     expect(providersText({ unknown: 1 }, webEn)).toBe('unknown: 1')
+    expect(providersText({ 'other-llm': 1 }, webEn)).toBe('other-llm: 1')
     expect(providersText({ unknown: 1 }, webEs)).toBe('sin datos: 1')
     expect(providersText({}, webEn)).toBe('none')
   })
@@ -65,10 +66,14 @@ describe('texts of a run', () => {
   it('an open run is "running"', () => {
     expect(outcomeKey(run(1, { outcome: null }))).toBe('running')
     expect(outcomeKey(run(1))).toBe('committed')
-    expect(outcomeTone('committed')).toBe('ok')
-    expect(outcomeTone('failed')).toBe('error')
-    expect(outcomeTone('empty')).toBe('warn')
-    expect(outcomeTone('running')).toBe('working')
+  })
+
+  it('the pill of a run follows its outcome, and a digest that left chats out is partial', () => {
+    expect(runPill(run(1))).toEqual({ tone: 'ok', key: 'committed' })
+    expect(runPill(run(1, { failed: 2 }))).toEqual({ tone: 'busy', key: 'partial' })
+    expect(runPill(run(1, { outcome: 'empty' }))).toEqual({ tone: 'idle', key: 'empty' })
+    expect(runPill(run(1, { outcome: 'failed' }))).toEqual({ tone: 'bad', key: 'failed' })
+    expect(runPill(run(1, { outcome: null }))).toEqual({ tone: 'busy', key: 'running' })
   })
 
   it('has the same shape in Spanish and English', () => {

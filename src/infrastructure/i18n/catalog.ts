@@ -786,23 +786,83 @@ export interface WebTexts {
     readonly close: string
     readonly cancel: string
     readonly unauthorizedTitle: string
+    /** Said before the command `msum open`. */
+    readonly unauthorizedText: string
+    readonly unauthorizedNote: string
     readonly offline: string
+    /** Punctuation that joins pieces of text, here because it is not the same in every language. */
+    readonly text: {
+      /** Between facts in a line: "Last digest · today 9:00". */
+      readonly separator: string
+      /** Between the items of a list: "Mon, Tue". */
+      readonly listSeparator: string
+      /** `{label}`, `{value}`. */
+      readonly labelled: string
+      /** Where there is nothing to say (a duration that is not known yet). */
+      readonly none: string
+      /** `{text}`: said to a screen reader after a name. */
+      readonly aside: string
+    }
+    /** Asked when leaving a page with changes that are not saved. */
+    readonly guard: {
+      readonly title: string
+      readonly text: string
+      readonly discard: string
+      readonly keep: string
+    }
     readonly accountsTitle: string
+    /** The title of the empty list of accounts. */
     readonly noAccounts: string
+    /** The rail (or the strip on a small screen) with the accounts. */
+    readonly shell: {
+      readonly navLabel: string
+      readonly home: string
+      readonly accounts: string
+      /** `{when}`: "Next today 19:00". */
+      readonly next: string
+      readonly noSchedules: string
+      readonly running: string
+    }
+    /** What the pill of an account says beside the unit states. */
+    readonly pills: { readonly sessionClosed: string; readonly invalidConfig: string; readonly running: string }
+    readonly tabs: {
+      readonly label: string
+      readonly summary: string
+      readonly conversations: string
+      readonly schedules: string
+      readonly history: string
+      readonly settings: string
+    }
+    readonly home: {
+      readonly summaryOne: string
+      /** `{count}`. */
+      readonly summaryMany: string
+      readonly allFine: string
+      readonly attentionOne: string
+      /** `{count}`. */
+      readonly attentionMany: string
+      readonly next: string
+      readonly emptyText: string
+      readonly privacy: string
+    }
+    /** The page that adds an account, in four steps. */
     readonly addAccount: {
       readonly button: string
+      readonly stepsLabel: string
+      readonly steps: { readonly name: string; readonly link: string; readonly sync: string; readonly schedule: string }
       readonly idLabel: string
+      readonly idPlaceholder: string
       readonly idHint: string
       readonly submit: string
+      readonly scheduleTitle: string
+      readonly finish: string
+      readonly later: string
     }
     readonly account: {
-      readonly number: string
       readonly noNumber: string
       readonly lastDigest: string
       readonly never: string
-      readonly nextRun: string
       readonly noSchedules: string
-      readonly timezone: string
       readonly invalidConfig: string
       /** `{when}`. */
       readonly blockedSince: string
@@ -810,21 +870,61 @@ export interface WebTexts {
       readonly retryAvailable: string
       /** Heading of the list of problems of an invalid configuration. */
       readonly configIssues: string
+      readonly fixSettings: string
+      readonly configProblem: string
+      readonly configProblemText: string
+      /** Said with a session that only linking again fixes. */
+      readonly closedNote: string
     }
-    readonly retryConfirm: { readonly confirm: string; readonly yes: string; readonly no: string }
+    readonly retryConfirm: {
+      readonly title: string
+      readonly confirm: string
+      readonly yes: string
+      readonly no: string
+    }
     readonly states: Readonly<Record<WebStateName, string>>
     readonly blockedReasons: Readonly<Record<BlockedReason, string>>
     readonly actions: {
       readonly digestNow: string
       readonly preview: string
-      readonly schedules: string
-      readonly conversations: string
-      readonly history: string
-      readonly settings: string
-      readonly prompt: string
+      readonly open: string
       readonly link: string
       readonly relink: string
       readonly retry: string
+    }
+    /** The summary tab: the last digest and what is next. */
+    readonly overview: {
+      /** `{when}`. */
+      readonly lastDigest: string
+      /** `{count}`. */
+      readonly conversations: string
+      readonly conversationsOne: string
+      readonly seeHistory: string
+      readonly emptyTitle: string
+      readonly emptyText: string
+      /** An account that has made digests, none of them among the last runs. */
+      readonly recentTitle: string
+      readonly recentText: string
+      readonly next: string
+      readonly paused: string
+      readonly changeSchedules: string
+      readonly addSchedules: string
+      readonly progressTitle: string
+      readonly previewHelp: string
+      readonly needsRelink: string
+    }
+    /** The message bubble that shows a digest as it lands in the chat. */
+    readonly bubble: {
+      readonly digest: string
+      /** `{n}`, `{total}`. */
+      readonly part: string
+      readonly preparing: string
+      readonly sent: string
+      /** A digest read from the history: it was made, and the page cannot say that it arrived. */
+      readonly generated: string
+      readonly pending: string
+      readonly queued: string
+      readonly draft: string
     }
     readonly digest: {
       readonly running: string
@@ -841,12 +941,19 @@ export interface WebTexts {
     readonly link: {
       /** `{account}`. */
       readonly title: string
+      /** `{account}`. */
+      readonly relinkTitle: string
       readonly starting: string
       readonly waitingQr: string
-      readonly scan: string
+      /** `{account}`: the three steps to scan the code. */
+      readonly first: string
+      readonly second: string
+      readonly third: string
+      readonly renews: string
       readonly qrAlt: string
-      readonly connected: string
       readonly syncing: string
+      readonly syncTitle: string
+      readonly leaveNote: string
       /** `{count}`. */
       readonly chats: string
       /** `{count}`. */
@@ -855,6 +962,9 @@ export interface WebTexts {
       /** `{percent}` is a whole number from 0 to 100. */
       readonly percent: string
       readonly done: string
+      readonly doneText: string
+      /** `{account}`. */
+      readonly goTo: string
       readonly failed: string
       readonly tryAgain: string
       readonly cancel: string
@@ -873,61 +983,96 @@ export interface WebTexts {
       readonly start: string
     }
     readonly schedules: {
-      /** `{account}`. */
-      readonly title: string
-      /** `{timezone}`. */
-      readonly timezone: string
+      readonly timezoneLabel: string
+      readonly tzHint: string
+      readonly emptyTitle: string
       readonly empty: string
       readonly daysLabel: string
       readonly timeLabel: string
-      /** `{when}`. */
-      readonly nextRun: string
       readonly everyDay: string
       readonly weekdays: string
+      /** `{when}`. */
+      readonly nextRun: string
+      /** `{days}`, `{times}`. */
+      readonly summary: string
+      /** `{time}`, `{days}`. */
+      readonly summaryItem: string
+      readonly summarySeparator: string
+      /** Joins the last two times: "9:00 and 19:00". */
+      readonly and: string
       readonly add: string
+      readonly addTitle: string
+      readonly editTitle: string
       readonly save: string
       readonly edit: string
       readonly delete: string
+      /** `{time}`. */
+      readonly deleteLabel: string
+      readonly deleteTitle: string
+      /** `{time}`, `{days}`. */
+      readonly deleteText: string
       readonly saving: string
+      readonly upcoming: string
+      readonly paused: string
     }
     readonly settings: {
-      /** `{account}`. */
-      readonly title: string
       /** Said once on top: changes apply without restarting or reconnecting. */
       readonly appliesLive: string
       readonly groups: { readonly digest: string; readonly languageTime: string; readonly provider: string }
       readonly fields: Readonly<Record<SettingsFieldKey, { readonly label: string; readonly hint?: string }>>
+      /** Written inside the number fields. */
+      readonly units: { readonly chars: string; readonly hours: string; readonly seconds: string }
+      /** `{source}`. */
+      readonly sourceNote: string
       readonly languageNames: Readonly<Record<Language, string>>
       readonly providerNames: Readonly<Record<'claude-cli' | 'ollama', string>>
       /** The choice of "no provider" (primary) or "no backup". */
       readonly none: string
       /** How the page says where a value comes from. */
       readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
-      /** Under the text fields that inherit when they are left empty. */
-      readonly emptyInherits: string
       /** Under the Ollama address when its host is not this machine. */
       readonly remoteOllama: string
+      /** Under the text fields that inherit when they are left empty. */
+      readonly emptyInherits: string
+      readonly privacyTitle: string
+      /** One or two sentences on where the text of the chats goes with a provider; `{host}` for a remote Ollama. */
+      readonly privacySummary: {
+        readonly 'claude-cli': string
+        readonly ollama: string
+        readonly ollamaRemote: string
+        readonly none: string
+      }
+      readonly privacyDetail: string
+      readonly promptGroup: string
+      readonly promptLabel: string
+      readonly promptOriginal: string
+      readonly promptModified: string
+      readonly promptEdit: string
+      readonly unsaved: string
+      readonly discard: string
       readonly save: string
       readonly saving: string
       readonly saved: string
-      readonly noChanges: string
       /** `{option}`, `{reason}`: a problem that belongs to no field of the form. */
       readonly issue: string
       readonly issuesHeading: string
     }
     readonly prompt: {
-      /** `{account}`. */
       readonly title: string
+      /** `{account}`. */
+      readonly back: string
       /** What the text is: the instructions the model receives for each conversation. */
       readonly intro: string
       /** `{variable}` (the placeholder as it is written), `{name}`: what it is replaced with. */
       readonly nameNote: string
       /** `{variable}`: the owner has no name set, so a generic word is used. */
       readonly nameUnset: string
+      readonly formatTitle: string
       /** The response format is fixed and added by the program. */
       readonly formatNote: string
       readonly label: string
       readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
+      /** The pill: the prompt is not the original one. */
       readonly differs: string
       readonly sameAsOriginal: string
       /** `{count}`, `{max}`. */
@@ -944,6 +1089,7 @@ export interface WebTexts {
       readonly saved: string
       readonly noChanges: string
       readonly restore: string
+      readonly restoreTitle: string
       readonly restoreConfirm: string
       /** Said under the confirmation: an installation prompt file, when there is one, takes the place of the original. */
       readonly restoreInherits: string
@@ -953,19 +1099,21 @@ export interface WebTexts {
       readonly restored: string
       /** Said after a restore when the account inherits the installation's prompt. */
       readonly restoredInherited: string
-      /** The button that closes this dialog and runs a preview. */
+      /** The button that runs a preview with this prompt. */
       readonly preview: string
     }
     readonly conversations: {
-      /** `{account}`. */
-      readonly title: string
-      /** What the two marks do, said once on top. */
+      /** What the two marks do, said once on top; each goes after the name of the mark in bold. */
       readonly explainExclude: string
       readonly explainLocalOnly: string
       readonly searchLabel: string
       readonly searchPlaceholder: string
+      readonly filterLabel: string
+      readonly filters: { readonly all: string; readonly excluded: string; readonly local: string }
       readonly empty: string
       readonly noResults: string
+      readonly noResultsHint: string
+      readonly showAll: string
       readonly group: string
       readonly individual: string
       /** `{when}`. */
@@ -976,13 +1124,16 @@ export interface WebTexts {
       /** `{count}`. */
       readonly unread: string
       readonly markedUnread: string
+      readonly summarize: string
       readonly exclude: string
       readonly localOnly: string
+      /** Under an excluded chat: "local only" does not apply to it. */
+      readonly excludedNote: string
       /** Said once: a mark covers the ids known for this chat; a second chat of the same person is marked on its own. */
       readonly aliasNote: string
       /** Under a mark that comes from a pattern of the configuration (not removable here). */
       readonly fromPattern: string
-      /** Under the "local only" mark that cannot be turned on: no Ollama model. */
+      /** Said when the "local only" mark cannot be turned on: no Ollama model. */
       readonly localUnavailable: string
       /** `{count}`: asked before excluding a chat with stored messages. */
       readonly confirmDelete: string
@@ -991,57 +1142,76 @@ export interface WebTexts {
       readonly unlistedHint: string
       /** `{shown}`, `{total}`. */
       readonly shown: string
+      /** `{shown}`, `{loaded}`: with a filter on, of the conversations loaded so far. */
+      readonly shownOfLoaded: string
       readonly loadMore: string
       readonly saving: string
     }
     readonly history: {
-      /** `{account}`. */
-      readonly title: string
       readonly empty: string
       /** `{shown}`, `{total}`. */
       readonly shown: string
       readonly loadMore: string
+      readonly columns: {
+        readonly number: string
+        readonly date: string
+        readonly origin: string
+        readonly conversations: string
+        readonly failed: string
+        readonly duration: string
+        readonly state: string
+      }
+      /** `{n}`: the label of the link of a row. */
+      readonly openRun: string
       readonly trigger: Readonly<Record<'schedule' | 'missed' | 'manual' | 'cli', string>>
-      readonly outcome: Readonly<Record<'committed' | 'empty' | 'failed' | 'running', string>>
+      readonly outcome: Readonly<Record<'committed' | 'empty' | 'failed' | 'running' | 'partial', string>>
       /** `{n}`. */
       readonly seconds: string
       /** `{m}`, `{s}`. */
       readonly minutes: string
       readonly underSecond: string
-      readonly durationLabel: string
-      readonly providersLabel: string
+      /** `{duration}`. */
+      readonly took: string
       readonly noProviders: string
       /** `{provider}`, `{count}`. */
       readonly providerCount: string
       /** The label of a provider the adapter reported as `unknown`. */
       readonly unknownProvider: string
-      /** `{summarized}`, `{failed}`. */
-      readonly counts: string
+      /** `{count}`. */
+      readonly conversationsCount: string
+      readonly conversationsOne: string
       /** A run that was cut off by a restart. */
       readonly interrupted: string
-      readonly open: string
+      /** `{account}`. */
       readonly back: string
+      /** `{n}`. */
+      readonly runTitle: string
+      /** `{account}`. */
+      readonly viewLogs: string
       readonly loadingDetail: string
       /** `{since}`, `{until}`. */
       readonly window: string
-      /** `{when}`. */
-      readonly startedAt: string
-      readonly digestHeading: string
       readonly noDigest: string
-      readonly failedHeading: string
-      readonly failedNone: string
+      readonly emptyRun: string
+      readonly runningRun: string
+      readonly failedTitleOne: string
+      /** `{count}`. */
+      readonly failedTitleMany: string
+      readonly allSummarized: string
       readonly reason: Readonly<Record<'localOnlyUnavailable' | 'timeout' | 'invalidSummary' | 'failed', string>>
-      /** Said once on top: what the history keeps and where. */
+      /** Said once at the bottom: what the history keeps and where. */
       readonly privateNote: string
     }
     readonly logs: {
-      /** The button of the header that opens the view. */
+      /** The link of the rail that opens the page. */
       readonly open: string
       readonly title: string
       /** Said once on top: what the log holds and does not. */
       readonly note: string
       readonly levelLabel: string
-      readonly level: Readonly<Record<'info' | 'warn' | 'error', string>>
+      /** The chips: a level and the more serious ones. */
+      readonly levels: Readonly<Record<'info' | 'warn' | 'error', string>>
+      readonly badge: Readonly<Record<'info' | 'warn' | 'error', string>>
       readonly accountLabel: string
       readonly allAccounts: string
       /** The lines that belong to no account, and the account column of them. */
@@ -1052,12 +1222,10 @@ export interface WebTexts {
       readonly live: string
       readonly timeColumn: string
       readonly levelColumn: string
-      readonly eventColumn: string
       readonly accountColumn: string
-      readonly detailsColumn: string
+      readonly messageColumn: string
     }
     readonly preview: {
-      /** `{account}`. */
       readonly title: string
       readonly running: string
       readonly notSent: string
@@ -1069,11 +1237,11 @@ export interface WebTexts {
       readonly statsClean: string
       readonly empty: string
       readonly failed: string
-      readonly none: string
-      /** `{n}`, `{total}`. */
-      readonly part: string
+      readonly send: string
+      readonly sendNote: string
       readonly copy: string
       readonly copied: string
+      readonly adjustPrompt: string
       readonly generate: string
     }
     /** What each provider costs and does with the text of the chats (RF-41, RNF-02): shown before it is used. */
@@ -1172,7 +1340,6 @@ export interface WebTexts {
         /** `{timezone}`. */
         readonly timezone: string
         readonly suggest: string
-        readonly edit: string
         readonly current: string
         readonly none: string
         readonly skipNote: string

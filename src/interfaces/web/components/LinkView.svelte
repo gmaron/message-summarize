@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import type { WebTexts } from '../../../infrastructure/i18n/catalog.js'
   import type { Api } from '../lib/api.js'
   import type { Controller } from '../lib/controller.js'
@@ -6,7 +7,8 @@
   import { fmt } from '../lib/i18n.js'
   import { EMPTY_LINK, type LinkUi } from '../lib/state.js'
 
-  // The QR, the sync and what to do when it fails: the body of the link dialog, also the QR step of the setup wizard.
+  // The QR with what to do with it, then the sync, then what went wrong if something did. Used by the page that links an
+  // account, the page that adds one and the setup wizard. `done` is drawn when the account is linked and synced.
   let {
     controller,
     api,
@@ -14,6 +16,7 @@
     id,
     link,
     oncancel,
+    done,
   }: {
     controller: Controller
     api: Api
@@ -22,11 +25,41 @@
     link: LinkUi | undefined
     /** The user cancelled a link in progress (the link is cancelled before this is called). */
     oncancel: () => void
+    done?: Snippet
   } = $props()
 
   const t = $derived(texts.ui.link)
   const current = $derived(link ?? EMPTY_LINK)
   const running = $derived(['waitingQr', 'qr', 'syncing'].includes(current.phase))
+  const showQr = $derived(current.requestError === null && ['idle', 'waitingQr', 'qr'].includes(current.phase))
+  const progress = $derived(
+    current.sync === null
+      ? ''
+      : [
+          current.sync.percent === undefined ? null : fmt(t.percent, { percent: current.sync.percent }),
+          fmt(t.chats, { count: current.sync.chats }),
+          fmt(t.messages, { count: current.sync.messages }),
+        ]
+          .filter((part) => part !== null)
+          .join(texts.ui.text.separator),
+  )
+
+  /** What a screen reader hears as the stages go by: one region from the start, only its text changes. */
+  const announcement = $derived.by(() => {
+    if (current.requestError !== null || current.phase === 'failed') return ''
+    switch (current.phase) {
+      case 'idle':
+        return t.starting
+      case 'waitingQr':
+        return t.waitingQr
+      case 'qr':
+        return t.qrAlt
+      case 'syncing':
+        return current.sync?.done ? t.syncDone : `${t.syncTitle}${texts.ui.text.separator}${progress}`
+      default:
+        return `${t.syncDone}${texts.ui.text.separator}${t.doneText}`
+    }
+  })
 
   async function cancel() {
     await controller.cancelLink(id)
@@ -34,84 +67,60 @@
   }
 </script>
 
-<div aria-live="polite" class="stage">
+<div class="stack">
+  <div class="sr" role="status" aria-live="polite">{announcement}</div>
   {#if current.requestError !== null}
-    <p class="note error" role="alert">{errorText(current.requestError, texts)}</p>
-  {:else if current.phase === 'waitingQr' || current.phase === 'idle'}
-    <p>{current.phase === 'idle' ? t.starting : t.waitingQr}</p>
-    <progress aria-label={t.waitingQr}></progress>
-  {:else if current.phase === 'qr'}
-    <p>{t.scan}</p>
-    <img class="qr" src={api.qrUrl(id, current.qrSeq)} alt={t.qrAlt} width="280" height="280" />
-  {:else if current.phase === 'syncing'}
-    <p>{current.sync?.done ? t.syncDone : t.connected}</p>
-    {#if !current.sync?.done}
-      {#if current.sync?.percent !== undefined}
-        <progress aria-label={t.syncing} max="100" value={current.sync.percent}></progress>
-        <p class="percent">{fmt(t.percent, { percent: current.sync.percent })}</p>
-      {:else}
-        <progress aria-label={t.syncing}></progress>
-      {/if}
-    {/if}
-  {:else if current.phase === 'done'}
-    <p class="note ok">{t.done}</p>
-    {#if current.sync?.done}
-      <p>{t.syncDone}</p>
-    {/if}
+    <div class="notice bad" role="alert">{errorText(current.requestError, texts)}</div>
   {:else if current.phase === 'failed'}
-    <p class="note error" role="alert">{linkErrorText(current.error, texts)}</p>
+    <div class="notice bad" role="alert">{linkErrorText(current.error, texts)}</div>
+  {:else if showQr}
+    <div class="qr-wrap">
+      {#if current.phase === 'qr'}
+        <img class="qr" src={api.qrUrl(id, current.qrSeq)} alt={t.qrAlt} width="232" height="232" />
+      {:else}
+        <div class="qr-placeholder">
+          <div class="stack-sm">
+            <progress class="bar" aria-label={t.waitingQr}></progress>
+            <span>{current.phase === 'idle' ? t.starting : t.waitingQr}</span>
+          </div>
+        </div>
+      {/if}
+      <div class="stack">
+        <ol class="howto">
+          <li>{fmt(t.first, { account: id })}</li>
+          <li>{t.second}</li>
+          <li>{t.third}</li>
+        </ol>
+        <p class="small muted">{t.renews}</p>
+      </div>
+    </div>
+  {:else if current.phase === 'syncing'}
+    <div class="panel measure">
+      <h2>{current.sync?.done ? t.syncDone : t.syncTitle}</h2>
+      <div class="progress">
+        {#if current.sync?.percent !== undefined}
+          <progress class="bar" aria-label={t.syncing} max="100" value={current.sync.percent}></progress>
+        {:else}
+          <progress class="bar" aria-label={t.syncing}></progress>
+        {/if}
+        <span class="small muted num">{progress}</span>
+      </div>
+      <p class="small muted">{t.leaveNote}</p>
+    </div>
+  {:else if current.phase === 'done'}
+    <div class="panel measure">
+      <h2>{t.syncDone}</h2>
+      {#if progress !== ''}<span class="small muted num">{progress}</span>{/if}
+      <p>{t.doneText}</p>
+      {#if done !== undefined}<div class="cluster">{@render done()}</div>{/if}
+    </div>
   {/if}
 
-  {#if current.sync !== null}
-    <p class="counts">
-      <span>{fmt(t.chats, { count: current.sync.chats })}</span>
-      <span>{fmt(t.messages, { count: current.sync.messages })}</span>
-    </p>
-  {/if}
+  <div class="cluster">
+    {#if running}
+      <button type="button" class="btn danger" onclick={cancel}>{t.cancel}</button>
+    {:else if current.phase === 'failed' || current.requestError !== null}
+      <button type="button" class="btn primary" onclick={() => controller.startLink(id)}>{t.tryAgain}</button>
+    {/if}
+  </div>
 </div>
-
-<div class="buttons">
-  {#if running}
-    <button type="button" class="danger" onclick={cancel}>{t.cancel}</button>
-  {:else if current.phase === 'failed' || current.requestError !== null}
-    <button type="button" class="primary" onclick={() => controller.startLink(id)}>{t.tryAgain}</button>
-  {/if}
-</div>
-
-<style>
-  .stage {
-    display: grid;
-    gap: 0.75rem;
-    justify-items: center;
-    text-align: center;
-  }
-
-  .stage > :global(*) {
-    max-width: 100%;
-  }
-
-  .stage p {
-    margin: 0;
-  }
-
-  .qr {
-    background: #ffffff;
-    border-radius: 8px;
-    padding: 0.5rem;
-    max-width: 100%;
-    height: auto;
-  }
-
-  .counts {
-    display: flex;
-    gap: 1.25rem;
-    margin: 0;
-    color: var(--muted);
-  }
-
-  .buttons {
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-  }
-</style>

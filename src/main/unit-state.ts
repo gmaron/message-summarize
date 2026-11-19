@@ -1,5 +1,5 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
-import { FILE_MODE } from './paths.js'
+import { readFile } from 'node:fs/promises'
+import { writeFileAtomic } from './atomic-write.js'
 
 /**
  * What the daemon says about the connection of one account (RF-04): `connecting`, `connected`, `reconnecting`,
@@ -22,9 +22,7 @@ export interface UnitStateRecord {
  * `status` ignores it otherwise.
  */
 export async function writeUnitState(file: string, record: UnitStateRecord): Promise<void> {
-  const temp = `${file}.tmp`
-  await writeFile(temp, `${JSON.stringify({ state: record.state, since: record.since })}\n`, { mode: FILE_MODE })
-  await rename(temp, file)
+  await writeFileAtomic(file, `${JSON.stringify({ state: record.state, since: record.since })}\n`)
 }
 
 export async function readUnitState(file: string): Promise<UnitStateRecord | null> {

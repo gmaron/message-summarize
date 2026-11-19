@@ -97,6 +97,8 @@ export interface DaemonHostOptions {
   readonly language: Language
   /** Writes `blocked.json`. Replaced by tests, to see when it is called and to make it fail. */
   readonly writeMarker?: (file: string, reason: BlockedReason, at: number) => Promise<void>
+  /** Writes `state.json`. Replaced by tests, to make it fail. */
+  readonly writeUnitState?: typeof writeUnitState
   /** The pid written in the link locks the host takes while it links or retries an account. Default: this process. For tests. */
   readonly linkLockPid?: number
 }
@@ -185,6 +187,21 @@ function claim(kind: ActiveLink['kind']): ActiveLink {
   return { kind, flow: null, cancelRequested: false, done, finish }
 }
 
+/** What the host says about one account, and whether it is already in `state.json`. */
+interface StateEntry {
+  readonly state: UnitState
+  readonly since: number
+  writing: Promise<void>
+  unwritten: boolean
+  /** Failed writes of this state in a row. */
+  writeFailures: number
+}
+
+/** Write errors that pass by themselves (Windows holds a file that is open elsewhere): the write is tried again. */
+const TRANSIENT_WRITE_CODES: readonly string[] = ['EPERM', 'EBUSY', 'EACCES']
+/** How many times a state is written again after a transient failure, one per look of the host. */
+const STATE_WRITE_ATTEMPTS = 5
+
 /** One account being run: its own runtime (database, delivery bound to its number), connection and `Daemon`. */
 interface Unit {
   readonly id: string
@@ -236,10 +253,7 @@ export class DaemonHost {
   private readonly failures = new Map<string, { attempts: number; nextAt: number }>()
   /** Why each account without a unit is idle, so it is said once and not on every poll. */
   private readonly idleReasons = new Map<string, string>()
-  private readonly states = new Map<
-    string,
-    { state: UnitState; since: number; writing: Promise<void>; unwritten: boolean }
-  >()
+  private readonly states = new Map<string, StateEntry>()
   private readonly crashing = new Set<string>()
   /** What the config files of each running unit looked like when its configuration was last read (see `configStamp`). */
   private readonly configStamps = new Map<string, string>()
@@ -271,6 +285,7 @@ export class DaemonHost {
   private readonly linkLockPid: number
   private readonly linkHeartbeatMs: number
   private readonly writeMarker: (file: string, reason: BlockedReason, at: number) => Promise<void>
+  private readonly writeUnit: typeof writeUnitState
   /** When each running unit last became connected (real time), for the stable period. */
   private readonly connectedSince = new Map<string, number>()
   /** The language each account runs with, once its configuration was read. */
@@ -299,6 +314,7 @@ export class DaemonHost {
     this.onlyAccount = options.onlyAccount
     this.rootLanguage = options.language
     this.writeMarker = options.writeMarker ?? writeBlocked
+    this.writeUnit = options.writeUnitState ?? writeUnitState
     this.linkLockPid = options.linkLockPid ?? process.pid
     this.linkHeartbeatMs = options.timing?.linkHeartbeatMs ?? LINK_HEARTBEAT_MS
     const timing = options.timing ?? {}
@@ -861,11 +877,12 @@ export class DaemonHost {
   private setState(id: string, state: UnitState): void {
     const current = this.states.get(id)
     if (current?.state === state) return
-    const entry = {
+    const entry: StateEntry = {
       state,
       since: this.ctx.clock.now(),
       writing: current?.writing ?? Promise.resolve(),
       unwritten: true,
+      writeFailures: 0,
     }
     this.states.set(id, entry)
     this.writeState(id, entry)
@@ -877,10 +894,7 @@ export class DaemonHost {
    * there. Nothing is written into an account that `link` or `unlink` holds the lock of: that process owns the
    * directory. The state stays unwritten and `flushStates` writes it on a later look, once the lock is gone.
    */
-  private writeState(
-    id: string,
-    entry: { state: UnitState; since: number; writing: Promise<void>; unwritten: boolean },
-  ): void {
+  private writeState(id: string, entry: StateEntry): void {
     const account = accountLayoutOf(this.ctx.layout, id)
     entry.writing = entry.writing
       .then(async () => {
@@ -890,13 +904,18 @@ export class DaemonHost {
         // Marked before the write, not after, so a look of the host that comes while it is being written does not
         // start a second write of the same state.
         entry.unwritten = false
-        await writeUnitState(account.stateFile, { state: entry.state, since: entry.since })
+        await this.writeUnit(account.stateFile, { state: entry.state, since: entry.since })
       })
       .catch((error: unknown) => {
-        entry.unwritten = false // it is not retried on every look: it would only repeat the same failure
-        // An account deleted meanwhile has no directory to write to: not a problem.
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-          this.ctx.logger.error('state.writeFailed', { account: id, code: errorCode(error) })
+        const code = errorCode(error)
+        // A transient failure (on Windows a rename fails while `msum status` has the file open) keeps the state
+        // unwritten: the next look of the host (the poll) tries again, a few times at most.
+        const transient = TRANSIENT_WRITE_CODES.includes(code) && entry.writeFailures < STATE_WRITE_ATTEMPTS
+        entry.unwritten = transient
+        entry.writeFailures++
+        // An account deleted meanwhile has no directory to write to: not a problem. Said once per run of failures.
+        if (code !== 'ENOENT' && entry.writeFailures === 1) {
+          this.ctx.logger.error('state.writeFailed', { account: id, code })
         }
       })
   }
@@ -1505,7 +1524,7 @@ export class DaemonHost {
           return { ok: false, reason: 'tooSoon', retryAfter: at + WEB_RETRY_MIN_WAIT_MS }
         }
       }
-      const outcome = await retryBlock(account)
+      const outcome = await retryBlock(account, marker)
       const remembered = this.blocks.get(id)
       if (outcome.result === 'needsRelink') return { ok: false, reason: 'needsRelink' }
       if (outcome.result === 'notBlocked') {
