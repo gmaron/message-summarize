@@ -35,6 +35,7 @@ const SYSTEM_TOOLS = [
   'date',
   'dirname',
   'grep',
+  'gzip', // GNU tar (Linux) runs it for .tar.gz; bsdtar (macOS) does not need it
   'head',
   'ln',
   'ls',

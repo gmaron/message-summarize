@@ -18,7 +18,14 @@ describe('the package contents', () => {
     expect(pkg.private).toBeUndefined()
     // The allowlist is the whole guard: tests, docs, src, .sandbox, .env, *.db and auth/ are not in it, and npm never
     // packs them unless a `files` entry reaches them.
-    expect([...pkg.files].sort()).toEqual(['LICENSE', 'README.es.md', 'README.md', 'dist', 'vendor/sharp-stub'])
+    expect([...pkg.files].sort()).toEqual([
+      'LICENSE',
+      'README.es.md',
+      'README.md',
+      'THIRD_PARTY_NOTICES.md',
+      'dist',
+      'vendor/sharp-stub',
+    ])
   })
 
   it('exposes both commands from the compiled entry, which keeps its shebang', () => {
