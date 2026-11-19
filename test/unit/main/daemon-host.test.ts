@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ok } from '../../../src/domain/result.js'
 import { ALL_WEEKDAYS, makeSchedule } from '../../../src/domain/schedule.js'
 import { type Installation, openInstallation } from '../../../src/main/accounts.js'
@@ -51,7 +51,7 @@ interface World {
   /** Factory calls the host made (not `link`) per account. */
   readonly hostCalls: string[]
   /** Every runtime the host opened, per account, to see which ones were closed. */
-  readonly runtimes: { id: string; db: { isOpen: boolean } }[]
+  readonly runtimes: { id: string; db: { isOpen: boolean; close(): void } }[]
   linked(id: string): void
   connection(id: string): FakeConnection
 }
@@ -61,6 +61,9 @@ const worlds: World[] = []
 afterEach(async () => {
   for (const w of worlds.splice(0)) {
     await w.host.stop()
+    // A unit whose socket never answered the stop is never closed by the host (it gives up after its budget). Windows
+    // cannot delete a directory with an open database file, so what is still open is closed here.
+    for (const r of w.runtimes) if (r.db.isOpen) r.db.close()
     w.installation.close()
   }
   disposeHarnesses()
@@ -103,7 +106,7 @@ async function world(ids: readonly string[], options: WorldOptions = {}): Promis
   const runtimes: World['runtimes'] = []
   Object.assign(h.ctx, {
     connectionFactory: async (
-      runtime: { layout: { id: string }; capture: never; db: { isOpen: boolean } },
+      runtime: { layout: { id: string }; capture: never; db: { isOpen: boolean; close(): void } },
       hooks: { capture?: unknown },
     ) => {
       const conn = connection(runtime.layout.id)
@@ -706,7 +709,8 @@ describe('msum retry', () => {
 
 describe('shutdown', () => {
   it('stops every account in parallel, inside the budget, even when their sockets never answer', async () => {
-    const w = await world(['alpha', 'beta'], { linked: ['alpha', 'beta'], timing: { shutdownGraceMs: 1_000 } })
+    // A budget long enough that a slow runner does not blur "one budget" with "two in a row" (>= 2 x 1500 ms).
+    const w = await world(['alpha', 'beta'], { linked: ['alpha', 'beta'], timing: { shutdownGraceMs: 1_500 } })
     await w.host.start()
     await Promise.all([started(w, 'alpha'), started(w, 'beta')])
     for (const id of ['alpha', 'beta']) {
@@ -722,8 +726,8 @@ describe('shutdown', () => {
     expect(w.connection('alpha').calls).toContain('stop')
     expect(w.connection('beta').calls).toContain('stop')
     // one budget for both: two in a row would take at least two
-    expect(took).toBeGreaterThanOrEqual(900)
-    expect(took).toBeLessThan(1_800)
+    expect(took).toBeGreaterThanOrEqual(1_350)
+    expect(took).toBeLessThan(2_900)
     expect(named(w.h, 'daemon.stopped')).toHaveLength(1)
     expect(await w.host.finished).toBe(0)
   })
@@ -889,7 +893,10 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     // released all the same: no unit, and its database closed
     expect(w.host.running).toEqual(['beta'])
     expect(w.runtimes.filter((r) => r.id === 'alpha').every((r) => !r.db.isOpen)).toBe(true)
-    await waitFor(async () => expect(await stateOf(w, 'alpha')).toBe('blocked'))
+    // The state is blocked in memory at once; its file follows. The file is read at a calm pace: the daemon replaces it
+    // by renaming over it, and on Windows a rename can fail while a reader has it open (a poll every few ms did that).
+    await waitFor(() => expect(w.host.accountState('alpha')?.state).toBe('blocked'))
+    await vi.waitFor(async () => expect(await stateOf(w, 'alpha')).toBe('blocked'), { timeout: 5_000, interval: 100 })
     const starts = startsOf(w.connection('alpha'))
     await manyLooks(w, 'gamma')
     await manyLooks(w, 'delta')

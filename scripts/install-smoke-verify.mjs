@@ -1,6 +1,8 @@
 // Verifies an installed message-summarize (install smoke test in CI, RNF-05/06/07, RF-80).
 //
-//   MSUM_DATA_DIR=<temp dir> node scripts/install-smoke-verify.mjs <path to the installed msum or msum.cmd>
+//   MSUM_DATA_DIR=<temp dir> node scripts/install-smoke-verify.mjs <path to the installed msum or msum.cmd> [--version-only]
+//
+// With --version-only only step 1 runs (used after an update to see the program still answers).
 //
 // 1. `msum --version` prints the version in package.json.
 // 2. `msum doctor --skip-model-check` runs. On a fresh install it reports problems (no LLM provider, no linked
@@ -37,6 +39,7 @@ const version = spawnSync(command, ['--version'], { ...options, timeout: PROBE_T
 if (version.status !== 0) fail(`--version exited ${version.status}: ${version.stderr}`)
 if (version.stdout.trim() !== expected) fail(`--version printed "${version.stdout.trim()}", expected "${expected}"`)
 console.log(`version ok: ${expected}`)
+if (process.argv.includes('--version-only')) process.exit(0)
 
 const doctor = spawnSync(command, ['doctor', '--skip-model-check'], { ...options, timeout: PROBE_TIMEOUT_MS })
 console.log(doctor.stdout)

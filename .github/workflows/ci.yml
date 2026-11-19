@@ -109,6 +109,26 @@ jobs:
             --no-service --no-open --yes
           node scripts/install-smoke-verify.mjs "$HOME/.local/bin/msum"
 
+      - name: Update and uninstall (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/home" MSUM_DATA_DIR="$RUNNER_TEMP/data"
+          unset XDG_DATA_HOME
+          tarball="$(ls "$RUNNER_TEMP"/pack/*.tgz)"
+          # A second run over the same prefix is an update (the old node_modules is set aside, then dropped).
+          sh install.sh --tarball "$tarball" --prefix "$RUNNER_TEMP/app" --no-service --no-open --yes \
+            || { echo "::error::the second run of install.sh (the update) failed"; exit 1; }
+          node scripts/install-smoke-verify.mjs "$HOME/.local/bin/msum" --version-only \
+            || { echo "::error::msum --version does not answer after the update"; exit 1; }
+          sh install.sh --uninstall --prefix "$RUNNER_TEMP/app" --yes \
+            || { echo "::error::install.sh --uninstall failed"; exit 1; }
+          for gone in "$RUNNER_TEMP/app" "$HOME/.local/bin/msum" "$HOME/.local/bin/message-summarize"; do
+            if [ -e "$gone" ]; then echo "::error::the uninstaller left $gone behind"; exit 1; fi
+          done
+          if [ ! -d "$MSUM_DATA_DIR" ]; then echo "::error::the uninstaller deleted the data folder $MSUM_DATA_DIR"; exit 1; fi
+
       - name: Install and verify (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -126,3 +146,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
           node scripts/install-smoke-verify.mjs (Join-Path $prefix 'bin\msum.cmd')
           if ($LASTEXITCODE -ne 0) { throw "verification exited $LASTEXITCODE" }
+
+      - name: Update and uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $home2 = Join-Path $env:RUNNER_TEMP 'home'
+          $env:USERPROFILE = $home2
+          $env:LOCALAPPDATA = Join-Path $home2 'AppData\Local'
+          $env:APPDATA = Join-Path $home2 'AppData\Roaming'
+          $env:MSUM_DATA_DIR = Join-Path $env:RUNNER_TEMP 'data'
+          $tarball = (Get-ChildItem (Join-Path $env:RUNNER_TEMP 'pack') -Filter *.tgz | Select-Object -First 1).FullName
+          $prefix = Join-Path $env:RUNNER_TEMP 'app'
+          $shim = Join-Path $prefix 'bin\msum.cmd'
+          # A second run over the same prefix is an update (node_modules.old and the sharp-stub junction).
+          & .\install.ps1 -Tarball $tarball -Prefix $prefix -NoService -NoOpen -Yes
+          if ($LASTEXITCODE -ne 0) { throw "the second run of install.ps1 (the update) exited $LASTEXITCODE" }
+          node scripts/install-smoke-verify.mjs $shim --version-only
+          if ($LASTEXITCODE -ne 0) { throw "msum --version does not answer after the update (exit $LASTEXITCODE)" }
+          & .\install.ps1 -Uninstall -Prefix $prefix -Yes
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 -Uninstall exited $LASTEXITCODE" }
+          if (Test-Path -LiteralPath $prefix) { throw "the uninstaller left the prefix behind: $prefix" }
+          if (Test-Path -LiteralPath $shim) { throw "the uninstaller left the shim behind: $shim" }
+          if (-not (Test-Path -LiteralPath $env:MSUM_DATA_DIR)) { throw "the uninstaller deleted the data folder $($env:MSUM_DATA_DIR)" }
