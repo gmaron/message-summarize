@@ -301,6 +301,11 @@ describe('build-windows-installer.ps1', () => {
   })
 
   it('signs only when the optional secrets are in the environment, and keeps no certificate', () => {
+    // The compile phase finds ISCC.exe and signtool.exe in fixed Program Files folders, never through PATH.
+    expect(build).not.toContain('Get-Command')
+    expect(build).toContain("'Inno Setup 6\\ISCC.exe'")
+    expect(build).toContain('Windows Kits\\10\\bin')
+    expect(build).toContain('Get-AuthenticodeSignature')
     expect(build).toMatch(/if \(\$env:WINDOWS_SIGN_PFX_BASE64 -and \$env:WINDOWS_SIGN_PFX_PASSWORD\)/)
     // They are read only in the compile phase, and removed from the environment in the stage phase.
     expect(build.indexOf('if ($env:WINDOWS_SIGN_PFX_BASE64 -and')).toBeGreaterThan(build.indexOf('if ($Compile) {'))
@@ -317,7 +322,8 @@ describe('build-windows-installer.ps1', () => {
 function job(name: string): string {
   const match = new RegExp(`^  ${name}:\\n[\\s\\S]*?(?=^  [\\w-]+:\\n|(?![\\s\\S]))`, 'm').exec(workflow)
   expect(match, `job ${name}`).not.toBeNull()
-  return match?.[0] ?? ''
+  // Comments are not code: the tests look at what the job runs.
+  return (match?.[0] ?? '').replace(/^\s*#.*\n/gm, '')
 }
 
 describe('release.yml', () => {
@@ -331,7 +337,7 @@ describe('release.yml', () => {
     const writes = [...workflow.matchAll(/^\s*([\w-]+): write\s*$/gm)].map((m) => m[1])
     expect(writes).toEqual(['contents'])
     expect(job('release')).toMatch(/permissions:\n {6}contents: write/)
-    expect(job('windows-installer')).not.toMatch(/: write/)
+    for (const name of ['windows-stage', 'windows-sign', 'windows-smoke']) expect(job(name)).not.toMatch(/: write/)
     expect(job('source-tarball')).not.toMatch(/: write/)
   })
 
@@ -345,41 +351,79 @@ describe('release.yml', () => {
     expect([...workflow.matchAll(/\buses:/g)]).toHaveLength(uses.length)
   })
 
-  it('creates the release only on a tag, after both builds', () => {
+  it('creates the release only on a tag push, after the signed build, its smoke test and the tarball', () => {
     const release = job('release')
-    expect(release).toMatch(/needs: \[windows-installer, source-tarball\]/)
+    expect(release).toMatch(/needs: \[windows-smoke, windows-sign, source-tarball\]/)
     expect(release).toContain("if: github.event_name == 'push' && github.ref_type == 'tag'")
     expect(release).toContain('gh release create')
     expect(release).toContain('--verify-tag')
     expect(workflow.match(/gh release create/g)).toHaveLength(1)
-    expect(job('windows-installer')).not.toContain('gh release')
+    for (const name of ['windows-stage', 'windows-sign', 'windows-smoke']) expect(job(name)).not.toContain('gh release')
   })
 
-  it('builds the installer on windows-latest with the pinned toolchain, smoke tests it and uploads it', () => {
-    const windows = job('windows-installer')
-    expect(windows).toContain('runs-on: windows-latest')
-    expect(windows).toContain('node-version: 22')
-    expect(windows).toContain('npm ci')
-    expect(windows).toMatch(/choco install innosetup --version \d+\.\d+\.\d+/)
-    expect(windows).toContain('./scripts/build-windows-installer.ps1')
-    expect(windows).toContain('/VERYSILENT')
+  it('stages in a job with no secrets and no environment, and hands the payload over as an archive with its hash', () => {
+    const stage = job('windows-stage')
+    expect(stage).toContain('runs-on: windows-latest')
+    expect(stage).toContain('node-version: 22')
+    expect(stage).toContain('npm ci')
+    expect(stage).toContain('-Stage')
+    expect(stage).not.toMatch(/secrets|SIGN|environment:|-Compile|iscc|choco/i)
+    expect(stage).toMatch(/stage_sha256/)
+    expect(stage).toContain('name: windows-stage')
+  })
+
+  it('signs in a fresh job that runs no npm and no PATH lookup, under the protected environment', () => {
+    const sign = job('windows-sign')
+    expect(sign).toContain('needs: windows-stage')
+    expect(sign).toContain('runs-on: windows-latest')
+    // The environment: release-signing on tag pushes, a secret-less one otherwise.
+    expect(sign).toMatch(
+      /environment: \$\{\{ \(github\.event_name == 'push' && github\.ref_type == 'tag'\) && 'release-signing' \|\| 'release-dryrun' \}\}/,
+    )
+    // No third-party code before the signing step: no npm, no node, no setup-node, no Get-Command, no bare tool names.
+    expect(sign).not.toMatch(/\bnpm\b|\bnpx\b|setup-node|Get-Command|\bwhere\b|\bnode\b/)
+    expect(sign).not.toMatch(/(^|\s)(choco|tar|iscc|signtool)(\.exe)?\s/m)
+    // The hash of the payload is verified (manifest and the stage job's output) BEFORE it is unpacked.
+    const verify = sign.indexOf('The payload does not match its manifest')
+    const output = sign.indexOf('The payload does not match the hash of the stage job')
+    const unpack = sign.indexOf('tar.exe" -x')
+    expect(verify).toBeGreaterThan(0)
+    expect(output).toBeGreaterThan(verify)
+    expect(unpack).toBeGreaterThan(output)
+    expect(sign).toContain('needs.windows-stage.outputs.stage_sha256')
+    // Pinned Inno Setup, installed with the choco of its fixed location; ISCC by its absolute path.
+    expect(sign).toMatch(/choco\.exe' install innosetup --version \d+\.\d+\.\d+ --allow-downgrade/)
+    expect(sign).toContain(`Join-Path \${env:ProgramFiles(x86)} 'Inno Setup 6\\ISCC.exe'`)
+    // The secrets reach only the compile step of this job.
+    const compile = /- name: Compile and sign the installer[\s\S]*?(?=\n {6}- )/.exec(sign)?.[0] ?? ''
+    expect(compile).toContain('-Compile')
+    expect(compile).toContain('secrets.WINDOWS_SIGN_PFX_BASE64')
+    expect(compile).toContain('secrets.WINDOWS_SIGN_PFX_PASSWORD')
+    expect(sign.match(/secrets\./g)).toHaveLength(2)
+    expect(sign).toContain('name: windows-installer')
+  })
+
+  it('has the secrets nowhere but in the signing job, and the header tells the owner how to protect them', () => {
+    for (const name of ['windows-stage', 'windows-smoke', 'source-tarball', 'release']) {
+      expect(job(name), name).not.toMatch(/secrets\.|WINDOWS_SIGN/)
+    }
+    expect(workflow).toMatch(/^# .*release-signing/m)
+    expect(workflow).toMatch(/REQUIRED\n# REVIEWERS|REQUIRED REVIEWERS/)
+  })
+
+  it('smoke tests the final installer in a job without secrets or environment, both with no tasks and with the service', () => {
+    const smoke = job('windows-smoke')
+    expect(smoke).toContain('needs: windows-sign')
+    expect(smoke).not.toMatch(/secrets|SIGN|environment:|npm ci/)
+    expect(smoke).toContain('name: windows-installer')
+    expect(smoke).toContain('/VERYSILENT')
     // Tasks are switched off with /MERGETASKS and "!", never with an empty /TASKS=.
-    expect(windows).toContain('/MERGETASKS="!addtopath,!service,!openweb"')
-    expect(windows).toContain('/MERGETASKS="service,addtopath,!openweb"')
-    expect(windows).not.toMatch(/\/TASKS=/)
-    expect(windows.match(/unins000\.exe/g)).toHaveLength(2)
-    expect(windows).toContain('Get-InstallNodes')
-    expect(windows).toContain('--allow-downgrade')
-    // The signing secrets reach only the compile step; the staging step (npm) has none.
-    const stageStep = /- name: Stage the payload[\s\S]*?(?=\n {6}# |\n {6}- )/.exec(windows)?.[0] ?? ''
-    expect(stageStep).toContain('-Stage')
-    expect(stageStep).not.toMatch(/secrets|SIGN/)
-    const compileStep = /- name: Compile and sign the installer[\s\S]*?(?=\n {6}# |\n {6}- )/.exec(windows)?.[0] ?? ''
-    expect(compileStep).toContain('-Compile')
-    expect(compileStep).toContain('secrets.WINDOWS_SIGN_PFX_BASE64')
-    expect(windows).toContain('--version')
-    expect(windows).toContain('unins000.exe')
-    expect(windows).toContain('name: windows-installer')
+    expect(smoke).toContain('/MERGETASKS="!addtopath,!service,!openweb"')
+    expect(smoke).toContain('/MERGETASKS="service,addtopath,!openweb"')
+    expect(workflow).not.toMatch(/\/TASKS=/)
+    expect(smoke.match(/unins000\.exe/g)).toHaveLength(2)
+    expect(smoke).toContain('Get-InstallNodes')
+    expect(smoke).toContain('--version')
   })
 
   it('packs the npm tarball with checksums on ubuntu', () => {
@@ -398,7 +442,7 @@ describe('release.yml', () => {
   it('uses no secrets but the optional signing ones (and the job token)', () => {
     const secrets = new Set([...workflow.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]))
     expect(secrets).toEqual(new Set(['WINDOWS_SIGN_PFX_BASE64', 'WINDOWS_SIGN_PFX_PASSWORD']))
-    // The signing secrets reach only the build step, not the whole job or the workflow.
+    // The signing secrets reach only the compile step.
     expect(workflow.match(/WINDOWS_SIGN_PFX_BASE64: \$\{\{ secrets/g)).toHaveLength(1)
     expect(workflow).not.toMatch(/secrets\.GITHUB_TOKEN/)
     expect(workflow).not.toMatch(/persist-credentials: true/)

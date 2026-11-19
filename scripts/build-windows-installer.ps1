@@ -11,7 +11,8 @@
             with `npm ci --omit=dev --ignore-scripts` from package-lock.json, so the exact locked versions), the
             bin\msum.cmd and bin\message-summarize.cmd shims; runs the production license check on the staged tree.
             It removes the signing variables from its environment.
-  -Compile  runs iscc on the staged payload (this is the only phase that reads WINDOWS_SIGN_PFX_*), writes
+  -Compile  runs iscc on the staged payload (this is the only phase that reads WINDOWS_SIGN_PFX_*; it runs no npm and
+            no PATH lookup: ISCC.exe and signtool.exe are taken from fixed Program Files folders), writes
             dist-installer\message-summarize-<version>-win-x64-setup.exe and dist-installer\SHA256SUMS.txt.
 
   With neither switch both phases run. -WorkDir keeps the staged payload between the two (default: a temporary folder,
@@ -194,15 +195,12 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $stage 'bin\msum.cmd'))) { throw "Nothing is staged in ${stage}: run with -Stage first" }
     Write-Host "Compiling $installerName"
 
+    # ISCC.exe from the fixed Program Files folders only, never from PATH (nothing earlier in the job may redirect it).
     $iscc = $null
-    $found = Get-Command iscc -ErrorAction SilentlyContinue
-    if ($null -ne $found) { $iscc = $found.Source }
-    if ($null -eq $iscc) {
-      foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles, (Join-Path $env:LOCALAPPDATA 'Programs'))) {
-        if ($base -and (Test-Path -LiteralPath (Join-Path $base 'Inno Setup 6\ISCC.exe'))) { $iscc = Join-Path $base 'Inno Setup 6\ISCC.exe'; break }
-      }
+    foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+      if ($base -and (Test-Path -LiteralPath (Join-Path $base 'Inno Setup 6\ISCC.exe'))) { $iscc = Join-Path $base 'Inno Setup 6\ISCC.exe'; break }
     }
-    if ($null -eq $iscc) { throw 'iscc (Inno Setup 6) was not found. Install it (choco install innosetup) and run again.' }
+    if ($null -eq $iscc) { throw 'ISCC.exe was not found under Program Files (Inno Setup 6). Install it (choco install innosetup) and run again.' }
 
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
     $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
@@ -246,6 +244,11 @@ try {
 
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
     Write-TextFile (Join-Path $OutDir 'SHA256SUMS.txt') ("$hash  $installerName.exe`n")
+    if ($isccArgs -contains '/DSign=1') {
+      $signature = Get-AuthenticodeSignature -LiteralPath $setup
+      if ($signature.Status -eq 'NotSigned') { throw 'Signing was on but the installer is not signed' }
+      Write-Host "Signature status: $($signature.Status)"
+    }
     Write-Host "Built $setup"
     Write-Host "SHA-256 $hash"
   }
