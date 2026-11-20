@@ -10,19 +10,33 @@ import {
   isLoopbackUrl,
   isSetupStep,
   nextStep,
+  normalizeSetupStep,
   providerNeedsConsent,
   SETUP_STEPS,
+  SETUP_STEPS_SHOWN,
   stepIndex,
 } from '../../../src/domain/setup.js'
 
 describe('the steps of the setup wizard (RF-70)', () => {
-  it('go language, name, provider, transcription, link, schedule, done', () => {
-    expect(SETUP_STEPS).toEqual(['language', 'name', 'provider', 'transcription', 'link', 'schedule', 'done'])
+  it('go you, provider, link, done (three steps and the closing screen)', () => {
+    expect(SETUP_STEPS).toEqual(['you', 'provider', 'link', 'done'])
+    expect(SETUP_STEPS_SHOWN).toEqual(['you', 'provider', 'link'])
+  })
+
+  it('read a step of an older wizard as the nearest current one, and an unknown one as the first', () => {
+    expect(normalizeSetupStep('link')).toBe('link')
+    expect(normalizeSetupStep('language')).toBe('you')
+    expect(normalizeSetupStep('name')).toBe('you')
+    expect(normalizeSetupStep('transcription')).toBe('link')
+    expect(normalizeSetupStep('schedule')).toBe('link')
+    expect(normalizeSetupStep('toString')).toBe('you')
+    expect(normalizeSetupStep('nonsense')).toBe('you')
+    expect(normalizeSetupStep(null)).toBe('you')
   })
 
   it('each one leads to the next, and the last to nothing', () => {
-    expect(nextStep('language')).toBe('name')
-    expect(nextStep('schedule')).toBe('done')
+    expect(nextStep('you')).toBe('provider')
+    expect(nextStep('link')).toBe('done')
     expect(nextStep('done')).toBeNull()
   })
 
@@ -30,10 +44,10 @@ describe('the steps of the setup wizard (RF-70)', () => {
     expect(isSetupStep('link')).toBe(true)
     expect(isSetupStep('qr')).toBe(false)
     expect(isSetupStep(3)).toBe(false)
-    expect(stepIndex('provider')).toBe(2)
-    expect(isEarlier('name', 'provider')).toBe(true)
+    expect(stepIndex('provider')).toBe(1)
+    expect(isEarlier('you', 'provider')).toBe(true)
     expect(isEarlier('provider', 'provider')).toBe(false)
-    expect(isEarlier('done', 'language')).toBe(false)
+    expect(isEarlier('done', 'you')).toBe(false)
   })
 })
 
@@ -42,7 +56,14 @@ describe('which providers need the consent (RNF-02)', () => {
     expect(providerNeedsConsent('claude-cli')).toBe(true)
     expect(providerNeedsConsent('ollama')).toBe(false)
     expect(providerNeedsConsent('anything-else')).toBe(false)
-    expect(EXTERNAL_PROVIDERS).toEqual(['claude-cli', 'ollama-remote'])
+    expect(EXTERNAL_PROVIDERS).toEqual([
+      'claude-cli',
+      'ollama-remote',
+      'openai',
+      'openai-compatible',
+      'anthropic',
+      'gemini',
+    ])
     expect(providerNeedsConsent('ollama-remote')).toBe(true)
   })
 })
@@ -64,10 +85,15 @@ describe('a remote Ollama is an external recipient (RNF-02)', () => {
   })
 
   it('asks for a consent key by who receives the text', () => {
-    expect(consentKeyFor('claude-cli', 'http://127.0.0.1:11434')).toBe('claude-cli')
-    expect(consentKeyFor('ollama', 'http://127.0.0.1:11434')).toBeNull()
-    expect(consentKeyFor('ollama', 'http://10.0.0.5:11434')).toBe('ollama-remote')
-    expect(consentKeyFor('other', 'http://10.0.0.5:11434')).toBeNull()
+    expect(consentKeyFor('claude-cli', 'http://127.0.0.1:11434', true)).toBe('claude-cli')
+    expect(consentKeyFor('ollama', 'http://127.0.0.1:11434', true)).toBeNull()
+    expect(consentKeyFor('ollama', 'http://10.0.0.5:11434', true)).toBe('ollama-remote')
+    expect(consentKeyFor('other', 'http://10.0.0.5:11434', true)).toBeNull()
+    // An API provider is external even when the server is on this machine.
+    expect(consentKeyFor('openai', 'http://127.0.0.1:11434', true)).toBe('openai')
+    expect(consentKeyFor('openai', 'http://127.0.0.1:11434', false)).toBe('openai-compatible')
+    expect(consentKeyFor('anthropic', 'http://127.0.0.1:11434', true)).toBe('anthropic')
+    expect(consentKeyFor('gemini', 'http://127.0.0.1:11434', true)).toBe('gemini')
   })
 })
 

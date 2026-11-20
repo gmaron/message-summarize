@@ -4,6 +4,13 @@
  * of the answer by editing the text. Shared by the daemon (authoritative) and the web page (instant feedback).
  */
 
+/**
+ * The templates the editor offers to start from. `full` is the built-in prompt (the catalog's `defaultSystemPrompt`, never
+ * changed by this list); the others are variants (two profiles and a short one) written in the same style. All of them only use `{{name}}`.
+ */
+export const PROMPT_PRESET_IDS = ['full', 'personal', 'work', 'brief'] as const
+export type PromptPresetId = (typeof PROMPT_PRESET_IDS)[number]
+
 /** The variables the template may use, as they are written. */
 export const PROMPT_VARIABLES: readonly string[] = ['{{name}}']
 

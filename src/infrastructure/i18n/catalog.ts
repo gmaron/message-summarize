@@ -1,4 +1,5 @@
 import type { MessageKind } from '../../domain/model.js'
+import type { PromptPresetId } from '../../domain/prompt.js'
 import type { ScheduleIssue } from '../../domain/schedule.js'
 import type { SettingsIssueCode } from '../../domain/settings.js'
 import type { SetupStep } from '../../domain/setup.js'
@@ -56,6 +57,9 @@ export type WebErrorCode =
   | 'consentRequired'
   | 'notLinked'
   | 'testRunning'
+  | 'invalidKey'
+  | 'unknownModel'
+  | 'invalidSecretsFile'
   | 'setupCompleted'
   | 'wrongStep'
 
@@ -74,7 +78,15 @@ export type WebConfigIssueCode =
   | 'installationOnly'
 
 /** Why the test of a provider failed (RF-41): codes, never the text the provider answered. */
-export type ProviderTestErrorCode = 'notFound' | 'timeout' | 'invalidSummary' | 'unreachable' | 'failed'
+export type ProviderTestErrorCode =
+  | 'notFound'
+  | 'timeout'
+  | 'invalidSummary'
+  | 'unreachable'
+  | 'noKey'
+  | 'rejected'
+  | 'apiUnreachable'
+  | 'failed'
 
 /** Why a digest asked from the web (or a scheduled one) produced nothing: codes, never text (`digest` and `preview` events). */
 export type DigestErrorCode = 'noProvider' | 'promptFile' | 'concurrentRun' | 'invalidWindow' | 'failed'
@@ -154,6 +166,8 @@ export interface Catalog {
   readonly unnamedGroup: string
   /** Default system prompt (RF-38). Asks for the four fields of the answer. `{{name}}` is the owner name. */
   readonly defaultSystemPrompt: string
+  /** The other templates of the prompt editor (`full` is `defaultSystemPrompt`): same style, only the `{{name}}` variable. */
+  readonly promptPresets: Readonly<Record<Exclude<PromptPresetId, 'full'>, string>>
 
   readonly transcript: {
     header(isGroup: boolean, name: string): string
@@ -760,6 +774,10 @@ export type SettingsFieldKey =
   | 'claudeTimeoutMs'
   | 'ollamaBaseUrl'
   | 'ollamaModel'
+  | 'openaiModel'
+  | 'openaiBaseUrl'
+  | 'anthropicModel'
+  | 'geminiModel'
 
 export type WebStateName = 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'idle' | 'linking' | 'notLinked'
 
@@ -853,6 +871,12 @@ export interface WebTexts {
       readonly idLabel: string
       readonly idPlaceholder: string
       readonly idHint: string
+      /** `{id}`: what the name typed becomes (lowercase, no accents, hyphens for spaces), shown while typing. */
+      readonly idPreview: string
+      /** `{id}`: the name typed is the one of an account that already exists and is not linked: the wizard uses it. */
+      readonly idPreviewExisting: string
+      /** Nothing valid is left in the name (empty, or only symbols). */
+      readonly idNothing: string
       readonly submit: string
       readonly scheduleTitle: string
       readonly finish: string
@@ -983,8 +1007,10 @@ export interface WebTexts {
       readonly start: string
     }
     readonly schedules: {
-      readonly timezoneLabel: string
-      readonly tzHint: string
+      /** `{zone}`: the time zone the times are in (read from the system, not chosen here). */
+      readonly zoneLine: string
+      /** Said only when the zone is UTC (a container): where to change it. */
+      readonly zoneUtcHint: string
       readonly emptyTitle: string
       readonly empty: string
       readonly daysLabel: string
@@ -1022,13 +1048,11 @@ export interface WebTexts {
       readonly fields: Readonly<Record<SettingsFieldKey, { readonly label: string; readonly hint?: string }>>
       /** Written inside the number fields. */
       readonly units: { readonly chars: string; readonly hours: string; readonly seconds: string }
-      /** `{source}`. */
-      readonly sourceNote: string
       readonly languageNames: Readonly<Record<Language, string>>
-      readonly providerNames: Readonly<Record<'claude-cli' | 'ollama', string>>
+      readonly providerNames: Readonly<Record<'claude-cli' | 'ollama' | 'openai' | 'anthropic' | 'gemini', string>>
       /** The choice of "no provider" (primary) or "no backup". */
       readonly none: string
-      /** How the page says where a value comes from. */
+      /** The small tag next to the title of a setting: where the value in force comes from. */
       readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
       /** Under the Ollama address when its host is not this machine. */
       readonly remoteOllama: string
@@ -1039,6 +1063,13 @@ export interface WebTexts {
       readonly privacySummary: {
         readonly 'claude-cli': string
         readonly ollama: string
+        readonly openai: string
+        /** `{host}`. */
+        readonly openaiCompatible: string
+        /** The address is the installation's and cannot be seen from here. */
+        readonly openaiInherited: string
+        readonly anthropic: string
+        readonly gemini: string
         readonly ollamaRemote: string
         readonly none: string
       }
@@ -1071,6 +1102,17 @@ export interface WebTexts {
       /** The response format is fixed and added by the program. */
       readonly formatNote: string
       readonly label: string
+      /** The picker of templates above the editor. */
+      readonly templates: {
+        readonly label: string
+        readonly names: Readonly<Record<PromptPresetId, string>>
+        /** Said after one is loaded: it is not saved until the user saves. */
+        readonly loaded: string
+        readonly confirmTitle: string
+        readonly confirmText: string
+        readonly confirmYes: string
+        readonly confirmNo: string
+      }
       readonly sources: { readonly account: string; readonly installation: string; readonly default: string }
       /** The pill: the prompt is not the original one. */
       readonly differs: string
@@ -1220,10 +1262,6 @@ export interface WebTexts {
       readonly loadOlder: string
       /** Said while the view follows the daemon. */
       readonly live: string
-      readonly timeColumn: string
-      readonly levelColumn: string
-      readonly accountColumn: string
-      readonly messageColumn: string
     }
     readonly preview: {
       readonly title: string
@@ -1255,7 +1293,7 @@ export interface WebTexts {
       readonly whatLabel: string
       readonly providers: Readonly<
         Record<
-          'claude-cli' | 'ollama',
+          'claude-cli' | 'ollama' | 'openai' | 'openai-compatible' | 'anthropic' | 'gemini',
           {
             readonly name: string
             readonly cost: string
@@ -1264,6 +1302,8 @@ export interface WebTexts {
             readonly what: string
             /** Only for the providers that run a program with tools (RF-49). */
             readonly tools?: string
+            /** A caution that is not about cost or destination (the free tier of Gemini, RF-41). */
+            readonly warning?: string
           }
         >
       >
@@ -1282,6 +1322,47 @@ export interface WebTexts {
       readonly consentNeeded: string
       readonly consentAgree: string
       readonly consentSaving: string
+      /** `{provider}`: the server answered that the recipient is another than the one on screen. */
+      readonly consentChanged: string
+      /** The API providers: conversations marked "local only" never go to an external provider (RF-43). */
+      readonly apiLocalOnly: string
+      /** The API key of a provider: stored on this computer, never shown again. */
+      readonly keys: {
+        readonly label: string
+        /** `{destination}`. */
+        readonly hint: string
+        readonly placeholder: string
+        /** `{host}`: the key of a server that is not OpenAI is kept apart from the OpenAI key. */
+        readonly compatibleNote: string
+        readonly destinations: {
+          readonly openai: string
+          readonly anthropic: string
+          readonly gemini: string
+          /** `{host}`. */
+          readonly compatible: string
+        }
+        readonly status: {
+          readonly checking: string
+          readonly none: string
+          readonly noneCompatible: string
+          /** `{name}`. */
+          readonly env: string
+          readonly accountFile: string
+          readonly file: string
+        }
+        readonly save: string
+        readonly replace: string
+        readonly remove: string
+        readonly working: string
+        readonly saved: string
+        readonly removed: string
+        /** `{name}`: the variable that wins. */
+        readonly overriddenEnv: string
+        readonly overriddenAccountFile: string
+        readonly stillInForce: string
+        readonly lockedAddress: string
+        readonly clearedNote: string
+      }
       readonly test: {
         readonly button: string
         readonly running: string
@@ -1291,6 +1372,37 @@ export interface WebTexts {
         readonly needsConsent: string
         readonly errors: Readonly<Record<ProviderTestErrorCode, string>>
       }
+    }
+    /** The name of the language switch (Español | English) of the wizard and of the page that has no access. */
+    readonly languageLabel: string
+    /** The choice of a model from a list (the wizard and the settings): nobody types a model. */
+    readonly models: {
+      readonly choose: string
+      /** The empty choice of Claude Code: the model the configuration has by default. */
+      readonly byDefault: string
+      readonly loading: string
+      readonly needsKey: string
+      /** The provider could not be reached to ask its models. */
+      readonly listUnreachable: string
+      /** The provider answered with something that is not a usable list. */
+      readonly listFailed: string
+      /** The Ollama address is not on this machine: its models are asked only after the agreement. */
+      readonly needsConsent: string
+      /** The list of the provider could not be read: these are the known models. */
+      readonly fallback: string
+      /** The provider did not accept the saved key. */
+      readonly rejected: string
+      /** Ollama answers and has no model, or does not answer. */
+      readonly emptyOllama: string
+      readonly invalidAddress: string
+      readonly retry: string
+      /** `{model}`: it was saved before and is not in the list. */
+      readonly foreign: string
+      /** The one typed name: a compatible server that gives no list. */
+      readonly typingLabel: string
+      readonly typingHint: string
+      /** The address of the server is not saved yet, so its models cannot be asked. */
+      readonly typingUnsaved: string
     }
     /** The first-use wizard (RF-70). */
     readonly wizard: {
@@ -1306,8 +1418,7 @@ export interface WebTexts {
       readonly skipConfirm: string
       readonly skipYes: string
       readonly skipNo: string
-      readonly language: { readonly heading: string; readonly intro: string; readonly label: string }
-      readonly name: {
+      readonly you: {
         readonly heading: string
         readonly intro: string
         readonly ownerLabel: string
@@ -1322,32 +1433,28 @@ export interface WebTexts {
         readonly heading: string
         readonly intro: string
         readonly laterNote: string
+        readonly apiModelLabel: string
+        readonly apiModelHint: string
+        readonly openaiBaseUrlLabel: string
+        readonly openaiBaseUrlHint: string
+        /** Shown instead of the notice while the address is not a web address. */
+        readonly openaiBaseUrlInvalid: string
         readonly modelLabel: string
         readonly baseUrlLabel: string
         readonly ollamaModelLabel: string
         readonly ollamaModelHint: string
         readonly remoteOllama: string
       }
-      readonly transcription: { readonly heading: string; readonly text: string }
       readonly link: {
         readonly heading: string
         readonly intro: string
         readonly needsLink: string
       }
-      readonly schedule: {
-        readonly heading: string
-        readonly intro: string
-        /** `{timezone}`. */
-        readonly timezone: string
-        readonly suggest: string
-        readonly current: string
-        readonly none: string
-        readonly skipNote: string
-      }
       readonly done: {
         readonly heading: string
         readonly text: string
-        readonly noSchedule: string
+        /** What finishing does about the schedules. */
+        readonly schedules: string
         readonly finish: string
       }
     }

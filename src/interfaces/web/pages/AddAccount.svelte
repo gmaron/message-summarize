@@ -4,10 +4,11 @@
   import LinkStart from '../components/LinkStart.svelte'
   import LinkView from '../components/LinkView.svelte'
   import ScheduleForm from '../components/ScheduleForm.svelte'
-  import { isAccountIdValid } from '../lib/accounts.js'
+  import { accountIdFrom } from '../lib/accounts.js'
   import { type Api, ApiError } from '../lib/api.js'
   import type { Controller } from '../lib/controller.js'
   import { errorText } from '../lib/digest.js'
+  import { fmt } from '../lib/i18n.js'
   import { linkNotStarted } from '../lib/risk.js'
   import { hrefOf } from '../lib/router.js'
   import { newDraft, type ScheduleDraft, scheduleIssueOf, validateDraft } from '../lib/schedules.js'
@@ -26,10 +27,13 @@
   let problem: string | null = $state(null)
   let saving = $state(false)
 
-  // What is typed is checked as the daemon checks it; nothing is asked of the daemon until it is valid.
-  const valid = $derived(isAccountIdValid(name))
+  // What is typed is turned into an id (lowercase, no accents, hyphens for spaces); nothing is asked of the daemon until
+  // something valid is left. The error is only for a name with nothing valid in it, once the user leaves the field.
+  const id = $derived(accountIdFrom(name))
+  const valid = $derived(id !== '')
+  let touched = $state(false)
   const shown = $derived(
-    code !== null ? errorText(code, texts) : name !== '' && !valid ? texts.errors.invalidAccountId : null,
+    code !== null ? errorText(code, texts) : touched && name.trim() !== '' && !valid ? t.idNothing : null,
   )
   const phase = $derived(created === null ? 'idle' : (app.links[created]?.phase ?? 'idle'))
   const step = $derived(created === null ? 0 : phase === 'done' ? 3 : phase === 'syncing' ? 2 : 1)
@@ -40,14 +44,15 @@
     if (!valid || sending) return
     sending = true
     code = null
-    const result = await controller.addAccount(name)
+    const chosen = id
+    const result = await controller.addAccount(chosen)
     sending = false
     if (!result.ok) {
       code = result.code
       return
     }
     // The link starts when the legal notice is accepted (LinkStart), not when the account is created.
-    created = name
+    created = chosen
   }
 
   const open = (id: string): void => {
@@ -94,12 +99,13 @@
           type="text"
           bind:value={name}
           oninput={() => (code = null)}
+          onblur={() => (touched = true)}
           placeholder={t.idPlaceholder}
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
-          maxlength="32"
-          aria-describedby="new-account-hint"
+          maxlength="64"
+          aria-describedby="new-account-hint new-account-preview"
           aria-invalid={shown !== null}
         />
         {#if shown !== null}
@@ -107,6 +113,8 @@
         {:else}
           <span class="hint" id="new-account-hint">{t.idHint}</span>
         {/if}
+        <!-- Always there (only its text changes) so it is announced and the description always points at something. -->
+        <span class="hint strong" id="new-account-preview" aria-live="polite">{valid ? fmt(t.idPreview, { id }) : ''}</span>
       </div>
       <div><button type="submit" class="btn primary" disabled={!valid || sending}>{t.submit}</button></div>
     </form>

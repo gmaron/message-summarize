@@ -292,6 +292,19 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * The address of an API server that gets the API key and the chats: http(s), no credentials in it (they would travel in
+ * every request and show in logs) and no fragment. The summarizers never follow redirects.
+ */
+function isApiBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return isHttpUrl(value) && url.username === '' && url.password === '' && url.hash === '' && !value.includes('#')
+  } catch {
+    return false
+  }
+}
+
 export const isObject = (value: unknown): value is Obj =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -428,7 +441,11 @@ export function parseConfig(
   const ollamaTimeout = positiveInt(ollamaObj, 'timeoutMs', 'provider.ollama.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
 
   const openaiObj = apiSection(providerObj, 'openai', 'provider.openai', OPENAI_KEYS)
-  const openaiBaseUrl = text(openaiObj, 'baseUrl', 'provider.openai.baseUrl')
+  const openaiBaseUrl = ((): string | null | undefined => {
+    const v = text(openaiObj, 'baseUrl', 'provider.openai.baseUrl')
+    if (typeof v !== 'string') return v
+    return isApiBaseUrl(v) ? v : add('provider.openai.baseUrl', 'invalidUrl')
+  })()
   const openaiModel = text(openaiObj, 'model', 'provider.openai.model')
   const openaiTimeout = positiveInt(openaiObj, 'timeoutMs', 'provider.openai.timeoutMs', DEFAULT_PROVIDER_TIMEOUT_MS)
   const openaiStructured = choice(

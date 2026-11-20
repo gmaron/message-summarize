@@ -5,7 +5,7 @@ import { DISCLOSURE_SENDS } from './disclosure.js'
 export const webEn: WebTexts = {
   locale: 'en-GB',
   notBuilt: {
-    title: 'message-summarize',
+    title: 'msum',
     message:
       'The web interface has not been built yet, so there is nothing to show here. Build it (npm run build) and reload this page.',
   },
@@ -49,6 +49,10 @@ export const webEn: WebTexts = {
     consentRequired:
       'Choosing this provider sends the text of your conversations out of this computer: you have to agree to that first.',
     notLinked: 'The account is not linked yet: scan the QR code with the phone first.',
+    invalidKey: 'The key is not valid: it must be one piece of text, with no spaces or line breaks.',
+    unknownModel: 'That model is not in the provider list. Choose one from the list.',
+    invalidSecretsFile:
+      'The saved keys file is not valid JSON, so it was left as it is. Fix or delete it, then try again.',
     testRunning: 'Another connection test is running. Wait for it to finish.',
     setupCompleted: 'The setup wizard is already over.',
     wrongStep: 'That step is not the one the wizard is on. Reload the page.',
@@ -101,7 +105,7 @@ export const webEn: WebTexts = {
     installationOnly: 'This option can only be set in the config.json of the data directory.',
   },
   ui: {
-    title: 'message-summarize',
+    title: 'msum',
     loading: 'Loading…',
     loadFailed: 'The information could not be loaded.',
     retry: 'Retry',
@@ -154,8 +158,11 @@ export const webEn: WebTexts = {
       stepsLabel: 'Steps',
       steps: { name: 'Name', link: 'Link', sync: 'Sync', schedule: 'First schedule' },
       idLabel: 'Account name',
-      idPlaceholder: 'For example: work',
-      idHint: 'To recognize it here. Use lowercase letters, digits or hyphens (up to 32 characters).',
+      idPlaceholder: 'personal, work, corporate, etc.',
+      idHint: 'To recognize it here. Write it as you like: we adjust it for you (no accents or spaces).',
+      idPreview: 'It will be named: {id}',
+      idPreviewExisting: 'It will be named: {id} (already exists, it will be used)',
+      idNothing: 'Write at least one letter or digit.',
       submit: 'Continue',
       scheduleTitle: 'When do you want to receive the digest?',
       finish: 'Finish',
@@ -272,7 +279,7 @@ export const webEn: WebTexts = {
     risk: {
       heading: 'Before you link a WhatsApp account',
       unofficial:
-        'message-summarize connects to WhatsApp through Baileys, an unofficial client. WhatsApp does not allow unofficial clients and may block your number, temporarily or permanently.',
+        'msum connects to WhatsApp through Baileys, an unofficial client. WhatsApp does not allow unofficial clients and may block your number, temporarily or permanently.',
       readOnly:
         'The program is read-only: it never replies, never shows you as online and only sends the digest to your own chat. That reduces the risk but does not remove it.',
       notAffiliated: 'This project is not affiliated with, endorsed by or sponsored by WhatsApp or Meta.',
@@ -283,8 +290,8 @@ export const webEn: WebTexts = {
       start: 'Start linking',
     },
     schedules: {
-      timezoneLabel: 'Time zone',
-      tzHint: 'It follows daylight saving changes. It is changed in Settings.',
+      zoneLine: 'Times in {zone}',
+      zoneUtcHint: 'It is taken from the system; change it with the TZ variable or in config.json.',
       emptyTitle: 'No schedules',
       empty: 'With no schedules, a digest only goes out when you press “Summarize now”.',
       daysLabel: 'Days',
@@ -312,7 +319,7 @@ export const webEn: WebTexts = {
     settings: {
       appliesLive:
         'Changes apply without restarting: the connection to WhatsApp stays open and the next digest uses them.',
-      groups: { digest: 'Digest', languageTime: 'Language and time', provider: 'Summarization provider' },
+      groups: { digest: 'Digest', languageTime: 'Language and name', provider: 'Summarization provider' },
       fields: {
         unreadOnly: {
           label: 'Only unread messages',
@@ -338,7 +345,10 @@ export const webEn: WebTexts = {
           label: 'Language of the digest',
           hint: 'Changes the section titles, the dates and the default prompt.',
         },
-        timezone: { label: 'Time zone', hint: 'The schedules and the dates of the digest follow it.' },
+        timezone: {
+          label: 'Time zone',
+          hint: 'It is taken from your computer; change it if the schedules do not run at local time.',
+        },
         ownerName: { label: 'Your name in the digest' },
         providerPrimary: { label: 'Main provider', hint: 'The model that summarizes each conversation.' },
         providerBackup: {
@@ -353,15 +363,30 @@ export const webEn: WebTexts = {
         ollamaBaseUrl: { label: 'Ollama address' },
         ollamaModel: {
           label: 'Ollama model',
-          hint: 'Required when Ollama is used, and for "local only" chats.',
+          hint: 'Required when Ollama is used, and for "local only" chats. Chosen from the ones you have downloaded.',
         },
+        openaiModel: { label: 'OpenAI model', hint: 'Required when OpenAI is used. Chosen from the provider list.' },
+        openaiBaseUrl: {
+          label: 'OpenAI server address',
+          hint: 'Leave it empty to use the address of the installation, if it has one, or the own address of OpenAI. For LM Studio, OpenRouter or any server compatible with the OpenAI API, write its address. It is treated as external even on this computer, and then the key is the "openai-compatible" one.',
+        },
+        anthropicModel: {
+          label: 'Anthropic model',
+          hint: 'Required when Anthropic is used. Chosen from the provider list.',
+        },
+        geminiModel: { label: 'Gemini model', hint: 'Required when Gemini is used. Chosen from the provider list.' },
       },
       units: { chars: 'characters', hours: 'hours', seconds: 'seconds' },
-      sourceNote: '({source})',
       languageNames: { es: 'Español', en: 'English' },
-      providerNames: { 'claude-cli': 'Claude (command line)', ollama: 'Ollama (local)' },
+      providerNames: {
+        'claude-cli': 'Claude (command line)',
+        ollama: 'Ollama (local)',
+        openai: 'OpenAI (API)',
+        anthropic: 'Anthropic (API)',
+        gemini: 'Gemini (Google API)',
+      },
       none: 'None',
-      sources: { account: 'set for this account', installation: 'from the installation', default: 'default' },
+      sources: { account: 'Set for this account', installation: 'From the installation', default: 'Default' },
       remoteOllama: 'This address is not on this machine: "local only" conversations will be sent to that host.',
       emptyInherits: 'Leave it empty to use the installation value.',
       privacyTitle: 'What leaves your machine',
@@ -370,6 +395,16 @@ export const webEn: WebTexts = {
           'The text of each conversation leaves your computer and goes to Anthropic, with your Claude session.',
         ollama: 'Nothing leaves your computer: the model runs in Ollama, on this machine.',
         ollamaRemote: 'The text of each conversation goes to {host}, another machine.',
+        openai:
+          'The text of each conversation leaves your computer and goes to OpenAI (api.openai.com), with your API key.',
+        openaiInherited:
+          "The address is the one of the installation (or OpenAI's, if it has none): when you save, you will be asked to agree to it if you have not agreed to that server yet.",
+        openaiCompatible:
+          'The text of each conversation goes to {host}, a server that is treated as external even if it is on this computer.',
+        anthropic:
+          'The text of each conversation leaves your computer and goes to Anthropic (api.anthropic.com), with your API key.',
+        gemini:
+          'The text of each conversation leaves your computer and goes to Google (Gemini API), with your API key.',
         none: 'You have not chosen a provider yet: no summary is made.',
       },
       privacyDetail: 'See details',
@@ -397,6 +432,15 @@ export const webEn: WebTexts = {
       formatNote:
         'The format of the response is fixed and is added automatically: it is not part of this text and cannot be edited here.',
       label: 'Instructions for summarizing',
+      templates: {
+        label: 'Templates',
+        names: { full: 'Complete', personal: 'Personal', work: 'Work', brief: 'Brief' },
+        loaded: 'Template loaded: it is not saved until you press Save.',
+        confirmTitle: 'Load the template',
+        confirmText: 'What you typed and did not save will be replaced.',
+        confirmYes: 'Load template',
+        confirmNo: 'Cancel',
+      },
       sources: {
         account: 'Edited for this account.',
         installation: 'It comes from the installation: saving makes a copy for this account.',
@@ -523,17 +567,13 @@ export const webEn: WebTexts = {
       note: 'The logs never include messages, names or secrets: only codes, counts and times. Event names are technical identifiers.',
       levelLabel: 'Level',
       levels: { info: 'All', warn: 'Warnings and errors', error: 'Errors' },
-      badge: { info: 'INFO', warn: 'WARN', error: 'ERROR' },
+      badge: { info: 'Info', warn: 'Warning', error: 'Error' },
       accountLabel: 'Account',
       allAccounts: 'All',
       installation: 'Installation',
       empty: 'No lines match these filters.',
       loadOlder: 'Load older',
       live: 'Updating live while this page is open.',
-      timeColumn: 'Time',
-      levelColumn: 'Level',
-      accountColumn: 'Account',
-      messageColumn: 'Message',
     },
     preview: {
       title: 'Preview',
@@ -578,6 +618,37 @@ export const webEn: WebTexts = {
           who: 'Nobody: the model runs in Ollama, on this machine.',
           what: 'Nothing: the text is processed here and not sent anywhere.',
         },
+        openai: {
+          name: 'OpenAI (API)',
+          cost: 'It is billed per use to your OpenAI API account, not to a ChatGPT subscription. You need an API key.',
+          leaves: 'Yes. The text of each conversation in the digest window leaves this computer.',
+          who: 'OpenAI, at api.openai.com.',
+          what: 'OpenAI handles the text under the data policy of its API (developers.openai.com/api/docs/guides/your-data). Check it and the settings of your account.',
+        },
+        'openai-compatible': {
+          name: 'OpenAI-compatible server',
+          cost: 'It depends on whoever runs the server.',
+          leaves:
+            'Yes. The text of each conversation in the digest window goes to {host}, even if that server is on this computer: an API server is treated as external.',
+          who: 'Whoever runs the server at {host}.',
+          what: 'That server handles the text as its owner decides, and receives the key you save for it: this program cannot control or check it. Your OpenAI key is never sent there.',
+        },
+        anthropic: {
+          name: 'Anthropic (API)',
+          cost: 'It is billed per use to your Anthropic API account, which is separate from a Claude chat subscription. You need an API key.',
+          leaves: 'Yes. The text of each conversation in the digest window leaves this computer.',
+          who: 'Anthropic, at api.anthropic.com.',
+          what: 'Anthropic handles the text under the terms of its API and its privacy policy (privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training). Check them.',
+        },
+        gemini: {
+          name: 'Gemini (Google API)',
+          cost: 'The free tier has low limits; a project with billing enabled pays per use. You need an API key from Google AI Studio.',
+          leaves: 'Yes. The text of each conversation in the digest window leaves this computer.',
+          who: 'Google, at generativelanguage.googleapis.com.',
+          what: 'Google handles the text under the terms of the Gemini API (aistudio.google.com/docs/logs-policy). Check the current ones.',
+          warning:
+            'On the free tier, Google may use the content to improve its products, and people may review it. According to its terms today, a project with billing enabled is not used that way, but terms change: check the current ones, and mark sensitive chats as "local only" so they never go to Gemini.',
+        },
       },
       ollamaRemote: {
         cost: 'Free for this program, but it depends on whoever runs that server.',
@@ -591,6 +662,43 @@ export const webEn: WebTexts = {
       consentNeeded: 'Tick the box to use this provider.',
       consentAgree: 'Agree and continue',
       consentSaving: 'Saving…',
+      consentChanged:
+        'The recipient is now {provider}, not the one that was on screen. Read the notice again and tick the box.',
+      apiLocalOnly:
+        'Conversations marked "local only" are never sent to an external provider, and this one is external.',
+      keys: {
+        label: 'API key',
+        hint: 'It is saved on this computer, in a private file of the installation, and it is never shown again. It is sent only to {destination}.',
+        placeholder: 'Paste the key here',
+        compatibleNote:
+          'This address is not OpenAI: its key is the "openai-compatible" one, kept apart from the OpenAI key (which is never sent to {host}). Some servers need no key.',
+        destinations: {
+          openai: 'OpenAI (api.openai.com)',
+          anthropic: 'Anthropic (api.anthropic.com)',
+          gemini: 'Google (generativelanguage.googleapis.com)',
+          compatible: '{host}',
+        },
+        status: {
+          checking: 'Looking for a saved key…',
+          none: 'There is no key saved.',
+          noneCompatible: 'There is no key saved (some servers do not need one).',
+          env: 'A key is in force from the environment variable {name}.',
+          accountFile: 'A key is in force from the key file of this account.',
+          file: 'A key is saved in this installation.',
+        },
+        save: 'Save key',
+        replace: 'Replace key',
+        remove: 'Delete key',
+        working: 'Working…',
+        saved: 'Key saved. The field was cleared: the key is not shown again.',
+        removed: 'The key was deleted from the installation.',
+        overriddenEnv: 'Saved, but the environment variable {name} has priority and is the one in use.',
+        overriddenAccountFile: 'Saved, but this account has a key file of its own, and that key has priority.',
+        stillInForce: 'There is no key of the installation to delete; the one in force comes from elsewhere.',
+        lockedAddress: 'Save the new address first: the key is for the address that is saved now.',
+        clearedNote:
+          'The address changed, so the key you had typed was cleared. Type it again for the new destination.',
+      },
       test: {
         button: 'Test connection',
         running: 'Testing… it can take up to a minute and a half.',
@@ -602,21 +710,41 @@ export const webEn: WebTexts = {
           timeout: 'It took too long and was stopped.',
           invalidSummary: 'It answered, but not in the expected format.',
           unreachable: 'The server could not be reached. Check the address and that Ollama is running.',
+          noKey: 'There is no API key for this provider: save one first.',
+          rejected: 'The provider rejected the key (or it has no access to the model). Check the key and the model.',
+          apiUnreachable: 'The provider could not be reached. Check the address and your connection.',
           failed: 'The call failed. Check the logs.',
         },
       },
     },
+    languageLabel: 'Language',
+    models: {
+      choose: 'Choose a model',
+      byDefault: 'Default',
+      loading: 'Looking for models…',
+      needsKey: 'Paste your key above and press Save key: the available models appear then.',
+      listUnreachable: 'We could not reach the provider to ask for its models. Check your connection and look again.',
+      listFailed: 'The provider did not give us a usable list of models. Look again in a while.',
+      needsConsent:
+        'That server is not on this computer: accept the notice above to see its models (or save the address first).',
+      fallback: 'We could not read the list; these are the known Anthropic models.',
+      rejected: 'The provider did not accept the key. Save it again to see the models.',
+      emptyOllama: 'No models found. Check that Ollama is running and download one with `ollama pull <model>`.',
+      invalidAddress: 'The Ollama address is not valid.',
+      retry: 'Look again',
+      foreign: 'This model was saved before and is not in the list ({model}): it may not work.',
+      typingLabel: 'Model (advanced)',
+      typingHint: 'This server gives no list of models: type the exact name.',
+      typingUnsaved: 'Save the server address to see its models; meanwhile type the exact name.',
+    },
     wizard: {
-      title: 'Set up message-summarize',
+      title: 'Set up msum',
       stepOf: 'Step {n} of {total}',
       stepsLabel: 'Steps of the setup',
       steps: {
-        language: 'Language',
-        name: 'Name',
-        provider: 'Provider',
-        transcription: 'Audio',
-        link: 'Link phone',
-        schedule: 'Schedule',
+        you: 'You',
+        provider: 'Summary',
+        link: 'Link',
         done: 'Done',
       },
       back: 'Back',
@@ -627,38 +755,35 @@ export const webEn: WebTexts = {
         'Skip the setup? You can do everything later from the page, but no digests are sent until an account is linked, has a provider and a schedule.',
       skipYes: 'Yes, skip it',
       skipNo: 'No, keep going',
-      language: {
-        heading: 'Language',
-        intro:
-          'This is the language of the page and of the command line. It is saved in the installation configuration.',
-        label: 'Language',
-      },
-      name: {
-        heading: 'Your name',
+      you: {
+        heading: 'About you',
         intro:
           'The summaries call you by this name. The account is created now; it is linked to your phone two steps from here.',
         ownerLabel: 'Your name',
         ownerHint: 'It goes into the prompt as {{name}}.',
         ownerBlank: 'Write your name.',
         ownerTooLong: 'The name is too long (80 characters at most).',
-        accountLabel: 'Account id',
-        accountHint: 'Lowercase letters, digits and hyphens. "default" is fine if you have a single account.',
+        accountLabel: 'Account name',
+        accountHint: 'To recognize it here. Write it as you like: we adjust it for you (no accents or spaces).',
         accountLocked: 'The account is already created.',
       },
       provider: {
         heading: 'Provider',
         intro:
           'Choose what writes the summaries. There is no default: read what each one does with your conversations.',
-        laterNote: 'More providers (API keys, Gemini, Codex, any other command) come in a next version.',
+        laterNote: 'OpenAI, Anthropic and Gemini are chosen here. Codex and any other command come in a next version.',
+        apiModelLabel: 'Model',
+        apiModelHint: 'The models come from the provider list: there is nothing to type.',
+        openaiBaseUrlInvalid:
+          'Write a web address (starting with http:// or https://) to see who would receive the text.',
+        openaiBaseUrlLabel: 'Server address (optional)',
+        openaiBaseUrlHint:
+          'Leave it empty to keep the address in force (the one of the installation or of the account); if there is none, OpenAI is used. For LM Studio, OpenRouter or any server compatible with the OpenAI API, write its address. It is treated as external even on this computer, and then the key is the "openai-compatible" one.',
         modelLabel: 'Model',
         baseUrlLabel: 'Ollama address',
         ollamaModelLabel: 'Ollama model',
-        ollamaModelHint: 'The name of a model you already downloaded, for example the one listed by "ollama list".',
+        ollamaModelHint: 'The models you already downloaded in Ollama.',
         remoteOllama: 'This address is not on this machine: the text of your conversations will be sent to that host.',
-      },
-      transcription: {
-        heading: 'Audio messages',
-        text: 'For now audio messages appear as [audio] in the digest. Transcribing them locally, without sending them anywhere, comes in a next version.',
       },
       link: {
         heading: 'Link your phone',
@@ -666,21 +791,11 @@ export const webEn: WebTexts = {
           'Scan the QR code from WhatsApp on your phone (Linked devices). Then the history syncs; it can take a few minutes.',
         needsLink: 'Link the account to continue.',
       },
-      schedule: {
-        heading: 'First schedule',
-        intro:
-          'When should the digest arrive? Without a schedule no digest is sent: you can still ask for one with "Summarize now".',
-        timezone: 'Time zone: {timezone}',
-        suggest: 'Use 09:00 and 19:00, every day',
-        current: 'Schedules of this account',
-        none: 'No schedule yet.',
-        skipNote: 'You can skip this step and add schedules later.',
-      },
       done: {
         heading: 'All set',
         text: 'The account is linked. From the panel you can change the settings, mark conversations, edit the prompt and see the history.',
-        noSchedule:
-          'There is no schedule yet: no digest will be sent until you add one ("Schedules" tab of the account).',
+        schedules:
+          'When you finish, if the account has no schedules, 09:00 and 18:00 are added every day. Change them any time in the "Schedules" tab of the account.',
         finish: 'Go to the panel',
       },
     },

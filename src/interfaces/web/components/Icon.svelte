@@ -7,7 +7,6 @@
 
   const p = (d: string): Shape => ({ t: 'path', d })
   const ICONS: Record<string, readonly Shape[]> = {
-    logo: [p('M4 5h16v11H9l-5 4z'), p('M8 9h8M8 12h5')],
     plus: [p('M12 5v14M5 12h14')],
     logs: [p('M5 4h14v16H5z'), p('M8 8h8M8 12h8M8 16h5')],
     home: [p('M4 11 12 4l8 7v9h-5v-6H9v6H4z')],

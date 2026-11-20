@@ -3,6 +3,14 @@ export * from './cli/index.js'
 export { type ComposeSummarizerOptions, composeSummarizer } from './compose-summarizer.js'
 export { FallbackSummarizer } from './fallback-summarizer.js'
 export { LOCAL_ONLY_UNAVAILABLE, LocalOnlyRouter } from './local-only-router.js'
+export { FALLBACK_MODELS } from './model-fallbacks.js'
+export {
+  CLAUDE_CLI_MODELS,
+  type ListedProvider,
+  listProviderModels,
+  type ModelListError,
+  type ModelOption,
+} from './model-lists.js'
 export { listOllamaModels, ollamaHasModel, type PullProgress, pullOllamaModel } from './ollama-admin.js'
 export {
   bytesToGb,

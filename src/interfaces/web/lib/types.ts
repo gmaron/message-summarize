@@ -1,3 +1,4 @@
+import type { PromptPresetId } from '../../../domain/prompt.js'
 import type { SetupStep } from '../../../domain/setup.js'
 import type {
   BlockedReason,
@@ -18,17 +19,44 @@ export type {
   WebConfigIssueCode,
 }
 
+/** The providers whose model is chosen from a list. */
+export type ModelProviderName = 'claude-cli' | 'ollama' | 'openai' | 'anthropic' | 'gemini'
+
+export interface ModelOption {
+  readonly id: string
+  /** A friendly name, when the provider gives one. */
+  readonly name?: string
+}
+
+/** `GET /api/accounts/:id/models/:provider`: names and codes only. */
+export interface ModelsView {
+  readonly provider: ModelProviderName
+  /** `static`: a fixed list; `live`: what the provider answered; `fallback`: the known models of Anthropic, the live list failed. */
+  readonly source: 'static' | 'live' | 'fallback'
+  readonly models: readonly ModelOption[]
+  readonly error?: 'noKey' | 'rejected' | 'unreachable' | 'failed' | 'empty' | 'invalidAddress' | 'consentRequired'
+  readonly origin?: string
+  /** A typed name is allowed: a compatible server that gives no list. */
+  readonly typing?: boolean
+}
+
 /** `GET /api/setup` (RF-70): where the first-use wizard is. */
 export interface SetupView {
   readonly completed: boolean
   readonly step: SetupStep
-  /** The account the wizard is setting up, once its "name" step made it. */
+  /** The account the wizard is setting up, once its "you" step made it. */
   readonly account: string | null
   /** The account has a registered session. */
   readonly linked: boolean
   readonly language: Language
+  /** A truly fresh install (decided by the daemon): the page speaks the browser's language from the first screen. */
+  readonly freshInstall: boolean
   /** The external providers the account agreed to (RNF-02). */
   readonly consents: readonly string[]
+  /** The address `openai` has for this account now (its own or inherited, or OpenAI's): who would get the text. */
+  readonly openaiBaseUrl: string
+  /** The address Ollama has when its field is emptied (the installation's, or the default): who would get the text. */
+  readonly ollamaBaseUrl: string
 }
 
 /** The answer of `POST /api/setup/test-provider`. */
@@ -70,7 +98,7 @@ export interface SettingsIssue {
 }
 
 export type SettingSource = 'account' | 'installation' | 'default'
-export type ProviderName = 'claude-cli' | 'ollama'
+export type ProviderName = 'claude-cli' | 'ollama' | 'openai' | 'anthropic' | 'gemini'
 
 /** `GET /api/accounts/:id/settings`: the effective values (nested as in config.json) and where each comes from. */
 export interface SettingsView {
@@ -89,6 +117,9 @@ export interface SettingsView {
       readonly backup: ProviderName | null
       readonly claudeCli: { readonly model: string; readonly timeoutMs: number }
       readonly ollama: { readonly baseUrl: string; readonly model: string | null }
+      readonly openai: { readonly baseUrl: string; readonly model: string | null }
+      readonly anthropic: { readonly model: string | null }
+      readonly gemini: { readonly model: string | null }
     }
   }
   readonly sources: Readonly<Record<string, SettingSource>>
@@ -186,6 +217,8 @@ export interface PromptView {
   readonly source: 'account' | 'installation' | 'default'
   readonly text: string
   readonly defaultText: string
+  /** The templates the editor offers; `full` is `defaultText`. */
+  readonly presets: readonly { readonly id: PromptPresetId; readonly text: string }[]
   readonly variables: readonly string[]
   readonly maxLength: number
   readonly ownerName: string | null

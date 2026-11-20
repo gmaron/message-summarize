@@ -9,6 +9,7 @@ import {
   INSTALLATION,
   levelTone,
   logTime,
+  logTimeFull,
   MAX_KEPT,
   mergeNewest,
 } from '../../../src/interfaces/web/lib/logs.js'
@@ -60,7 +61,11 @@ describe('text of a line', () => {
   })
 
   it('formats the time in the locale of the page, and leaves a value that is not a date as it came', () => {
-    expect(logTime('2026-11-17T12:00:00.000Z', 'en')).toMatch(/2026|26/)
+    // Short and the same for every line: day, month and 24-hour time, with no year and no seconds.
+    expect(logTime('2026-11-17T12:00:00.000Z', 'en')).toMatch(/^(Nov 17|17 Nov), \d{2}:\d{2}$/)
+    expect(logTime('2026-11-17T12:00:00.000Z', 'es')).toMatch(/^17 nov,? \d{2}:\d{2}$/)
+    expect(logTimeFull('2026-11-17T12:00:00.000Z', 'en')).toMatch(/2026|26/)
+    expect(logTimeFull('not a date', 'en')).toBe('not a date')
     expect(logTime('not a date', 'en')).toBe('not a date')
   })
 

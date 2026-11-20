@@ -28,6 +28,9 @@ export function envNames(provider: KeyProvider): readonly string[] {
   }
 }
 
+/** A key is one token: no spaces, line breaks or control characters (a pasted line with extra text would never work). */
+export const isPlausibleKey = (key: string): boolean => !/[\s\p{Cc}]/u.test(key)
+
 /** Where a key comes from. Never carries the key. */
 export type KeySource =
   | { readonly kind: 'env'; readonly name: string }

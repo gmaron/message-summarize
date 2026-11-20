@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { exactIdOf, hasIdPattern, idPattern } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
+import { isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
 import {
   type AppConfig,
   type ConfigIssue,
@@ -235,15 +236,18 @@ async function write(options: UpdateAccountConfigOptions): Promise<UpdateAccount
 export interface UpdateInstallationLanguageOptions {
   /** The installation's config.json. It does not have to exist: then it is created as `msum init` would. */
   readonly rootFile: string
-  readonly language: Language
+  /** The language to set, or none to leave it as it is. */
+  readonly language?: Language
+  /** The IANA time zone to set (the browser's on a fresh install), or none to leave it as it is. */
+  readonly timezone?: string
   /** The default of `timezone` (the system's). */
   readonly fallbackTimezone?: string
 }
 
-export type UpdateInstallationLanguageResult = Result<Language, ConfigIssue[]>
+export type UpdateInstallationLanguageResult = Result<null, ConfigIssue[]>
 
 /**
- * Sets `language` in the INSTALLATION's config.json, and nothing else: the one write of the web to that file (the setup
+ * Sets `language` and/or `timezone` in the INSTALLATION's config.json, and nothing else: the one write of the web to that file (the setup
  * wizard, RF-70, where there is no other account yet to hold the choice, and the language of the installation drives the
  * texts of the web and of the command line). Every other key is kept as it is. A file that is not valid JSON is not
  * rewritten (it was edited by hand). It is validated and written like an account's file: atomically, mode 0600, with
@@ -258,17 +262,23 @@ export function updateInstallationLanguage(
 async function writeInstallationLanguage(
   options: UpdateInstallationLanguageOptions,
 ): Promise<UpdateInstallationLanguageResult> {
-  const { rootFile, language, fallbackTimezone } = options
-  if (!(LANGUAGES as readonly string[]).includes(language)) {
+  const { rootFile, language, timezone, fallbackTimezone } = options
+  if (language !== undefined && !(LANGUAGES as readonly string[]).includes(language)) {
     return err([{ option: 'language', code: 'notOneOf', allowed: LANGUAGES }])
   }
+  if (timezone !== undefined && !isValidTimezone(timezone))
+    return err([{ option: 'timezone', code: 'invalidTimezone' }])
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     const seen = await fingerprint(rootFile)
     const current = await readConfigObject(rootFile)
     if (!current.ok) return err([current.error])
     const base: Obj =
       seen === 'missing' ? (JSON.parse(defaultConfigJson(fallbackTimezone)) as Obj) : structuredClone(current.value)
-    const next: Obj = { ...base, language }
+    const next: Obj = {
+      ...base,
+      ...(language === undefined ? {} : { language }),
+      ...(timezone === undefined ? {} : { timezone }),
+    }
     // Only what the language change brings is refused: the file may be valid just once merged with the accounts' files, or
     // have an old problem the user has not fixed, and that must not block the first step.
     const effective = validateEffective(next, {}, rootFile, null, fallbackTimezone)
@@ -276,7 +286,8 @@ async function writeInstallationLanguage(
       const before = validateEffective(base, {}, rootFile, null, fallbackTimezone)
       const known = new Set(before.ok ? [] : before.error.map((issue) => `${issue.option}:${issue.code}`))
       const added = effective.error.filter(
-        (issue) => issue.option === 'language' || !known.has(`${issue.option}:${issue.code}`),
+        (issue) =>
+          issue.option === 'language' || issue.option === 'timezone' || !known.has(`${issue.option}:${issue.code}`),
       )
       if (added.length > 0) return err(added)
     }
@@ -293,7 +304,7 @@ async function writeInstallationLanguage(
       throw error
     }
     await syncDirectory(dirname(rootFile))
-    return ok(language)
+    return ok(null)
   }
   return err([{ option: '(config)', code: 'concurrentEdit', file: rootFile }])
 }

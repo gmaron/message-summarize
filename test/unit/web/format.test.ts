@@ -3,11 +3,12 @@ import {
   dayChip,
   formatDateTime,
   formatTime,
+  isUtcZone,
   percentOf,
   weekdayName,
   whenText,
 } from '../../../src/interfaces/web/lib/format.js'
-import { fmt, pickLanguage, textsFor } from '../../../src/interfaces/web/lib/i18n.js'
+import { fmt, languageFromBrowser, pickLanguage, textsFor } from '../../../src/interfaces/web/lib/i18n.js'
 
 describe('formatDateTime', () => {
   const noon = Date.UTC(2026, 0, 15, 12, 0) // 12:00 UTC
@@ -40,11 +41,24 @@ describe('weekdayName', () => {
 
 describe('language and texts', () => {
   it('uses the language of the installation, then the browser, then English', () => {
-    expect(pickLanguage('es', 'en-US')).toBe('es')
-    expect(pickLanguage('en', 'es-AR')).toBe('en')
-    expect(pickLanguage(undefined, 'es-AR')).toBe('es')
-    expect(pickLanguage('fr', 'fr-FR')).toBe('en')
-    expect(pickLanguage(undefined, undefined)).toBe('en')
+    // The installation's language when the daemon says Spanish or English; Spanish for anything else.
+    expect(pickLanguage('es')).toBe('es')
+    expect(pickLanguage('en')).toBe('en')
+    expect(pickLanguage(undefined)).toBe('es')
+    expect(pickLanguage('fr')).toBe('es')
+    expect(pickLanguage(7)).toBe('es')
+  })
+
+  it('takes the first language of the browser that is Spanish or English, and Spanish when there is none', () => {
+    expect(languageFromBrowser(['en-US', 'es-AR'])).toBe('en')
+    expect(languageFromBrowser(['es-AR', 'en-US'])).toBe('es')
+    expect(languageFromBrowser(['fr-FR', 'en-GB', 'es'])).toBe('en')
+    expect(languageFromBrowser(['fr-FR', 'ja'])).toBe('es')
+    expect(languageFromBrowser([], 'en-US')).toBe('en')
+    expect(languageFromBrowser(undefined, 'es-ES')).toBe('es')
+    expect(languageFromBrowser(undefined, undefined)).toBe('es')
+    // Not a prefix trick: "eng" and "esperanto-like" tags are not English or Spanish by their first letters.
+    expect(languageFromBrowser(['eng', 'ens'])).toBe('es')
   })
 
   it('has the texts of both languages and fills placeholders', () => {
@@ -99,5 +113,13 @@ describe('the day and the time of a moment in the zone of the account', () => {
   it('survives a zone the browser does not know', () => {
     expect(() => dayChip(now, 'Not/AZone', 'en', now)).not.toThrow()
     expect(() => formatTime(now, 'Not/AZone', 'en')).not.toThrow()
+  })
+})
+
+describe('isUtcZone', () => {
+  it('is true for the zones that are UTC itself (a container without TZ) and false for the others', () => {
+    expect(isUtcZone('UTC')).toBe(true)
+    expect(isUtcZone('Etc/UTC')).toBe(true)
+    expect(isUtcZone('America/Argentina/Buenos_Aires')).toBe(false)
   })
 })

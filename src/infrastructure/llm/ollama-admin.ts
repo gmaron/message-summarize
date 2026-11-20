@@ -1,5 +1,6 @@
 import { err, ok, type Result } from '../../domain/result.js'
 import { redactSecrets } from './api/redact.js'
+import { readTextCapped } from './read-capped.js'
 import { excerpt } from './summary-schema.js'
 
 // Management calls to the user's own Ollama server: which models it has (`/api/tags`) and downloading one
@@ -8,6 +9,8 @@ import { excerpt } from './summary-schema.js'
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434'
 /** A progress event is a few hundred bytes. A line longer than this is not one. */
 const MAX_LINE_BYTES = 64 * 1024
+/** The list of models of an Ollama is a few kilobytes; more than this is not one. */
+const MAX_TAGS_BYTES = 2_000_000
 const TOO_LONG = 'ollama sent a line longer than 64 KB'
 const clean = (text: string): string => excerpt(redactSecrets(text, []))
 const root = (baseUrl: string | undefined): string => (baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
@@ -23,7 +26,10 @@ export async function listOllamaModels(
       signal: AbortSignal.timeout(options.timeoutMs ?? 3_000),
     })
     if (!response.ok) return err(`ollama answered ${response.status}`)
-    const body = (await response.json()) as { models?: unknown }
+    // The list of an Ollama is read with a byte limit too: a server that never stops is not held in memory.
+    const raw = await readTextCapped(response, MAX_TAGS_BYTES)
+    if (raw === null) return err('ollama sent a list that is too long')
+    const body = JSON.parse(raw) as { models?: unknown }
     if (!Array.isArray(body.models)) return err('ollama returned no model list')
     const names: string[] = []
     for (const entry of body.models) {

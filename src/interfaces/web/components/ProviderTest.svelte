@@ -11,11 +11,20 @@
     texts,
     body,
     blocked,
+    onsent,
   }: {
     api: Api
     texts: WebTexts
     /** What to test; changing it forgets the last result. */
-    body: { provider: string; options: Record<string, string>; consent?: boolean }
+    body: {
+      provider: string
+      options: Record<string, string>
+      consent?: string
+      key?: string
+      keyProvider?: string
+    }
+    /** Told when the call went out, so a key typed for it can be cleared (it is never kept after being sent). */
+    onsent?: () => void
     /** Why the test cannot run now (the consent is not ticked, a field is missing): said instead of running. */
     blocked: boolean
   } = $props()
@@ -26,10 +35,18 @@
   let failure: string | null = $state(null)
 
   $effect(() => {
-    // A change of what is tested makes the last result stale.
-    JSON.stringify(body)
+    // A change of what is tested makes the last result stale. The key is left out: it is cleared once sent, and that
+    // is not a change of what is tested.
+    JSON.stringify({ ...body, key: undefined })
     result = null
     failure = null
+  })
+  $effect(() => {
+    // A new key typed is another test.
+    if (body.key !== undefined) {
+      result = null
+      failure = null
+    }
   })
 
   async function run() {
@@ -37,7 +54,10 @@
     result = null
     failure = null
     try {
-      result = await api.testProvider(body)
+      const sending = api.testProvider(body)
+      // The request holds the key now: the field can be emptied.
+      onsent?.()
+      result = await sending
     } catch (error) {
       failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
     } finally {

@@ -53,10 +53,29 @@ describe('GET /api/accounts/:id/prompt (RF-38)', () => {
         variables: ['{{name}}'],
         maxLength: PROMPT_MAX_LENGTH,
         ownerName: 'Marta Prueba',
+        presets: expect.any(Array),
       },
     })
     const beta = await w.api('GET', url('beta'))
     expect(beta.body).toMatchObject({ source: 'default', text: defaultEs, defaultText: defaultEs })
+  })
+
+  it('offers the templates of the language of the account, the first being the built-in prompt untouched', async () => {
+    const w = await world({ accounts: ['alpha', 'beta'] })
+    writeFileSync(accountFile(w, 'beta'), JSON.stringify({ language: 'es' }))
+    for (const [id, language] of [
+      ['alpha', 'en'],
+      ['beta', 'es'],
+    ] as const) {
+      const body = (await w.api('GET', url(id))).body
+      const catalog = getCatalog(language)
+      expect(body.presets).toEqual([
+        { id: 'full', text: catalog.defaultSystemPrompt },
+        { id: 'personal', text: catalog.promptPresets.personal },
+        { id: 'work', text: catalog.promptPresets.work },
+        { id: 'brief', text: catalog.promptPresets.brief },
+      ])
+    }
   })
 
   it('says where a custom prompt comes from: the account, or the installation', async () => {

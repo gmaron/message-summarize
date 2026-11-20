@@ -12,6 +12,7 @@ const controller = createController({
   api: createApi(request, () => controller.markUnauthorized()),
   createEventSource: () => new EventSource('/api/events'),
   browserLanguage: navigator.language,
+  browserLanguages: navigator.languages,
 })
 
 document.title = textsFor(controller.state.language).ui.title

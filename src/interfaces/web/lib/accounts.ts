@@ -1,4 +1,4 @@
-import { isValidAccountId } from '../../../domain/account-id.js'
+import { isValidAccountId, normalizeAccountId } from '../../../domain/account-id.js'
 import type { WebStateName, WebTexts } from '../../../infrastructure/i18n/catalog.js'
 import { whenText } from './format.js'
 import { fmt } from './i18n.js'
@@ -49,6 +49,9 @@ export function accountActions(account: AccountView): AccountActions {
 export function retryWaitUntil(account: AccountView, now: number): number | null {
   return account.retryAfter !== null && account.retryAfter > now ? account.retryAfter : null
 }
+
+/** The id a person's words turn into (the shared rule of the domain): valid, or empty when nothing valid is left. */
+export const accountIdFrom = (text: string): string => normalizeAccountId(text)
 
 /** The id typed to add an account, checked as the daemon checks it. */
 export const isAccountIdValid = (value: string): boolean => isValidAccountId(value)

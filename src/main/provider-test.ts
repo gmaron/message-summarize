@@ -49,6 +49,12 @@ export function classifyProviderError(reason: string): ProviderTestError {
     return 'notFound'
   }
   if (/timed out after/.test(reason)) return 'timeout'
+  // The API adapters: a missing key, a key the server refuses (401, 403) and a server that cannot be reached.
+  if (/^no API key for /.test(reason)) return 'noKey'
+  if (/^\S+ answered 40[13]\b/.test(reason)) return 'rejected'
+  // Gemini answers a key it does not know with a 400, not a 401 (only that message: any other 400 is a plain failure).
+  if (/^gemini answered 400: .*API key not valid/i.test(reason)) return 'rejected'
+  if (/^could not reach (openai|anthropic|gemini|openai-compatible)\b/.test(reason)) return 'apiUnreachable'
   if (/^could not reach ollama/.test(reason)) return 'unreachable'
   if (
     /invalid summary|returned no structured output|not JSON|returned no message content|exited with code 0\b/.test(

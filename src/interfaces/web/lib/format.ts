@@ -1,4 +1,7 @@
 /** A date and time in a time zone (the account's), in the locale of the page. A zone the browser does not know is ignored. */
+/** True for the zones that are UTC itself (what a container has when no zone is set). */
+export const isUtcZone = (zone: string): boolean => zone === 'UTC' || zone === 'Etc/UTC' || zone === 'Etc/UCT'
+
 export function formatDateTime(epochMs: number, timezone: string, locale: string): string {
   const options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' }
   try {

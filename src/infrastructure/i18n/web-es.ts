@@ -5,7 +5,7 @@ import { DISCLOSURE_SENDS } from './disclosure.js'
 export const webEs: WebTexts = {
   locale: 'es-AR',
   notBuilt: {
-    title: 'message-summarize',
+    title: 'msum',
     message:
       'La interfaz web todavía no está compilada, así que no hay nada para mostrar acá. Compilala (npm run build) y recargá esta página.',
   },
@@ -48,6 +48,10 @@ export const webEs: WebTexts = {
     consentRequired:
       'Elegir este proveedor envía el texto de tus conversaciones fuera de esta computadora: primero tenés que aceptarlo.',
     notLinked: 'La cuenta todavía no está vinculada: escaneá primero el código QR con el teléfono.',
+    invalidKey: 'La clave no es válida: tiene que ser un solo texto, sin espacios ni saltos de línea.',
+    unknownModel: 'Ese modelo no está en la lista del proveedor. Elegí uno de la lista.',
+    invalidSecretsFile:
+      'El archivo de claves guardadas no es un JSON válido, así que no se tocó. Arreglalo o borralo y probá de nuevo.',
     testRunning: 'Hay otra prueba de conexión en curso. Esperá a que termine.',
     setupCompleted: 'El asistente de configuración ya terminó.',
     wrongStep: 'Ese paso no es el que muestra el asistente. Recargá la página.',
@@ -99,7 +103,7 @@ export const webEs: WebTexts = {
     installationOnly: 'Esta opción solo se puede definir en el config.json del directorio de datos.',
   },
   ui: {
-    title: 'message-summarize',
+    title: 'msum',
     loading: 'Cargando…',
     loadFailed: 'No se pudo cargar la información.',
     retry: 'Reintentar',
@@ -152,8 +156,11 @@ export const webEs: WebTexts = {
       stepsLabel: 'Pasos',
       steps: { name: 'Nombre', link: 'Vincular', sync: 'Sincronizar', schedule: 'Primer horario' },
       idLabel: 'Nombre de la cuenta',
-      idPlaceholder: 'Por ejemplo: trabajo',
-      idHint: 'Para reconocerla acá. Usá letras minúsculas, números o guiones (hasta 32 caracteres).',
+      idPlaceholder: 'personal, trabajo, corporativo, etc.',
+      idHint: 'Para reconocerla acá. Escribila como quieras: la ajustamos sola (sin acentos ni espacios).',
+      idPreview: 'Se va a llamar: {id}',
+      idPreviewExisting: 'Se va a llamar: {id} (ya existe, se va a usar)',
+      idNothing: 'Escribí al menos una letra o un número.',
       submit: 'Seguir',
       scheduleTitle: '¿Cuándo querés recibir el digest?',
       finish: 'Terminar',
@@ -270,7 +277,7 @@ export const webEs: WebTexts = {
     risk: {
       heading: 'Antes de vincular una cuenta de WhatsApp',
       unofficial:
-        'message-summarize se conecta a WhatsApp a través de Baileys, un cliente no oficial. WhatsApp no permite clientes no oficiales y puede bloquear tu número, de forma temporal o permanente.',
+        'msum se conecta a WhatsApp a través de Baileys, un cliente no oficial. WhatsApp no permite clientes no oficiales y puede bloquear tu número, de forma temporal o permanente.',
       readOnly:
         'El programa es de solo lectura: nunca responde, nunca te muestra en línea y solo envía el digest a tu propio chat. Eso reduce el riesgo pero no lo elimina.',
       notAffiliated: 'Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por Meta.',
@@ -281,8 +288,8 @@ export const webEs: WebTexts = {
       start: 'Empezar a vincular',
     },
     schedules: {
-      timezoneLabel: 'Zona horaria',
-      tzHint: 'Respeta los cambios de horario de verano. Se cambia en Ajustes.',
+      zoneLine: 'Horarios en la zona {zone}',
+      zoneUtcHint: 'Se toma del sistema; se cambia con la variable TZ o en config.json.',
       emptyTitle: 'Sin horarios',
       empty: 'Sin horarios, el digest solo sale cuando tocás “Resumir ahora”.',
       daysLabel: 'Días',
@@ -310,7 +317,7 @@ export const webEs: WebTexts = {
     settings: {
       appliesLive:
         'Los cambios se aplican sin reiniciar: la conexión con WhatsApp sigue abierta y el próximo digest ya los usa.',
-      groups: { digest: 'Digest', languageTime: 'Idioma y hora', provider: 'Proveedor de resumen' },
+      groups: { digest: 'Digest', languageTime: 'Idioma y nombre', provider: 'Proveedor de resumen' },
       fields: {
         unreadOnly: {
           label: 'Solo mensajes no leídos',
@@ -336,7 +343,10 @@ export const webEs: WebTexts = {
           label: 'Idioma del digest',
           hint: 'Cambia los títulos de sección, las fechas y el prompt por defecto.',
         },
-        timezone: { label: 'Zona horaria', hint: 'Los horarios y las fechas del digest la respetan.' },
+        timezone: {
+          label: 'Zona horaria',
+          hint: 'Se toma de tu computadora; cambiala si los horarios no corren a la hora local.',
+        },
         ownerName: { label: 'Tu nombre en el digest' },
         providerPrimary: { label: 'Proveedor principal', hint: 'El modelo que resume cada conversación.' },
         providerBackup: {
@@ -351,15 +361,36 @@ export const webEs: WebTexts = {
         ollamaBaseUrl: { label: 'Dirección de Ollama' },
         ollamaModel: {
           label: 'Modelo de Ollama',
-          hint: 'Obligatorio si se usa Ollama, y para los chats "solo locales".',
+          hint: 'Obligatorio si se usa Ollama, y para los chats "solo locales". Salen de los que tenés descargados.',
+        },
+        openaiModel: {
+          label: 'Modelo de OpenAI',
+          hint: 'Obligatorio si se usa OpenAI. Se elige de la lista del proveedor.',
+        },
+        openaiBaseUrl: {
+          label: 'Dirección del servidor de OpenAI',
+          hint: 'Dejalo vacío para usar la dirección de la instalación, si tiene una, o la propia de OpenAI. Para LM Studio, OpenRouter o cualquier servidor compatible con la API de OpenAI, escribí su dirección. Se considera externo aunque esté en esta computadora, y entonces la clave es la de "openai-compatible".',
+        },
+        anthropicModel: {
+          label: 'Modelo de Anthropic',
+          hint: 'Obligatorio si se usa Anthropic. Se elige de la lista del proveedor.',
+        },
+        geminiModel: {
+          label: 'Modelo de Gemini',
+          hint: 'Obligatorio si se usa Gemini. Se elige de la lista del proveedor.',
         },
       },
       units: { chars: 'caracteres', hours: 'horas', seconds: 'segundos' },
-      sourceNote: '({source})',
       languageNames: { es: 'Español', en: 'English' },
-      providerNames: { 'claude-cli': 'Claude (línea de comandos)', ollama: 'Ollama (local)' },
+      providerNames: {
+        'claude-cli': 'Claude (línea de comandos)',
+        ollama: 'Ollama (local)',
+        openai: 'OpenAI (API)',
+        anthropic: 'Anthropic (API)',
+        gemini: 'Gemini (API de Google)',
+      },
       none: 'Ninguno',
-      sources: { account: 'definido para esta cuenta', installation: 'de la instalación', default: 'por defecto' },
+      sources: { account: 'Propio de esta cuenta', installation: 'De la instalación', default: 'Por defecto' },
       remoteOllama: 'Esta dirección no es de esta máquina: las conversaciones "solo locales" se enviarán a ese equipo.',
       emptyInherits: 'Dejalo vacío para usar el valor de la instalación.',
       privacyTitle: 'Qué sale de tu máquina',
@@ -367,6 +398,16 @@ export const webEs: WebTexts = {
         'claude-cli': 'El texto de cada conversación sale de tu computadora y va a Anthropic, con tu sesión de Claude.',
         ollama: 'Nada sale de tu computadora: el modelo corre en Ollama, en esta máquina.',
         ollamaRemote: 'El texto de cada conversación va a {host}, otra máquina.',
+        openai:
+          'El texto de cada conversación sale de tu computadora y va a OpenAI (api.openai.com), con tu clave de API.',
+        openaiInherited:
+          'La dirección es la de la instalación (o la de OpenAI, si no tiene ninguna): al guardar se te pide aceptarlo si todavía no aceptaste ese servidor.',
+        openaiCompatible:
+          'El texto de cada conversación va a {host}, un servidor que se considera externo aunque esté en esta computadora.',
+        anthropic:
+          'El texto de cada conversación sale de tu computadora y va a Anthropic (api.anthropic.com), con tu clave de API.',
+        gemini:
+          'El texto de cada conversación sale de tu computadora y va a Google (API de Gemini), con tu clave de API.',
         none: 'Todavía no elegiste un proveedor: no se genera ningún resumen.',
       },
       privacyDetail: 'Ver detalle',
@@ -393,6 +434,15 @@ export const webEs: WebTexts = {
       formatTitle: 'Lo que no cambia',
       formatNote: 'El formato de la respuesta es fijo y se agrega solo: no es parte de este texto y no se edita acá.',
       label: 'Instrucciones para resumir',
+      templates: {
+        label: 'Plantillas',
+        names: { full: 'Completo', personal: 'Personal', work: 'Trabajo', brief: 'Breve' },
+        loaded: 'Plantilla cargada: no se guarda hasta que toques Guardar.',
+        confirmTitle: 'Cargar la plantilla',
+        confirmText: 'Se reemplaza lo que escribiste sin guardar.',
+        confirmYes: 'Cargar plantilla',
+        confirmNo: 'Cancelar',
+      },
       sources: {
         account: 'Editado para esta cuenta.',
         installation: 'Viene de la instalación: al guardar se hace una copia para esta cuenta.',
@@ -520,17 +570,13 @@ export const webEs: WebTexts = {
       note: 'Los logs nunca incluyen mensajes, nombres ni secretos: solo códigos, cantidades y horas. Los nombres de evento son identificadores técnicos.',
       levelLabel: 'Nivel',
       levels: { info: 'Todos', warn: 'Avisos y errores', error: 'Errores' },
-      badge: { info: 'INFO', warn: 'AVISO', error: 'ERROR' },
+      badge: { info: 'Info', warn: 'Aviso', error: 'Error' },
       accountLabel: 'Cuenta',
       allAccounts: 'Todas',
       installation: 'Instalación',
       empty: 'No hay registros con estos filtros.',
       loadOlder: 'Cargar anteriores',
       live: 'Se actualiza en vivo mientras esta página está abierta.',
-      timeColumn: 'Hora',
-      levelColumn: 'Nivel',
-      accountColumn: 'Cuenta',
-      messageColumn: 'Mensaje',
     },
     preview: {
       title: 'Vista previa',
@@ -575,6 +621,37 @@ export const webEs: WebTexts = {
           who: 'A nadie: el modelo corre en Ollama, en esta máquina.',
           what: 'Nada: el texto se procesa acá y no se envía a ningún lado.',
         },
+        openai: {
+          name: 'OpenAI (API)',
+          cost: 'Se cobra por uso a tu cuenta de la API de OpenAI, no a una suscripción de ChatGPT. Necesitás una clave de API.',
+          leaves: 'Sí. El texto de cada conversación de la ventana del digest sale de esta computadora.',
+          who: 'A OpenAI, en api.openai.com.',
+          what: 'OpenAI trata el texto según la política de datos de su API (developers.openai.com/api/docs/guides/your-data). Revisala, y también la configuración de tu cuenta.',
+        },
+        'openai-compatible': {
+          name: 'Servidor compatible con OpenAI',
+          cost: 'Depende de quien administre el servidor.',
+          leaves:
+            'Sí. El texto de cada conversación de la ventana del digest va a {host}, aunque ese servidor esté en esta computadora: un servidor de API se considera externo.',
+          who: 'A quien administre el servidor en {host}.',
+          what: 'Ese servidor trata el texto como decida su dueño y recibe la clave que guardes para él: este programa no puede controlarlo ni verificarlo. Tu clave de OpenAI nunca se envía ahí.',
+        },
+        anthropic: {
+          name: 'Anthropic (API)',
+          cost: 'Se cobra por uso a tu cuenta de la API de Anthropic, que es aparte de una suscripción de chat de Claude. Necesitás una clave de API.',
+          leaves: 'Sí. El texto de cada conversación de la ventana del digest sale de esta computadora.',
+          who: 'A Anthropic, en api.anthropic.com.',
+          what: 'Anthropic trata el texto según los términos de su API y su política de privacidad (privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training). Revisalos.',
+        },
+        gemini: {
+          name: 'Gemini (API de Google)',
+          cost: 'El plan gratuito tiene límites bajos; un proyecto con facturación activa paga por uso. Necesitás una clave de API de Google AI Studio.',
+          leaves: 'Sí. El texto de cada conversación de la ventana del digest sale de esta computadora.',
+          who: 'A Google, en generativelanguage.googleapis.com.',
+          what: 'Google trata el texto según los términos de la API de Gemini (aistudio.google.com/docs/logs-policy). Revisá los vigentes.',
+          warning:
+            'En el plan gratuito, Google puede usar el contenido para mejorar sus productos, y personas pueden revisarlo. Según sus términos de hoy, un proyecto con facturación activa no se usa así, pero los términos cambian: revisá los vigentes y marcá como "solo locales" los chats sensibles para que nunca vayan a Gemini.',
+        },
       },
       ollamaRemote: {
         cost: 'Gratis para este programa, pero depende de quien administre ese servidor.',
@@ -589,6 +666,44 @@ export const webEs: WebTexts = {
       consentNeeded: 'Marcá la casilla para usar este proveedor.',
       consentAgree: 'Aceptar y continuar',
       consentSaving: 'Guardando…',
+      consentChanged:
+        'El destinatario ahora es {provider}, no el que estaba en pantalla. Leé de nuevo el aviso y tildá la casilla.',
+      apiLocalOnly:
+        'Las conversaciones marcadas como "solo locales" nunca se envían a un proveedor externo, y este lo es.',
+      keys: {
+        label: 'Clave de API',
+        hint: 'Se guarda en esta computadora, en un archivo privado de la instalación, y no se vuelve a mostrar. Se envía solo a {destination}.',
+        placeholder: 'Pegá la clave acá',
+        compatibleNote:
+          'Esta dirección no es de OpenAI: su clave es la de "openai-compatible", aparte de la de OpenAI (que nunca se envía a {host}). Algunos servidores no necesitan clave.',
+        destinations: {
+          openai: 'OpenAI (api.openai.com)',
+          anthropic: 'Anthropic (api.anthropic.com)',
+          gemini: 'Google (generativelanguage.googleapis.com)',
+          compatible: '{host}',
+        },
+        status: {
+          checking: 'Buscando una clave guardada…',
+          none: 'No hay ninguna clave guardada.',
+          noneCompatible: 'No hay ninguna clave guardada (algunos servidores no la necesitan).',
+          env: 'Hay una clave en uso desde la variable de entorno {name}.',
+          accountFile: 'Hay una clave en uso desde el archivo de claves de esta cuenta.',
+          file: 'Hay una clave guardada en esta instalación.',
+        },
+        save: 'Guardar clave',
+        replace: 'Reemplazar clave',
+        remove: 'Borrar clave',
+        working: 'Trabajando…',
+        saved: 'Clave guardada. Se vació el campo: la clave no se vuelve a mostrar.',
+        removed: 'Se borró la clave de la instalación.',
+        overriddenEnv: 'Se guardó, pero la variable de entorno {name} tiene prioridad y es la que se usa.',
+        overriddenAccountFile:
+          'Se guardó, pero esta cuenta tiene un archivo de claves propio, y esa clave tiene prioridad.',
+        stillInForce: 'No había una clave de la instalación para borrar; la que está en uso viene de otro lado.',
+        lockedAddress: 'Guardá primero la dirección nueva: la clave es para la dirección que está guardada ahora.',
+        clearedNote:
+          'Cambió la dirección, así que se vació la clave que habías escrito. Escribila de nuevo para el destino nuevo.',
+      },
       test: {
         button: 'Probar conexión',
         running: 'Probando… puede tardar hasta un minuto y medio.',
@@ -600,21 +715,42 @@ export const webEs: WebTexts = {
           timeout: 'Tardó demasiado y se cortó.',
           invalidSummary: 'Respondió, pero no con el formato esperado.',
           unreachable: 'No se pudo conectar con el servidor. Revisá la dirección y que Ollama esté corriendo.',
+          noKey: 'No hay clave de API para este proveedor: guardá una primero.',
+          rejected: 'El proveedor rechazó la clave (o no tiene acceso al modelo). Revisá la clave y el modelo.',
+          apiUnreachable: 'No se pudo conectar con el proveedor. Revisá la dirección y tu conexión.',
           failed: 'La llamada falló. Revisá los logs.',
         },
       },
     },
+    languageLabel: 'Idioma',
+    models: {
+      choose: 'Elegí un modelo',
+      byDefault: 'Por defecto',
+      loading: 'Buscando modelos…',
+      needsKey: 'Pegá tu clave arriba y tocá Guardar clave: ahí aparecen los modelos disponibles.',
+      listUnreachable:
+        'No pudimos conectar con el proveedor para pedirle los modelos. Revisá tu conexión y volvé a buscar.',
+      listFailed: 'El proveedor no nos dio una lista de modelos que se pueda usar. Volvé a buscar en un rato.',
+      needsConsent:
+        'Ese servidor no está en esta computadora: aceptá el aviso de arriba para ver sus modelos (o guardá la dirección primero).',
+      fallback: 'No pudimos consultar la lista; estos son los modelos conocidos de Anthropic.',
+      rejected: 'El proveedor no aceptó la clave. Guardala de nuevo para ver los modelos.',
+      emptyOllama: 'No encontramos modelos. Revisá que Ollama esté corriendo y bajá uno con `ollama pull <modelo>`.',
+      invalidAddress: 'La dirección de Ollama no es válida.',
+      retry: 'Volver a buscar',
+      foreign: 'Este modelo se guardó antes y no figura en la lista ({model}): puede que no funcione.',
+      typingLabel: 'Modelo (avanzado)',
+      typingHint: 'Este servidor no da una lista de modelos: escribí el nombre exacto.',
+      typingUnsaved: 'Guardá la dirección del servidor para ver sus modelos; mientras tanto escribí el nombre exacto.',
+    },
     wizard: {
-      title: 'Configurar message-summarize',
+      title: 'Configurar msum',
       stepOf: 'Paso {n} de {total}',
       stepsLabel: 'Pasos de la configuración',
       steps: {
-        language: 'Idioma',
-        name: 'Nombre',
-        provider: 'Proveedor',
-        transcription: 'Audios',
-        link: 'Vincular teléfono',
-        schedule: 'Horario',
+        you: 'Vos',
+        provider: 'Resumen',
+        link: 'Vincular',
         done: 'Listo',
       },
       back: 'Atrás',
@@ -625,37 +761,35 @@ export const webEs: WebTexts = {
         '¿Saltear la configuración? Podés hacer todo después desde la página, pero no se envía ningún digest hasta que haya una cuenta vinculada, un proveedor y un horario.',
       skipYes: 'Sí, saltearlo',
       skipNo: 'No, seguir',
-      language: {
-        heading: 'Idioma',
-        intro: 'Es el idioma de la página y de la línea de comandos. Se guarda en la configuración de la instalación.',
-        label: 'Idioma',
-      },
-      name: {
-        heading: 'Tu nombre',
+      you: {
+        heading: 'Sobre vos',
         intro:
           'Los resúmenes te llaman por este nombre. La cuenta se crea ahora; se vincula con tu teléfono dos pasos más adelante.',
         ownerLabel: 'Tu nombre',
         ownerHint: 'Entra en el prompt como {{name}}.',
         ownerBlank: 'Escribí tu nombre.',
         ownerTooLong: 'El nombre es demasiado largo (80 caracteres como máximo).',
-        accountLabel: 'Identificador de la cuenta',
-        accountHint: 'Minúsculas, números y guiones. "default" está bien si tenés una sola cuenta.',
+        accountLabel: 'Nombre de la cuenta',
+        accountHint: 'Para reconocerla acá. Escribila como quieras: la ajustamos sola (sin acentos ni espacios).',
         accountLocked: 'La cuenta ya está creada.',
       },
       provider: {
         heading: 'Proveedor',
         intro: 'Elegí qué escribe los resúmenes. No hay uno por defecto: leé qué hace cada uno con tus conversaciones.',
         laterNote:
-          'Más proveedores (claves de API, Gemini, Codex, cualquier otro comando) llegan en una próxima versión.',
+          'OpenAI, Anthropic y Gemini se eligen acá. Codex y cualquier otro comando llegan en una próxima versión.',
+        apiModelLabel: 'Modelo',
+        apiModelHint: 'Los modelos salen de la lista del proveedor: no hace falta escribir nada.',
+        openaiBaseUrlInvalid:
+          'Escribí una dirección web (que empiece con http:// o https://) para ver quién recibiría el texto.',
+        openaiBaseUrlLabel: 'Dirección del servidor (opcional)',
+        openaiBaseUrlHint:
+          'Dejalo vacío para conservar la dirección vigente (la de la instalación o la de la cuenta); si no hay ninguna, se usa OpenAI. Para LM Studio, OpenRouter o cualquier servidor compatible con la API de OpenAI, escribí su dirección. Se considera externo aunque esté en esta computadora, y entonces la clave es la de "openai-compatible".',
         modelLabel: 'Modelo',
         baseUrlLabel: 'Dirección de Ollama',
         ollamaModelLabel: 'Modelo de Ollama',
-        ollamaModelHint: 'El nombre de un modelo que ya descargaste, por ejemplo uno de los que lista "ollama list".',
+        ollamaModelHint: 'Los modelos que ya descargaste en Ollama.',
         remoteOllama: 'Esta dirección no es de esta máquina: el texto de tus conversaciones se enviará a ese equipo.',
-      },
-      transcription: {
-        heading: 'Mensajes de audio',
-        text: 'Por ahora los audios aparecen como [audio] en el digest. Transcribirlos de forma local, sin enviarlos a ningún lado, llega en una próxima versión.',
       },
       link: {
         heading: 'Vincular el teléfono',
@@ -663,21 +797,11 @@ export const webEs: WebTexts = {
           'Escaneá el código QR desde WhatsApp en tu teléfono (Dispositivos vinculados). Después se sincroniza el historial; puede tardar unos minutos.',
         needsLink: 'Vinculá la cuenta para continuar.',
       },
-      schedule: {
-        heading: 'Primer horario',
-        intro:
-          '¿Cuándo querés que llegue el digest? Sin horario no se envía ninguno: igual podés pedir uno con "Resumir ahora".',
-        timezone: 'Zona horaria: {timezone}',
-        suggest: 'Usar 09:00 y 19:00, todos los días',
-        current: 'Horarios de esta cuenta',
-        none: 'Todavía no hay horarios.',
-        skipNote: 'Podés saltear este paso y agregar horarios después.',
-      },
       done: {
         heading: 'Todo listo',
         text: 'La cuenta está vinculada. Desde el panel podés cambiar los ajustes, marcar conversaciones, editar el prompt y ver el historial.',
-        noSchedule:
-          'Todavía no hay horarios: no se enviará ningún digest hasta que agregues uno (pestaña "Horarios" de la cuenta).',
+        schedules:
+          'Al terminar, si la cuenta no tiene horarios, se agregan las 09:00 y las 18:00 todos los días. Los cambiás cuando quieras en la pestaña "Horarios" de la cuenta.',
         finish: 'Ir al panel',
       },
     },

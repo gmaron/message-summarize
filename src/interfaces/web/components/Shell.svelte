@@ -45,7 +45,12 @@
 <div class="app">
   <nav class="rail" aria-label={ui.shell.navLabel}>
     <a class="brand" href={hrefOf({ name: 'home' })}>
-      <Icon name="logo" size={22} /><span>{ui.title}</span>
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M3.5 4h14.5a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 16.5V4Z" fill="currentColor" />
+          <path d="M7.2 15V9M7.2 11.8a2.4 2.4 0 0 1 4.8 0V15M12 11.8a2.4 2.4 0 0 1 4.8 0V15" fill="none" stroke="var(--ink)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span><span>{ui.title}</span>
     </a>
     <a class="rail-link" href={hrefOf({ name: 'home' })} aria-current={route.name === 'home' ? 'page' : undefined}>
       <Icon name="home" /><span>{ui.shell.home}</span>

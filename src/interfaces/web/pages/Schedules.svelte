@@ -9,9 +9,8 @@
   import { accountActions, isDigestRunning } from '../lib/accounts.js'
   import { type Api, ApiError } from '../lib/api.js'
   import { errorText } from '../lib/digest.js'
-  import { whenText } from '../lib/format.js'
+  import { isUtcZone, whenText } from '../lib/format.js'
   import { fmt } from '../lib/i18n.js'
-  import { hrefOf } from '../lib/router.js'
   import { dayLabel, newDraft, type ScheduleDraft, scheduleIssueOf, shortTime, validateDraft } from '../lib/schedules.js'
   import type { AppState } from '../lib/state.js'
   import type { AccountView, ScheduleView, SchedulesView } from '../lib/types.js'
@@ -133,6 +132,9 @@
   {:else}
     <div class="split">
       <div class="stack">
+        <p class="small muted">
+          {fmt(t.zoneLine, { zone: loaded.timezone })}{#if isUtcZone(loaded.timezone)} {t.zoneUtcHint}{/if}
+        </p>
         <ul class="list">
           {#if loaded.schedules.length === 0}
             <li class="empty">
@@ -195,12 +197,6 @@
               {/each}
             {/if}
           </div>
-        </div>
-        <div class="panel">
-          <span class="strong">{t.timezoneLabel}</span>
-          <span class="num">{loaded.timezone}</span>
-          <span class="small muted">{t.tzHint}</span>
-          <a class="small" href={hrefOf({ name: 'account', id: accountId, tab: 'ajustes' })}>{texts.ui.tabs.settings}</a>
         </div>
       </aside>
     </div>

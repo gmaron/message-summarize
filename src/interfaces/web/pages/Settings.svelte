@@ -2,10 +2,13 @@
   import { untrack } from 'svelte'
   import type { WebTexts } from '../../../infrastructure/i18n/catalog.js'
   import AccountHeader from '../components/AccountHeader.svelte'
+  import ApiKeyField from '../components/ApiKeyField.svelte'
+  import ModelPicker from '../components/ModelPicker.svelte'
   import Disclosure from '../components/Disclosure.svelte'
   import Icon from '../components/Icon.svelte'
   import Switch from '../components/Switch.svelte'
   import { isDigestRunning } from '../lib/accounts.js'
+  import { API_PROVIDERS, consentAddress, displayHostOf, isApiProvider, openaiTarget, providerOfConsentKey } from '../lib/api-providers.js'
   import { type Api, ApiError } from '../lib/api.js'
   import { errorText } from '../lib/digest.js'
   import { fmt } from '../lib/i18n.js'
@@ -18,6 +21,9 @@
     storedDraft,
     draftOf,
     FIELDS,
+    type FieldSpec,
+    fieldsFor,
+    inheritsWhenEmpty,
     GROUPS,
     groupIssues,
     isEmptyPatch,
@@ -28,9 +34,10 @@
     optionLabel,
     timeZoneChoices,
   } from '../lib/settings.js'
+  import { MODEL_FIELDS } from '../lib/models.js'
   import { hostOf, needsConsent } from '../lib/setup.js'
   import type { AppState } from '../lib/state.js'
-  import type { AccountView, PromptView, SettingsIssue, SettingsView } from '../lib/types.js'
+  import type { AccountView, ModelProviderName, PromptView, SettingsIssue, SettingsView } from '../lib/types.js'
 
   // Ajustes: one row per option (what it is on the left, how to change it on the right) and a bar to save only when
   // something changed. The daemon checks every value; what it refuses is said next to the option.
@@ -62,6 +69,8 @@
   let saved = $state(false)
   let saving = $state(false)
   let prompt: PromptView | null = $state.raw(null)
+  // Changes when a key is saved or removed: the lists of models are asked again.
+  let keyVersion = $state(0)
   const zones = timeZoneChoices()
 
   const grouped = $derived(groupIssues(issues))
@@ -70,7 +79,9 @@
 
   // RNF-02: choosing a provider that sends the text of the chats out of this machine asks for the agreement first. The
   // daemon answers 409 consentRequired; the change waits here until the box is ticked, then it is recorded and retried.
-  let consent: { key: string; patch: Record<string, unknown>; agreed: boolean } | null = $state.raw(null)
+  // `address`: the server the agreement is for, as it was on screen when the daemon asked (a remote Ollama, a compatible server):
+  // the same address is what gets recorded, so the user never agrees to one host and sends to another.
+  let consent: { key: string; patch: Record<string, unknown>; agreed: boolean; address?: string } | null = $state.raw(null)
 
   function show(view: SettingsView) {
     loaded = view
@@ -124,7 +135,10 @@
         error.provider !== undefined &&
         needsConsent(error.provider)
       ) {
-        consent = { key: error.provider, patch, agreed: false }
+        // The daemon names the origin that would receive the text (the effective address after this change): that is what
+        // the notice shows and what the agreement is recorded for.
+        const address = consentAddress(error.provider, error.origin)
+        consent = { key: error.provider, patch, agreed: false, ...(address === undefined ? {} : { address }) }
       } else failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
     } finally {
       saving = false
@@ -155,12 +169,12 @@
 
   async function agree() {
     if (consent === null || !consent.agreed) return
-    const { key, patch } = consent
+    const { key, patch, address } = consent
     saving = true
     failure = null
     try {
-      // The consent is for what is disclosed: for an Ollama that is not on this machine, the address it is reached at.
-      await api.recordConsent(accountId, key, key === 'claude-cli' ? undefined : ollamaUrl)
+      // The consent is for what is disclosed: for a server of the user's choice, the address that was shown.
+      await api.recordConsent(accountId, key, address)
     } catch (error) {
       failure = errorText(error instanceof ApiError ? error.code : 'internal', texts)
       saving = false
@@ -174,28 +188,43 @@
   const ollamaUrl = $derived.by(
     () => String(draft['provider.ollama.baseUrl'] ?? '').trim() || (loaded?.values.provider.ollama.baseUrl ?? ''),
   )
+  /** The address Ollama is typed with in the form, or empty. */
+  const ollamaTyped = $derived(String(draft['provider.ollama.baseUrl'] ?? '').trim())
+  /** The field was emptied while the account has its own address: saving removes it, so the installation's one counts. */
+  const ollamaCleared = $derived.by(
+    () => ollamaTyped === '' && loaded?.sources['provider.ollama.baseUrl'] === 'account',
+  )
   /** The host of an Ollama that is not on this machine (the text goes there), or undefined. */
   const ollamaHost = $derived(isRemoteUrl(ollamaUrl) ? (hostOf(ollamaUrl) ?? undefined) : undefined)
-  const consentHost = (): string | undefined => hostOf(ollamaUrl) ?? undefined
+  /** The address OpenAI will have when the form is saved, as typed (empty: OpenAI's own, or what the installation gives). */
+  const openaiTyped = $derived(String(draft['provider.openai.baseUrl'] ?? '').trim())
+  /** The address OpenAI has now, saved: the key is for this one. */
+  const openaiSaved = $derived.by(() => loaded?.values.provider.openai.baseUrl ?? '')
+  /** Where `openai` goes once saved: an empty field may mean the installation's address, which is not visible here. */
+  const openaiAim = $derived.by(() => openaiTarget(openaiTyped, openaiSaved, loaded?.sources['provider.openai.baseUrl']))
+  const openaiCompatible = $derived(openaiAim.compatible)
+  const openaiHost = $derived(openaiAim.address === null ? undefined : (displayHostOf(openaiAim.address) ?? undefined))
+  const consentHost = (address: string | undefined): string | undefined =>
+    address === undefined ? undefined : (displayHostOf(address) ?? undefined)
 
   const sourceOf = (option: string): string | null => {
     const source = loaded?.sources[option]
     return source === undefined ? null : t.sources[source]
   }
   const label = (option: string): string => optionLabel(option, texts)
+  /** The models of OpenAI, Anthropic and Gemini: each sits under the key of its provider. */
+  const isApiModel = (option: string): boolean => ['openai', 'anthropic', 'gemini'].includes(MODEL_FIELDS[option] ?? '')
+  /** What describes a control: its hint, and the tag of where the value comes from when there is one. */
+  const describedBy = (option: string, id: string): string => (sourceOf(option) === null ? `${id}-h` : `${id}-h ${id}-t`)
   const providerName = (name: string): string => (t.providerNames as Readonly<Record<string, string>>)[name] ?? name
   const unitOf: Readonly<Record<string, string>> = $derived({
     maxCharsPerConversation: t.units.chars,
     defaultWindowHours: t.units.hours,
     'provider.claudeCli.timeoutMs': t.units.seconds,
   })
-  /** The hint under an option: what it does, that an empty text inherits, and where the value in force comes from. */
-  const hintOf = (option: string, kind: string): string => {
-    const source = sourceOf(option)
-    return [optionHint(option, texts), kind === 'text' ? t.emptyInherits : undefined, source === null ? undefined : fmt(t.sourceNote, { source })]
-      .filter((part) => part !== undefined)
-      .join(' ')
-  }
+  /** The hint under an option: what it does and that an empty text inherits (where the value comes from is a tag by the title). */
+  const hintOf = (option: string, kind: string): string =>
+    [optionHint(option, texts), kind === 'text' && inheritsWhenEmpty(option) ? t.emptyInherits : undefined].filter((part) => part !== undefined).join(' ')
   const providers = $derived(
     [String(draft['provider.primary'] ?? ''), String(draft['provider.backup'] ?? '')].filter(
       (name, index, all) => name !== '' && all.indexOf(name) === index,
@@ -205,6 +234,13 @@
   const privacyLine = $derived.by(() => {
     const primary = String(draft['provider.primary'] ?? '')
     if (primary === 'claude-cli') return t.privacySummary['claude-cli']
+    if (primary === 'anthropic' || primary === 'gemini') return t.privacySummary[primary]
+    if (primary === 'openai') {
+      if (openaiAim.address === null) return t.privacySummary.openaiInherited
+      return openaiCompatible
+        ? fmt(t.privacySummary.openaiCompatible, { host: openaiHost ?? openaiAim.address })
+        : t.privacySummary.openai
+    }
     if (primary === 'ollama') {
       return ollamaHost === undefined ? t.privacySummary.ollama : fmt(t.privacySummary.ollamaRemote, { host: ollamaHost })
     }
@@ -212,6 +248,44 @@
   })
   const promptModified = $derived.by(() => prompt !== null && differsFromOriginal(prompt.text, prompt))
 </script>
+
+<!-- The row of a model: its title, its hint and the chooser (a list from the daemon: nobody types a model). -->
+{#snippet modelRow(field: FieldSpec)}
+  {@const id = `setting-${field.option}`}
+  {@const problems = grouped.byOption[field.option] ?? []}
+  <div class="set-row">
+    <div class="txt">
+      <span class="ttl"
+        ><span id="{id}-label">{label(field.option)}</span>{#if sourceOf(field.option) !== null}<span class="tag" id="{id}-t"
+            >{sourceOf(field.option)}</span
+          >{/if}</span
+      >
+      <span class="hint" id="{id}-h">{hintOf(field.option, 'choice')}</span>
+    </div>
+    <div class="ctl">
+      <ModelPicker
+        {api}
+        {texts}
+        account={accountId}
+        provider={MODEL_FIELDS[field.option] as ModelProviderName}
+        {id}
+        label={label(field.option)}
+        bare
+        labelledby="{id}-label"
+        value={String(draft[field.option] ?? '')}
+        onchange={(model) => (draft[field.option] = model)}
+        describedby={describedBy(field.option, id)}
+        baseUrl={field.option === 'provider.ollama.model' && ollamaTyped !== '' ? ollamaTyped : undefined}
+        inherit={field.option === 'provider.ollama.model' && ollamaCleared}
+        reload={keyVersion}
+        typingOnly={field.option === 'provider.openai.model' && openaiTyped !== '' && openaiTyped !== openaiSaved}
+      />
+    </div>
+    {#each problems as problem (problem.code)}
+      <span class="problem" role="alert">{issueReason(problem, texts)}</span>
+    {/each}
+  </div>
+{/snippet}
 
 <div class="page-inner">
   <AccountHeader {account} {texts} tab="ajustes" {running} />
@@ -235,37 +309,40 @@
       {#each GROUPS as group (group)}
         <section class="form-section rows" aria-labelledby="group-{group}">
           <h2 id="group-{group}">{t.groups[group]}</h2>
-          {#each FIELDS.filter((field) => field.group === group) as field (field.option)}
+          {#each fieldsFor(group, providers) as field (field.option)}
             {@const id = `setting-${field.option}`}
             {@const problems = grouped.byOption[field.option] ?? []}
             {#if field.kind === 'boolean'}
               <label class="set-row toggle" for={id}>
                 <span class="txt">
-                  <span>{label(field.option)}</span>
+                  <span class="ttl"><span>{label(field.option)}</span>{#if sourceOf(field.option) !== null}<span class="tag" id="{id}-t" aria-hidden="true">{sourceOf(field.option)}</span>{/if}</span>
                   <span class="hint" id="{id}-h">{hintOf(field.option, field.kind)}</span>
                 </span>
                 <span class="ctl end">
-                  <Switch {id} describedby="{id}-h" checked={draft[field.option] === true} onchange={(on) => (draft[field.option] = on)} />
+                  <Switch {id} describedby={describedBy(field.option, id)} checked={draft[field.option] === true} onchange={(on) => (draft[field.option] = on)} />
                 </span>
                 {#each problems as problem (problem.code)}
                   <span class="problem" role="alert">{issueReason(problem, texts)}</span>
                 {/each}
               </label>
+            {:else if MODEL_FIELDS[field.option] !== undefined}
+              <!-- The model of an API provider sits under its key (see below); the others are here. -->
+              {#if !isApiModel(field.option)}{@render modelRow(field)}{/if}
             {:else}
               <div class="set-row">
                 <div class="txt">
-                  <label for={id}>{label(field.option)}</label>
+                  <span class="ttl"><label for={id}>{label(field.option)}</label>{#if sourceOf(field.option) !== null}<span class="tag" id="{id}-t">{sourceOf(field.option)}</span>{/if}</span>
                   <span class="hint" id="{id}-h">{hintOf(field.option, field.kind)}</span>
                 </div>
                 <div class="ctl">
                   {#if field.kind === 'language'}
-                    <select {id} aria-describedby="{id}-h" bind:value={draft[field.option] as string}>
+                    <select {id} aria-describedby={describedBy(field.option, id)} bind:value={draft[field.option] as string}>
                       {#each loaded.options.languages as language (language)}
                         <option value={language}>{t.languageNames[language]}</option>
                       {/each}
                     </select>
                   {:else if field.kind === 'choice'}
-                    <select {id} aria-describedby="{id}-h" bind:value={draft[field.option] as string}>
+                    <select {id} aria-describedby={describedBy(field.option, id)} bind:value={draft[field.option] as string}>
                       <option value="">{t.none}</option>
                       {#each loaded.options.providers as provider (provider)}
                         <option value={provider}>{providerName(provider)}</option>
@@ -278,7 +355,7 @@
                         inputmode="numeric"
                         autocomplete="off"
                         {id}
-                        aria-describedby="{id}-h"
+                        aria-describedby={describedBy(field.option, id)}
                         aria-invalid={problems.length > 0}
                         bind:value={draft[field.option] as string}
                       />
@@ -291,7 +368,7 @@
                       list={field.kind === 'timezone' ? 'setting-zones' : undefined}
                       autocomplete="off"
                       spellcheck="false"
-                      aria-describedby="{id}-h"
+                      aria-describedby={describedBy(field.option, id)}
                       aria-invalid={problems.length > 0}
                       bind:value={draft[field.option] as string}
                     />
@@ -315,19 +392,53 @@
                 <details class="detail">
                   <summary>{t.privacyDetail}</summary>
                   {#each providers as name (name)}
-                    {#if name === 'claude-cli' || name === 'ollama'}
+                    {#if name === 'claude-cli' || name === 'ollama' || isApiProvider(name)}
                       <div class="stack-sm">
                         {#if providers.length > 1}<span class="strong">{providerName(name)}</span>{/if}
-                        <Disclosure {texts} provider={name} host={name === 'ollama' ? ollamaHost : undefined} />
+                        {#if name === 'openai' && openaiAim.address === null}
+                          <p class="muted small">{t.privacySummary.openaiInherited}</p>
+                        {:else}
+                          <Disclosure
+                            {texts}
+                            provider={name}
+                            host={name === 'ollama' ? ollamaHost : name === 'openai' && openaiCompatible ? openaiHost : undefined}
+                            compatible={name === 'openai' && openaiCompatible}
+                          />
+                        {/if}
                       </div>
                     {/if}
                   {/each}
                 </details>
               {/if}
             </div>
+            {#each API_PROVIDERS.filter((name) => providers.includes(name)) as name (name)}
+              <div class="set-row">
+                <div class="txt">
+                  <span>{providerName(name)}</span>
+                </div>
+                <div class="ctl">
+                  <ApiKeyField
+                    {api}
+                    {texts}
+                    account={accountId}
+                    provider={name}
+                    baseUrl={name === 'openai' ? openaiSaved : ''}
+                    idSuffix="settings-{name}"
+                    onkeychange={() => (keyVersion += 1)}
+                    lockedNote={name === 'openai' && openaiTyped !== openaiSaved
+                      ? texts.ui.disclosure.keys.lockedAddress
+                      : undefined}
+                  />
+                </div>
+              </div>
+              {#each FIELDS.filter((field) => field.option === `provider.${name}.model`) as field (field.option)}
+                {@render modelRow(field)}
+              {/each}
+            {/each}
           {/if}
         </section>
       {/each}
+
       <datalist id="setting-zones">
         {#each zones as zone (zone)}
           <option value={zone}></option>
@@ -362,7 +473,12 @@
       {#if consent !== null}
         <div class="notice warn" role="alert">
           <h3>{texts.ui.disclosure.consentTitle}</h3>
-          <Disclosure {texts} provider={consent.key === 'claude-cli' ? 'claude-cli' : 'ollama'} host={consent.key === 'claude-cli' ? undefined : consentHost()} />
+          <Disclosure
+            {texts}
+            provider={providerOfConsentKey(consent.key) ?? 'claude-cli'}
+            host={consentHost(consent.address)}
+            compatible={consent.key === 'openai-compatible'}
+          />
           <label class="check">
             <input
               type="checkbox"
@@ -371,7 +487,7 @@
                 if (consent !== null) consent = { ...consent, agreed: event.currentTarget.checked }
               }}
             />
-            <span>{fmt(texts.ui.disclosure.consentCheckbox, { provider: consent.key === 'claude-cli' ? providerName('claude-cli') : (consentHost() ?? providerName('ollama')) })}</span>
+            <span>{fmt(texts.ui.disclosure.consentCheckbox, { provider: consentHost(consent.address) ?? providerName(providerOfConsentKey(consent.key) ?? 'claude-cli') })}</span>
           </label>
           <div class="acts">
             <button type="button" class="btn primary" disabled={saving || !consent.agreed} onclick={agree}>
