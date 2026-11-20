@@ -1,471 +1,442 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-18T12:48:31.818Z",
-  "title": "Design System: message-summarize",
+  "generatedAt": "2026-11-20T13:01:16.234Z",
+  "title": "Design System: msum",
   "extensions": {
     "colorMeta": {
       "primary": {
         "role": "primary",
-        "displayName": "Slate Ink Navy",
-        "canonical": "oklch(30.6% 0.032 247)",
-        "darkValue": "#dce4ec",
+        "displayName": "Ink Black",
+        "canonical": "oklch(23.2% 0.004 286)",
         "tonalRamp": [
-          "#090b0d",
-          "#1e262d",
-          "#354451",
-          "#536373",
-          "#738595",
-          "#98a7b6",
-          "#c1cad3",
-          "#eceff2"
+          "#0b0b0c",
+          "#252526",
+          "#424244",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeeef"
         ]
       },
       "primary-ink": {
         "role": "primary",
         "displayName": "Primary Ink",
-        "canonical": "oklch(100.0% 0.000 89)",
-        "darkValue": "#14202b",
+        "canonical": "oklch(100.0% 0.000 90)",
         "tonalRamp": [
           "#0b0b0b",
-          "#252524",
-          "#434240",
-          "#62615f",
-          "#838280",
-          "#a6a5a3",
-          "#c9c9c8",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
           "#eeeeee"
         ]
       },
-      "slate": {
-        "role": "primary",
-        "displayName": "Slate Ink Navy",
-        "canonical": "oklch(30.6% 0.032 247)",
-        "darkValue": "#0f151b",
+      "ground": {
+        "role": "neutral",
+        "displayName": "White Ground",
+        "canonical": "oklch(100.0% 0.000 90)",
         "tonalRamp": [
-          "#090b0d",
-          "#1e262d",
-          "#354451",
-          "#536373",
-          "#738595",
-          "#98a7b6",
-          "#c1cad3",
-          "#eceff2"
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
         ]
       },
-      "slate-2": {
-        "role": "primary",
-        "displayName": "Rail Hover Slate",
-        "canonical": "oklch(35.6% 0.039 248)",
-        "darkValue": "#1c2733",
+      "ground-2": {
+        "role": "neutral",
+        "displayName": "Soft Grey",
+        "canonical": "oklch(97.1% 0.003 286)",
         "tonalRamp": [
-          "#090b0e",
-          "#1d262f",
-          "#334455",
-          "#506377",
-          "#718599",
-          "#95a7ba",
-          "#c0cad5",
-          "#ebeff2"
+          "#0b0b0b",
+          "#252526",
+          "#424243",
+          "#616163",
+          "#828284",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
         ]
       },
-      "slate-ink": {
-        "role": "primary",
-        "displayName": "Rail Text",
-        "canonical": "oklch(91.5% 0.014 247)",
-        "darkValue": "#dce4ec",
+      "surface": {
+        "role": "neutral",
+        "displayName": "White Surface",
+        "canonical": "oklch(100.0% 0.000 90)",
         "tonalRamp": [
-          "#0a0b0c",
-          "#222529",
-          "#3d4349",
-          "#5b6269",
-          "#7c838a",
-          "#9fa6ac",
-          "#c6cacd",
-          "#edeef0"
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
         ]
       },
-      "slate-mute": {
-        "role": "primary",
-        "displayName": "Rail Muted Text",
-        "canonical": "oklch(77.0% 0.024 248)",
-        "darkValue": "#8d9ba8",
+      "bubble": {
+        "role": "neutral",
+        "displayName": "Bubble Grey",
+        "canonical": "oklch(97.1% 0.003 286)",
         "tonalRamp": [
-          "#0a0b0d",
-          "#20262b",
-          "#39434d",
-          "#57636e",
-          "#788490",
-          "#9ba6b1",
-          "#c4cad0",
-          "#edeff1"
+          "#0b0b0b",
+          "#252526",
+          "#424243",
+          "#616163",
+          "#828284",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
+        ]
+      },
+      "rail": {
+        "role": "neutral",
+        "displayName": "Rail Grey",
+        "canonical": "oklch(97.1% 0.003 286)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252526",
+          "#424243",
+          "#616163",
+          "#828284",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
+        ]
+      },
+      "rail-hover": {
+        "role": "neutral",
+        "displayName": "Rail Hover Wash",
+        "canonical": "rgba(0, 0, 0, 0.045)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "rail-active": {
+        "role": "neutral",
+        "displayName": "Rail Active Wash",
+        "canonical": "rgba(0, 0, 0, 0.075)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(92.3% 0.007 286)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#424145",
+          "#616165",
+          "#828286",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "oklch(86.5% 0.007 286)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#424145",
+          "#616165",
+          "#828286",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(23.2% 0.004 286)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424244",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeeef"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Secondary Ink",
+        "canonical": "oklch(43.6% 0.005 286)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#424244",
+          "#616164",
+          "#828285",
+          "#a5a5a8",
+          "#c9c9cb",
+          "#eeeeef"
+        ]
+      },
+      "mute": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "oklch(54.0% 0.008 286)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252528",
+          "#414146",
+          "#616165",
+          "#828287",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
         ]
       },
       "avatar": {
-        "role": "primary",
-        "displayName": "Avatar Slate",
-        "canonical": "oklch(48.9% 0.044 245)",
-        "darkValue": "#3b5064",
+        "role": "neutral",
+        "displayName": "Avatar Grey",
+        "canonical": "oklch(92.3% 0.007 286)",
         "tonalRamp": [
-          "#090c0e",
-          "#1b2630",
-          "#2f4457",
-          "#4c6479",
-          "#6d869c",
-          "#92a8bc",
-          "#becbd7",
-          "#ebeff3"
+          "#0b0b0c",
+          "#252527",
+          "#424145",
+          "#616165",
+          "#828286",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
+        ]
+      },
+      "avatar-ink": {
+        "role": "neutral",
+        "displayName": "Avatar Ink",
+        "canonical": "oklch(43.6% 0.005 286)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#424244",
+          "#616164",
+          "#828285",
+          "#a5a5a8",
+          "#c9c9cb",
+          "#eeeeef"
         ]
       },
       "ok": {
         "role": "secondary",
-        "displayName": "Sea Green",
-        "canonical": "oklch(48.3% 0.068 173)",
-        "darkValue": "#7cc4ac",
+        "displayName": "Connected Green",
+        "canonical": "oklch(53.1% 0.095 162)",
         "tonalRamp": [
-          "#070d0b",
-          "#0f2b23",
-          "#134d3f",
-          "#326e5e",
-          "#54907f",
-          "#7fb1a2",
-          "#b4d1c7",
-          "#e8f1ee"
+          "#000f07",
+          "#002e1b",
+          "#005033",
+          "#207250",
+          "#479471",
+          "#6fb794",
+          "#a4d7bc",
+          "#dcf6e8"
         ]
       },
       "ok-bg": {
         "role": "secondary",
-        "displayName": "Sea Green Wash",
-        "canonical": "oklch(94.4% 0.016 166)",
-        "darkValue": "#173229",
+        "displayName": "Green Wash",
+        "canonical": "oklch(95.9% 0.017 163)",
         "tonalRamp": [
-          "#0a0b0b",
-          "#212624",
+          "#090c0a",
+          "#202723",
           "#3b4540",
-          "#59645f",
-          "#7a8680",
-          "#9da8a3",
-          "#c5cbc8",
-          "#edefee"
+          "#59645e",
+          "#7a867f",
+          "#9da8a2",
+          "#c3ccc7",
+          "#ebf0ed"
         ]
       },
       "bad": {
         "role": "secondary",
         "displayName": "Brick",
-        "canonical": "oklch(51.6% 0.138 33)",
-        "darkValue": "#f0957f",
+        "canonical": "oklch(53.3% 0.153 31)",
         "tonalRamp": [
-          "#140806",
-          "#42130a",
-          "#771d0a",
-          "#a03c28",
-          "#c75f49",
-          "#e58874",
-          "#f1baae",
-          "#fceae6"
+          "#1c0201",
+          "#4c0300",
+          "#7d0f01",
+          "#a63423",
+          "#ce5845",
+          "#f27f6b",
+          "#ffb09f",
+          "#ffe3d9"
         ]
       },
       "bad-bg": {
         "role": "secondary",
         "displayName": "Brick Wash",
-        "canonical": "oklch(94.7% 0.021 36)",
-        "darkValue": "#3a1f19",
+        "canonical": "oklch(95.6% 0.019 26)",
         "tonalRamp": [
-          "#0d0b0a",
-          "#2a2321",
-          "#4c3f3b",
-          "#6c5d59",
-          "#8e7e7a",
-          "#b0a19d",
-          "#cfc7c5",
-          "#f0eeed"
+          "#0e0a0a",
+          "#2b2322",
+          "#4b3f3d",
+          "#6c5d5c",
+          "#8d7e7d",
+          "#b0a19f",
+          "#d1c6c5",
+          "#f3edec"
         ]
       },
       "bad-ink": {
         "role": "secondary",
         "displayName": "Brick Ink",
         "canonical": "oklch(40.5% 0.113 33)",
-        "darkValue": "#f6c3b5",
         "tonalRamp": [
-          "#120806",
-          "#3e1810",
-          "#6f2819",
+          "#180503",
+          "#431309",
+          "#702718",
           "#964635",
           "#bc6755",
-          "#db8e7d",
-          "#eabdb3",
-          "#faebe7"
+          "#df8c79",
+          "#f7b7a9",
+          "#ffe6de"
         ]
       },
       "warn": {
         "role": "secondary",
-        "displayName": "Ochre",
+        "displayName": "Amber",
         "canonical": "oklch(50.8% 0.108 73)",
-        "darkValue": "#e9c077",
         "tonalRamp": [
-          "#100a04",
-          "#362000",
+          "#140800",
+          "#3a1d00",
           "#613700",
           "#855600",
           "#a9772e",
-          "#c99c61",
-          "#dec5a5",
-          "#f5ede3"
+          "#cc9b59",
+          "#e7c294",
+          "#feebd4"
         ]
       },
       "warn-bg": {
         "role": "secondary",
-        "displayName": "Ochre Wash",
+        "displayName": "Amber Wash",
         "canonical": "oklch(95.8% 0.032 85)",
-        "darkValue": "#362a12",
         "tonalRamp": [
-          "#0c0b09",
-          "#29251b",
-          "#494130",
+          "#0d0b06",
+          "#2a2419",
+          "#49412f",
           "#6a604c",
           "#8b816d",
-          "#ada492",
-          "#cec9be",
-          "#f0eeeb"
+          "#aea490",
+          "#d0c8b9",
+          "#f2eee6"
         ]
       },
       "focus": {
         "role": "tertiary",
-        "displayName": "Focus Blue",
-        "canonical": "oklch(52.7% 0.112 248)",
-        "darkValue": "#7db4e3",
+        "displayName": "Focus Ink",
+        "canonical": "oklch(23.2% 0.004 286)",
         "tonalRamp": [
-          "#060c13",
-          "#072741",
-          "#004476",
-          "#23659d",
-          "#4787c2",
-          "#74aadf",
-          "#aecdeb",
-          "#e6f0fa"
+          "#0b0b0c",
+          "#252526",
+          "#424244",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeeef"
         ]
       },
       "sel": {
         "role": "tertiary",
-        "displayName": "Selection Blue",
-        "canonical": "oklch(89.8% 0.027 242)",
-        "darkValue": "#24425c",
+        "displayName": "Selection Grey",
+        "canonical": "oklch(88.7% 0.007 286)",
         "tonalRamp": [
-          "#0a0b0d",
-          "#1f262c",
-          "#37444e",
-          "#55636f",
-          "#758591",
-          "#99a7b3",
-          "#c2cad1",
-          "#eceff1"
-        ]
-      },
-      "ground": {
-        "role": "neutral",
-        "displayName": "Stone Ground",
-        "canonical": "oklch(96.2% 0.006 84)",
-        "darkValue": "#1a1816",
-        "tonalRamp": [
-          "#0b0b0b",
-          "#262523",
-          "#43423f",
-          "#63615e",
-          "#84827e",
-          "#a6a5a2",
-          "#cac9c7",
-          "#efeeee"
-        ]
-      },
-      "ground-2": {
-        "role": "neutral",
-        "displayName": "Paper",
-        "canonical": "oklch(98.2% 0.004 91)",
-        "darkValue": "#201d1a",
-        "tonalRamp": [
-          "#0b0b0b",
-          "#252524",
-          "#434240",
-          "#62615f",
-          "#838280",
-          "#a6a5a2",
-          "#c9c9c8",
-          "#eeeeee"
-        ]
-      },
-      "surface": {
-        "role": "neutral",
-        "displayName": "White Surface",
-        "canonical": "oklch(100.0% 0.000 89)",
-        "darkValue": "#25221f",
-        "tonalRamp": [
-          "#0b0b0b",
-          "#252524",
-          "#434240",
-          "#62615f",
-          "#838280",
-          "#a6a5a3",
-          "#c9c9c8",
-          "#eeeeee"
-        ]
-      },
-      "bubble": {
-        "role": "neutral",
-        "displayName": "Bubble White",
-        "canonical": "oklch(100.0% 0.000 89)",
-        "darkValue": "#2b2724",
-        "tonalRamp": [
-          "#0b0b0b",
-          "#252524",
-          "#434240",
-          "#62615f",
-          "#838280",
-          "#a6a5a3",
-          "#c9c9c8",
-          "#eeeeee"
-        ]
-      },
-      "line": {
-        "role": "neutral",
-        "displayName": "Warm Hairline",
-        "canonical": "oklch(89.8% 0.012 84)",
-        "darkValue": "#37322d",
-        "tonalRamp": [
-          "#0b0b0a",
-          "#262522",
-          "#45423c",
-          "#64615a",
-          "#86827b",
-          "#a8a59e",
-          "#cbc9c5",
-          "#efeeed"
-        ]
-      },
-      "line-strong": {
-        "role": "neutral",
-        "displayName": "Warm Rule",
-        "canonical": "oklch(83.8% 0.016 82)",
-        "darkValue": "#48423b",
-        "tonalRamp": [
-          "#0c0b0a",
-          "#272520",
-          "#464139",
-          "#666157",
-          "#878277",
-          "#a9a49b",
-          "#ccc9c3",
-          "#efeeed"
-        ]
-      },
-      "ink": {
-        "role": "neutral",
-        "displayName": "Ink",
-        "canonical": "oklch(25.2% 0.013 243)",
-        "darkValue": "#ece8e3",
-        "tonalRamp": [
-          "#0a0b0c",
-          "#222528",
-          "#3d4348",
-          "#5b6268",
-          "#7c838a",
-          "#9fa6ac",
-          "#c6cacd",
-          "#edeff0"
-        ]
-      },
-      "ink-2": {
-        "role": "neutral",
-        "displayName": "Secondary Ink",
-        "canonical": "oklch(46.1% 0.020 242)",
-        "darkValue": "#c7c0b8",
-        "tonalRamp": [
-          "#0a0b0c",
-          "#21262a",
-          "#3a434b",
-          "#58636c",
-          "#78848e",
-          "#9ca7af",
-          "#c4cacf",
-          "#edeff0"
-        ]
-      },
-      "mute": {
-        "role": "neutral",
-        "displayName": "Muted Ink",
-        "canonical": "oklch(54.0% 0.020 248)",
-        "darkValue": "#a0988f",
-        "tonalRamp": [
-          "#0a0b0c",
-          "#21262a",
-          "#3b434c",
-          "#59626c",
-          "#79848e",
-          "#9da6af",
-          "#c4cacf",
-          "#edeff0"
+          "#0b0b0c",
+          "#252527",
+          "#424145",
+          "#616165",
+          "#828286",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
         ]
       },
       "dot-ok": {
         "role": "secondary",
         "displayName": "Rail Dot Connected",
-        "canonical": "oklch(74.4% 0.093 165)",
-        "darkValue": "#6fbf9e",
+        "canonical": "oklch(53.1% 0.095 162)",
         "tonalRamp": [
-          "#050d0a",
-          "#042d1f",
-          "#005037",
-          "#1a7254",
-          "#439475",
-          "#73b599",
-          "#afd3c2",
-          "#e6f2ec"
+          "#000f07",
+          "#002e1b",
+          "#005033",
+          "#207250",
+          "#479471",
+          "#6fb794",
+          "#a4d7bc",
+          "#dcf6e8"
         ]
       },
       "dot-bad": {
         "role": "secondary",
         "displayName": "Rail Dot Problem",
-        "canonical": "oklch(75.8% 0.115 34)",
-        "darkValue": "#f0957f",
+        "canonical": "oklch(53.3% 0.153 31)",
         "tonalRamp": [
-          "#120806",
-          "#3e180f",
-          "#702716",
-          "#974532",
-          "#bd6752",
-          "#dc8e7b",
-          "#ebbdb2",
-          "#faebe7"
+          "#1c0201",
+          "#4c0300",
+          "#7d0f01",
+          "#a63423",
+          "#ce5845",
+          "#f27f6b",
+          "#ffb09f",
+          "#ffe3d9"
         ]
       },
       "dot-busy": {
         "role": "secondary",
         "displayName": "Rail Dot Busy",
-        "canonical": "oklch(82.8% 0.103 81)",
-        "darkValue": "#e9c077",
+        "canonical": "oklch(67.0% 0.131 79)",
         "tonalRamp": [
-          "#0f0a04",
-          "#332100",
-          "#5b3b00",
-          "#7f5a00",
-          "#a27b31",
-          "#c29f63",
-          "#dac6a5",
-          "#f4eee3"
+          "#150800",
+          "#3b1d00",
+          "#643600",
+          "#885500",
+          "#ac7700",
+          "#cf9b3f",
+          "#e9c385",
+          "#ffecce"
         ]
       },
       "dot-idle": {
         "role": "neutral",
         "displayName": "Rail Dot Idle",
-        "canonical": "oklch(77.0% 0.024 248)",
-        "darkValue": "#a9b6c3",
+        "canonical": "oklch(71.1% 0.007 286)",
         "tonalRamp": [
-          "#0a0b0d",
-          "#20262b",
-          "#39434d",
-          "#57636e",
-          "#788490",
-          "#9ba6b1",
-          "#c4cad0",
-          "#edeff1"
+          "#0b0b0c",
+          "#252527",
+          "#414145",
+          "#616165",
+          "#828287",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
         ]
       }
     },
@@ -481,6 +452,10 @@
       "stat": {
         "displayName": "Stat",
         "purpose": "The one big figure in a side panel, such as the next digest time."
+      },
+      "brand": {
+        "displayName": "Brand",
+        "purpose": "The msum wordmark in the rail."
       },
       "title": {
         "displayName": "Title",
@@ -506,21 +481,25 @@
         "displayName": "Micro",
         "purpose": "Pills, the day chip, table headers, the bubble foot."
       },
+      "tag": {
+        "displayName": "Tag",
+        "purpose": "Source tags beside a setting title."
+      },
       "mono": {
         "displayName": "Mono",
-        "purpose": "Log lines and inline commands only."
+        "purpose": "Log messages and inline commands only."
       }
     },
     "shadows": [
       {
-        "name": "bubble-lift",
-        "value": "0 1px 2px var(--bubble-shadow), 0 6px 18px -8px var(--bubble-shadow)",
-        "purpose": "The digest bubble only. --bubble-shadow is rgba(34,49,63,0.08) light, rgba(0,0,0,0.35) dark."
-      },
-      {
         "name": "dialog-lift",
         "value": "0 20px 60px -20px rgb(0 0 0 / 0.4)",
-        "purpose": "Confirm dialog, over a rgb(21 27 33 / 0.45) backdrop."
+        "purpose": "Confirm dialog, over a rgb(21 27 33 / 0.45) backdrop. The only floating surface."
+      },
+      {
+        "name": "tab-active",
+        "value": "0 1px 3px rgba(0, 0, 0, 0.14)",
+        "purpose": "Current segment of the tabs."
       },
       {
         "name": "knob",
@@ -529,13 +508,8 @@
       },
       {
         "name": "focus-halo",
-        "value": "0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent)",
-        "purpose": "Focused inputs, selects, textareas."
-      },
-      {
-        "name": "tab-underline",
-        "value": "inset 0 -3px 0 var(--slate)",
-        "purpose": "Current tab marker (slate-ink in dark mode)."
+        "value": "0 0 0 3px color-mix(in srgb, var(--focus) 12%, transparent)",
+        "purpose": "Focused inputs, selects, textareas, with an ink border."
       }
     ],
     "motion": [
@@ -552,7 +526,7 @@
       {
         "name": "ticks",
         "value": "color 0.25s ease-out",
-        "purpose": "Delivery ticks turning sea-green."
+        "purpose": "Delivery ticks turning green."
       },
       {
         "name": "progress",
@@ -574,7 +548,7 @@
       {
         "name": "rail",
         "value": "760px",
-        "purpose": "Below: the rail becomes a sticky top bar of avatar chips; tabs scroll with an edge fade; settings rows stack."
+        "purpose": "Below: the rail becomes a sticky top bar of avatar items; tabs scroll with an edge fade; settings rows stack."
       }
     ]
   },
@@ -583,65 +557,73 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The one primary action of a view, such as Resumir ahora.",
-      "html": "<button class=\"ds-btn ds-btn-primary\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 12 20 4l-6 16-3-7z\"/></svg>Resumir ahora</button>",
-      "css": ".ds-btn { font: inherit; font-size: 0.875rem; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: 10px; border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); font-weight: 600; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary) 88%, var(--ground)); }"
+      "description": "The one primary action of a view, such as Resumir ahora; disabled is a soft grey fill.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 12 20 4l-6 16-3-7z\"/></svg>Resumir ahora</button> <button class=\"ds-btn ds-btn-primary\" disabled>Guardar</button>",
+      "css": ".ds-btn { font: inherit; font-size: 0.875rem; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; } .ds-btn:hover:not(:disabled) { border-color: var(--ink-2); } .ds-btn:active:not(:disabled) { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); font-weight: 600; } .ds-btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 88%, var(--ground)); border-color: var(--primary); } .ds-btn-primary:disabled { background: var(--line); border-color: var(--line); color: var(--mute); cursor: not-allowed; }"
     },
     {
       "name": "Secondary Button",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "Default button: white surface, warm rule border.",
-      "html": "<button class=\"ds-btn2\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>Vista previa</button>",
-      "css": ".ds-btn2 { font: inherit; font-size: 0.875rem; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: 10px; border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color 0.15s ease-out; } .ds-btn2:hover { border-color: var(--ink-2); } .ds-btn2:active { transform: translateY(1px); } .ds-btn2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }"
+      "description": "Default button: white surface, 1px rule border; disabled is a soft grey fill.",
+      "html": "<button class=\"ds-btn2\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>Vista previa</button> <button class=\"ds-btn2\" disabled>Probar</button>",
+      "css": ".ds-btn2 { font: inherit; font-size: 0.875rem; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; } .ds-btn2:hover:not(:disabled) { border-color: var(--ink-2); } .ds-btn2:active:not(:disabled) { transform: translateY(1px); } .ds-btn2:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-btn2:disabled { background: var(--ground-2); border-color: var(--line); color: var(--mute); cursor: not-allowed; }"
     },
     {
       "name": "Quiet Button",
       "kind": "button",
       "refersTo": "button-quiet",
-      "description": "Low-emphasis action; border and paper fill appear on hover.",
+      "description": "Low-emphasis action; soft grey fill and hairline appear on hover.",
       "html": "<button class=\"ds-btn-quiet\">Cancelar</button>",
-      "css": ".ds-btn-quiet { font: inherit; font-size: 0.875rem; font-weight: 500; min-height: 40px; padding: 8px 16px; border-radius: 10px; border: 1.5px solid transparent; background: transparent; color: var(--ink); cursor: pointer; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; } .ds-btn-quiet:hover { background: var(--ground-2); border-color: var(--line); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }"
+      "css": ".ds-btn-quiet { font: inherit; font-size: 0.875rem; font-weight: 500; min-height: 40px; padding: 8px 16px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--ink); cursor: pointer; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; } .ds-btn-quiet:hover { background: var(--ground-2); border-color: var(--line); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }"
     },
     {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input",
-      "description": "Inputs and selects: 44px, 1.5px warm rule, blue border and halo on focus.",
+      "description": "Inputs and selects: 44px, 1px rule, ink border and soft halo on focus.",
       "html": "<label class=\"ds-field\"><span class=\"ds-lab\">Nombre</span><input class=\"ds-input\" type=\"text\" value=\"personal\"><span class=\"ds-hint\">Cómo aparece la cuenta en la web.</span></label>",
-      "css": ".ds-field { display: grid; gap: 6px; max-width: 340px; } .ds-lab { font-weight: 600; font-size: 0.875rem; color: var(--ink); } .ds-hint { font-size: 0.8125rem; color: var(--mute); } .ds-input { font: inherit; font-size: 0.9375rem; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line-strong); border-radius: 10px; padding: 10px 14px; height: 44px; width: 100%; box-sizing: border-box; transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out; } .ds-input:hover { border-color: var(--ink-2); } .ds-input:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent); }"
+      "css": ".ds-field { display: grid; gap: 6px; max-width: 340px; } .ds-lab { font-weight: 600; font-size: 0.875rem; color: var(--ink); } .ds-hint { font-size: 0.8125rem; color: var(--mute); } .ds-input { font: inherit; font-size: 0.9375rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 14px; height: 44px; width: 100%; box-sizing: border-box; transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out; } .ds-input:hover { border-color: var(--mute); } .ds-input:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 12%, transparent); }"
     },
     {
       "name": "State Pill",
       "kind": "chip",
-      "refersTo": "pill",
-      "description": "Account state beside the title; border and text color are the state.",
-      "html": "<span class=\"ds-pill ds-ok\">Conectada</span> <span class=\"ds-pill ds-bad\">Sesión cerrada</span> <span class=\"ds-pill ds-busy\">Reconectando</span>",
-      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; border-radius: 999px; padding: 2px 10px; border: 1.5px solid currentColor; white-space: nowrap; } .ds-ok { color: var(--ok); } .ds-bad { color: var(--bad); } .ds-busy { color: var(--warn); }"
+      "refersTo": "pill-ok",
+      "description": "Account state beside the title; a tinted fill with no border, the colour is the state.",
+      "html": "<span class=\"ds-pill ds-ok\">Conectada</span> <span class=\"ds-pill ds-bad\">Sesión cerrada</span> <span class=\"ds-pill ds-busy\">Reconectando</span> <span class=\"ds-pill ds-idle\">Pausada</span>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; border-radius: 999px; padding: 2px 10px; background: color-mix(in srgb, currentColor 12%, transparent); white-space: nowrap; } .ds-ok { color: var(--ok); } .ds-bad { color: var(--bad); } .ds-busy { color: var(--warn); } .ds-idle { color: var(--mute); }"
+    },
+    {
+      "name": "Source Tag",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "Small neutral tag beside a setting title saying where its value comes from.",
+      "html": "<span class=\"ds-ttl\"><b>Modelo</b><span class=\"ds-tag\">config</span><span class=\"ds-tag ds-tag-warn\">sin guardar</span></span>",
+      "css": ".ds-ttl { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; } .ds-tag { display: inline-flex; align-items: center; font-size: 0.6875rem; font-weight: 500; line-height: 1.5; padding: 0 8px; border-radius: 999px; color: var(--mute); background: var(--ground-2); border: 1px solid var(--line); white-space: nowrap; } .ds-tag-warn { color: var(--warn); background: var(--warn-bg); border-color: transparent; }"
     },
     {
       "name": "Filter Chips",
       "kind": "chip",
       "refersTo": "chip",
-      "description": "Toggle chips; pressed fills with slate.",
+      "description": "Toggle chips and the prompt template picker; pressed fills with ink.",
       "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\">Todos</button><button class=\"ds-chip\" aria-pressed=\"false\">Errores</button><button class=\"ds-chip\" aria-pressed=\"false\">Avisos</button></div>",
-      "css": ".ds-chips { display: flex; gap: 6px; flex-wrap: wrap; } .ds-chip { font: inherit; font-size: 0.8125rem; padding: 4px 12px; border-radius: 999px; border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--ink-2); cursor: pointer; } .ds-chip:hover { border-color: var(--ink-2); } .ds-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-chip[aria-pressed=\"true\"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }"
+      "css": ".ds-chips { display: flex; gap: 6px; flex-wrap: wrap; } .ds-chip { font: inherit; font-size: 0.8125rem; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); cursor: pointer; } .ds-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-chip[aria-pressed=\"true\"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }"
     },
     {
       "name": "Account Rail",
       "kind": "nav",
       "refersTo": "rail",
-      "description": "Slate rail with avatar initials, status dots and the current account highlighted.",
-      "html": "<nav class=\"ds-rail\"><span class=\"ds-rail-label\">Cuentas</span><a class=\"ds-acct\" aria-current=\"page\" href=\"#\"><span class=\"ds-av\">P<i class=\"ds-dot\"></i></span><strong>personal</strong><span class=\"ds-s\">Próximo hoy 15:28</span></a><a class=\"ds-acct\" href=\"#\"><span class=\"ds-av\">T<i class=\"ds-dot ds-dot-bad\"></i></span><strong>trabajo</strong><span class=\"ds-s ds-s-bad\">Sesión cerrada</span></a></nav>",
-      "css": ".ds-rail { background: var(--slate); color: var(--slate-ink); padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; width: 256px; box-sizing: border-box; } .ds-rail-label { font-size: 0.75rem; color: var(--slate-mute); padding: 10px 10px 6px; letter-spacing: 0.04em; } .ds-acct { display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 0 12px; padding: 9px 10px; border-radius: 10px; align-items: center; text-decoration: none; color: inherit; } .ds-acct:hover { background: color-mix(in srgb, var(--slate-2) 70%, transparent); } .ds-acct[aria-current=\"page\"] { background: var(--slate-2); } .ds-acct:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-acct strong { font-size: 0.9375rem; } .ds-av { grid-row: span 2; width: 36px; height: 36px; border-radius: 50%; background: var(--avatar); display: grid; place-items: center; font-weight: 700; color: #fff; position: relative; } .ds-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--slate); background: #6fbf9e; box-sizing: border-box; } .ds-dot-bad { background: #f0957f; } .ds-s { font-size: 0.75rem; color: var(--slate-mute); } .ds-s-bad { color: #f2a08e; }"
+      "description": "Light rail with the msum brand tile, 32px avatar initials, status dots and a soft active fill.",
+      "html": "<nav class=\"ds-rail\"><span class=\"ds-brand\"><span class=\"ds-mark\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\"><path d=\"M3.5 4h14.5a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 16.5V4Z\" fill=\"currentColor\"/><path d=\"M7.2 15V9M7.2 11.8a2.4 2.4 0 0 1 4.8 0V15M12 11.8a2.4 2.4 0 0 1 4.8 0V15\" fill=\"none\" stroke=\"#1d1d1f\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span>msum</span></span><span class=\"ds-rail-label\">Cuentas</span><a class=\"ds-acct\" aria-current=\"page\" href=\"#\"><span class=\"ds-av\">P<i class=\"ds-dot\"></i></span><strong>personal</strong><span class=\"ds-s\">Próximo hoy 15:28</span></a><a class=\"ds-acct\" href=\"#\"><span class=\"ds-av\">T<i class=\"ds-dot ds-dot-bad\"></i></span><strong>trabajo</strong><span class=\"ds-s ds-s-bad\">Sesión cerrada</span></a></nav>",
+      "css": ".ds-rail { background: var(--rail); color: var(--ink); border-right: 1px solid var(--line); padding: 16px 10px; display: flex; flex-direction: column; gap: 4px; width: 256px; box-sizing: border-box; } .ds-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; font-weight: 650; letter-spacing: -0.02em; font-size: 1.0625rem; } .ds-mark { width: 26px; height: 26px; border-radius: 8px; background: var(--ink); color: var(--ground); display: grid; place-items: center; } .ds-rail-label { font-size: 0.75rem; font-weight: 500; color: var(--mute); padding: 14px 10px 6px; } .ds-acct { display: grid; grid-template-columns: 32px minmax(0,1fr); gap: 0 10px; padding: 7px 10px; border-radius: 10px; align-items: center; text-decoration: none; color: inherit; } .ds-acct:hover { background: var(--rail-hover); } .ds-acct[aria-current=\"page\"] { background: var(--rail-active); } .ds-acct:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-acct strong { font-size: 0.9375rem; } .ds-av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; background: var(--avatar); display: grid; place-items: center; font-weight: 700; color: var(--avatar-ink); position: relative; } .ds-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--rail); background: var(--dot-ok); box-sizing: border-box; } .ds-dot-bad { background: var(--dot-bad); } .ds-s { font-size: 0.75rem; color: var(--mute); } .ds-s-bad { color: var(--bad); }"
     },
     {
-      "name": "Account Tabs",
+      "name": "Segmented Tabs",
       "kind": "nav",
       "refersTo": "tabs",
-      "description": "Text tabs over a hairline; the current tab gets a 3px slate underline.",
+      "description": "Account tabs as a segmented control; the current segment is white on a grey track.",
       "html": "<nav class=\"ds-tabs\"><a href=\"#\" aria-current=\"page\">Resumen</a><a href=\"#\">Conversaciones</a><a href=\"#\">Horarios</a><a href=\"#\">Historial</a><a href=\"#\">Ajustes</a></nav>",
-      "css": ".ds-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--line); } .ds-tabs a { padding: 2px 0 10px; text-decoration: none; color: var(--mute); font-size: 0.9375rem; white-space: nowrap; } .ds-tabs a:hover { color: var(--ink); } .ds-tabs a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; } .ds-tabs a[aria-current=\"page\"] { color: var(--ink); font-weight: 600; box-shadow: inset 0 -3px 0 var(--primary); }"
+      "css": ".ds-tabs { display: flex; gap: 2px; background: var(--rail-hover); padding: 3px; border-radius: 11px; width: fit-content; max-width: 100%; overflow-x: auto; } .ds-tabs a { padding: 5px 14px; border-radius: 8px; text-decoration: none; color: var(--ink-2); font-size: 0.875rem; white-space: nowrap; } .ds-tabs a:hover { color: var(--ink); } .ds-tabs a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } .ds-tabs a[aria-current=\"page\"] { color: var(--ink); font-weight: 600; background: var(--ground); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); }"
     },
     {
       "name": "Problem Notice",
@@ -649,86 +631,82 @@
       "refersTo": "notice-bad",
       "description": "Brick-tinted notice at the top of the side column, carrying its fix action.",
       "html": "<div class=\"ds-notice\"><div class=\"ds-row\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v6M12 16.5h.01\"/></svg><span><b>trabajo:</b> Sesión cerrada</span></div><button class=\"ds-fix\">Volver a vincular</button></div>",
-      "css": ".ds-notice { background: var(--bad-bg); color: var(--bad-ink); border-radius: 12px; padding: 14px 16px; display: grid; gap: 10px; font-size: 0.875rem; max-width: 320px; } .ds-row { display: flex; gap: 10px; align-items: flex-start; } .ds-fix { justify-self: end; font: inherit; font-size: 0.8125rem; font-weight: 600; min-height: 32px; padding: 4px 12px; border-radius: 8px; border: 1.5px solid var(--primary); background: var(--primary); color: var(--primary-ink); cursor: pointer; } .ds-fix:hover { background: color-mix(in srgb, var(--primary) 88%, var(--ground)); } .ds-fix:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }"
+      "css": ".ds-notice { background: var(--bad-bg); color: var(--bad-ink); border-radius: 12px; padding: 14px 16px; display: grid; gap: 10px; font-size: 0.875rem; max-width: 320px; } .ds-row { display: flex; gap: 10px; align-items: flex-start; } .ds-fix { justify-self: end; font: inherit; font-size: 0.8125rem; font-weight: 600; min-height: 32px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--primary); background: var(--primary); color: var(--primary-ink); cursor: pointer; } .ds-fix:hover { background: color-mix(in srgb, var(--primary) 88%, var(--ground)); } .ds-fix:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }"
     },
     {
       "name": "Digest Bubble",
       "kind": "custom",
       "refersTo": "digest-bubble",
-      "description": "The signature reader: the digest as it lands in the own chat, with day chip, tail and delivery ticks.",
+      "description": "The signature reader: the digest as it lands in the own chat, flat and soft grey, with day chip and delivery ticks.",
       "html": "<div class=\"ds-thread\"><span class=\"ds-daychip\">Hoy</span><article class=\"ds-bubble\"><div class=\"ds-sec ds-top\"><div class=\"ds-b\">Resumen WhatsApp, mar 18-11, 09:00</div><div class=\"ds-sub\">23 chats con novedades · 4 necesitan respuesta</div></div><div class=\"ds-sec\"><div class=\"ds-b\">Necesitan respuesta</div><div>• <b>Marina Ruiz</b>: Confirma la reunión del jueves a las 10.</div><div class=\"ds-task\">☐ Confirmar la reunión del jueves</div></div><div class=\"ds-foot\"><span class=\"ds-num\">6:29</span><svg viewBox=\"0 0 18 14\" width=\"18\" height=\"14\" role=\"img\" aria-label=\"Entregado\"><path d=\"m1 7.5 3.5 3.5L11 4\"/><path d=\"m8.5 10.5.5.5L15.5 4\"/></svg></div></article></div>",
-      "css": ".ds-thread { display: grid; gap: 6px; justify-items: start; padding: 16px 16px 16px 24px; background: var(--ground); } .ds-daychip { justify-self: center; font-size: 0.75rem; font-weight: 600; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; margin-bottom: 6px; } .ds-bubble { background: var(--bubble); color: var(--ink); border-radius: 4px 18px 18px 18px; padding: 20px 22px 12px; max-width: 680px; width: 100%; box-sizing: border-box; box-shadow: 0 1px 2px var(--bubble-shadow), 0 6px 18px -8px var(--bubble-shadow); display: grid; gap: 14px; line-height: 1.55; font-size: 15px; position: relative; animation: ds-arrive 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-bubble::before { content: \"\"; position: absolute; left: -8px; top: 0; width: 10px; height: 14px; background: var(--bubble); clip-path: polygon(100% 0, 0 0, 100% 100%); } .ds-sec { display: grid; gap: 8px; } .ds-top { gap: 4px; } .ds-b { font-weight: 700; } .ds-sub, .ds-task { color: var(--ink-2); } .ds-task { padding-left: 1.4em; } .ds-foot { display: flex; justify-content: flex-end; gap: 6px; align-items: center; font-size: 0.75rem; color: var(--mute); } .ds-num { font-variant-numeric: tabular-nums; } .ds-foot svg { stroke: var(--ok); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; } @keyframes ds-arrive { from { transform: translateY(10px); opacity: 0.4; } to { transform: none; opacity: 1; } } @media (prefers-reduced-motion: reduce) { .ds-bubble { animation: none; } }"
+      "css": ".ds-thread { display: grid; gap: 6px; justify-items: start; padding: 16px; background: var(--ground); } .ds-daychip { justify-self: center; font-size: 0.75rem; font-weight: 600; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; margin-bottom: 6px; } .ds-bubble { background: var(--bubble); color: var(--ink); border-radius: 16px; padding: 20px 22px 12px; max-width: 680px; width: 100%; box-sizing: border-box; display: grid; gap: 14px; line-height: 1.55; font-size: 15px; animation: ds-arrive 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-sec { display: grid; gap: 8px; } .ds-top { gap: 4px; } .ds-b { font-weight: 700; } .ds-sub, .ds-task { color: var(--ink-2); } .ds-task { padding-left: 1.4em; } .ds-foot { display: flex; justify-content: flex-end; gap: 6px; align-items: center; font-size: 0.75rem; color: var(--mute); } .ds-num { font-variant-numeric: tabular-nums; } .ds-foot svg { stroke: var(--ok); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; } @keyframes ds-arrive { from { transform: translateY(10px); opacity: 0.4; } to { transform: none; opacity: 1; } } @media (prefers-reduced-motion: reduce) { .ds-bubble { animation: none; } }"
     },
     {
       "name": "Switch",
       "kind": "input",
       "refersTo": "switch",
-      "description": "Toggle for conversations and settings; checked turns sea-green.",
+      "description": "Toggle for conversations and settings; checked turns green.",
       "html": "<label class=\"ds-switch\"><input type=\"checkbox\" checked aria-label=\"Incluir en el digest\"><span class=\"ds-track\"></span></label>",
       "css": ".ds-switch { position: relative; width: 40px; height: 24px; display: inline-block; } .ds-switch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; } .ds-track { position: absolute; inset: 0; border-radius: 999px; background: var(--line-strong); transition: background-color 0.15s ease-out; pointer-events: none; } .ds-track::after { content: \"\"; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-switch input:checked + .ds-track { background: var(--ok); } .ds-switch input:checked + .ds-track::after { transform: translateX(16px); } .ds-switch input:focus-visible + .ds-track { outline: 2px solid var(--focus); outline-offset: 2px; }"
     }
   ],
   "narrative": {
     "northStar": "Your Own Chat",
-    "overview": "The web is a frame around one message. The digest is drawn exactly as it lands in the account's own chat: a white bubble with a squared top-left corner and a small tail, a day chip above it, the time and delivery ticks in its foot. Everything else on the page (the slate rail of accounts, the tabs, the side column of actions and notices) exists to say whether that message is arriving, to fix it when it is not, and to tune what it says. The system refuses the grey card dashboard where the digest becomes one row of a table.\n\nThe material is warm and quiet: a stone-paper ground, hairline warm-grey borders, white surfaces, and one cool slate that does all the structural work (the rail, the primary button, every selected state). Color carries state only. Sea-green means delivered or connected, brick means a problem, ochre means busy or waiting. Density is that of a settings app, not a cockpit: 15px body, generous row padding, one primary action per view.\n\nThe whole interface is one system sans, the same face the user's chat client draws in, with tabular numerals wherever a time or a count appears. Nothing loads from the network: the font is the system one and every icon is inline SVG drawn in a single stroke style. Light and dark follow the operating system.",
+    "overview": "**Creative North Star: \"Your Own Chat\"**\n\nThe web is a frame around one message. The digest is drawn the way it lands in the account's own chat: a flat soft-grey bubble on a white page, a day chip above it, the time and delivery ticks in its foot. Everything else (the light rail of accounts, the segmented tabs, the side column of actions and notices) exists to say whether that message is arriving, to fix it when it is not, and to tune what it says. The system refuses the grey card dashboard where the digest becomes one row of a table.\n\nThe material is Apple-style and monochrome: a white ground, a pale-grey rail and bubble (`#f5f5f7`), near-black ink (`#1d1d1f`), hairline cool-grey borders, and almost no shadow. The one accent is the ink itself: it fills the primary button, the active segmented tab, selected chips and weekday toggles, the checkbox, the current wizard step and the logo tile. Colour reports state only: green for connected or delivered, brick for problems, amber for busy or waiting, always with words beside it. Density is that of a settings app, not a cockpit: 15px body, generous row padding, one primary action per view.\n\nThe whole interface is one system sans, the face the user's own devices draw in, with tabular numerals wherever a time or a count appears. Nothing loads from the network: the font is the system one and every icon is inline SVG in a single stroke style. The brand is the lowercase \"msum\" wordmark beside a solid ink tile holding a speech bubble with an \"m\" in it (also the favicon). The web is light only for now.",
     "keyCharacteristics": [
       "The digest bubble is the one reader everywhere: summary, preview and history run.",
-      "A slate rail on the left holds the accounts, each with an avatar initial and a status dot.",
-      "Warm stone ground and white surfaces separated by 1px warm-grey hairlines; almost no shadow.",
-      "Color is reserved for state: sea-green, brick, ochre, and slate for selection.",
+      "A light rail on the left holds the accounts, each with a 32px avatar initial and a status dot.",
+      "White ground, `#f5f5f7` rail and bubble, 1px cool-grey hairlines; no shadow on content.",
+      "Ink is the only accent; colour is reserved for state: green, brick, amber.",
       "One system sans, tabular numerals for times and counts.",
-      "Controls share one vocabulary: 10px corners, 1.5px borders, 40 to 44px tall."
+      "Controls share one vocabulary: 10px corners, 1px borders, 36 to 44px tall, one ink focus ring."
     ],
     "rules": [
       {
         "name": "The State Only Rule",
-        "body": "Sea-green, brick and ochre appear only when they report a state (delivered, connected, problem, busy). They never decorate, never fill a heading, never become a brand accent.",
+        "body": "Green, brick and amber appear only when they report a state (delivered, connected, problem, busy). They never decorate, never fill a heading, never become a brand accent.",
         "section": "colors"
       },
       {
-        "name": "The One Slate Rule",
-        "body": "Selection, the primary action and the rail all use the same slate. A new selected state uses `primary` on `primary-ink`; it does not introduce a second accent.",
+        "name": "The One Ink Rule",
+        "body": "Selection, the primary action, the active tab, the checkbox and the logo all use the same ink. A new selected state uses `primary` on `primary-ink`; it does not introduce a second accent.",
         "section": "colors"
       },
       {
         "name": "The Tabular Time Rule",
-        "body": "Every time, count and number uses tabular numerals (`font-variant-numeric: tabular-nums`): bubble foot, schedule times, table cells, number and time inputs.",
+        "body": "Every time, count and number uses tabular numerals (`font-variant-numeric: tabular-nums`): bubble foot, schedule times, table cells, log timestamps, number and time inputs.",
         "section": "typography"
       },
       {
         "name": "The Weight Not Face Rule",
-        "body": "Hierarchy is weight and size inside one family. Monospace is for log lines and commands, nothing else.",
+        "body": "Hierarchy is weight and size inside one family. Monospace is for log messages and commands, nothing else.",
         "section": "typography"
       },
       {
         "name": "The Problems First Rule",
         "body": "In the side column, a problem notice sits above the next-digest panel and the actions. On the accounts home, accounts with problems come first.",
         "section": "layout"
-      },
-      {
-        "name": "The One Floating Thing Rule",
-        "body": "The bubble is the only content that casts a shadow. Panels and cards beside it stay flat, so the message is what the eye lands on.",
-        "section": "elevation"
       }
     ],
     "dos": [
-      "Do show any digest through the bubble component, with its day chip, time and ticks, wherever a digest appears.",
-      "Do use `primary` on `primary-ink` for every selected or current state and for the single primary button of a view.",
-      "Do reserve `ok`, `bad` and `warn` for state, each paired with words or an icon so color is never the only signal.",
-      "Do keep controls at 10px corners, 1.5px `line-strong` borders, 40px (buttons) or 44px (inputs) tall.",
-      "Do separate containers with 1px `line` hairlines on white surfaces; keep them flat.",
-      "Do use tabular numerals for every time and count.",
-      "Do draw icons as inline 24px-viewbox SVG with a 1.8 stroke, round caps and joins, `currentColor`, no fill.",
-      "Do give every interactive element the shared focus ring (2px `focus`, 2px offset) and honor reduced motion, which removes every transition and animation.",
-      "Do put the problem notice first in the side column, with its fix action inside the notice."
+      "**Do** show any digest through the bubble component, with its day chip, time and ticks, wherever a digest appears.",
+      "**Do** use `primary` on `primary-ink` for every selected or current state and for the single primary button of a view.",
+      "**Do** reserve `ok`, `bad` and `warn` for state, each paired with words or an icon so colour is never the only signal.",
+      "**Do** keep controls at 10px corners, 1px `line-strong` borders, 40px (buttons) or 44px (inputs) tall.",
+      "**Do** separate containers with 1px `line` hairlines on white surfaces, or with the `#f5f5f7` tone; keep them flat.",
+      "**Do** use tabular numerals for every time and count.",
+      "**Do** draw icons as inline 24px-viewbox SVG with a 1.8 stroke, round caps and joins, `currentColor`, no fill.",
+      "**Do** give every interactive element the shared focus ring (2px ink, 2px offset) and honor reduced motion, which removes every transition and animation.",
+      "**Do** put the problem notice first in the side column, with its fix action inside the notice."
     ],
     "donts": [
-      "Don't turn the digest into a row of a table or a grey dashboard card; it is a message in a chat.",
-      "Don't load fonts, icon sets or anything else from the network.",
-      "Don't add shadows to panels, lists or form sections; the bubble is the only floating content.",
-      "Don't introduce a second accent color for selection or emphasis.",
-      "Don't render digest text as HTML; it is written by third parties.",
-      "Don't use modals except for short confirmations; flows are pages."
+      "**Don't** turn the digest into a row of a table or a grey dashboard card; it is a message in a chat.",
+      "**Don't** load fonts, icon sets or anything else from the network.",
+      "**Don't** add shadows to panels, lists, form sections or the bubble; only the dialog floats.",
+      "**Don't** introduce a second accent colour for selection or emphasis.",
+      "**Don't** add a dark palette piecemeal; the dark theme is a pending decision for the whole system.",
+      "**Don't** render digest text as HTML; it is written by third parties.",
+      "**Don't** use modals except for short confirmations; flows are pages."
     ]
   }
 }

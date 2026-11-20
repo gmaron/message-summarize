@@ -101,7 +101,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
 | RF-40 | Usar el LLM que prefiera el usuario, por API | v1 | Proveedores por API: OpenAI, Anthropic, Gemini y Ollama. El adaptador de OpenAI acepta una URL base, así que también sirve para cualquier API compatible (LM Studio, OpenRouter, etc.). Todos pasan el mismo test de contrato |
-| RF-41 | Elegir proveedor y modelo por cuenta | v1 | No hay proveedor por defecto: el asistente pide elegir uno y la forma de conectarlo (API o CLI), pide la clave de API cuando corresponde y tiene un botón "Probar conexión" que hace una llamada real y muestra el resultado o el error. Para cada proveedor muestra si cobra, si los datos salen de la máquina y qué hace el proveedor con ellos |
+| RF-41 | Elegir proveedor y modelo por cuenta | v1 | No hay proveedor por defecto: el asistente pide elegir uno y la forma de conectarlo (API o CLI), pide la clave de API cuando corresponde y tiene un botón "Probar conexión" que hace una llamada real y muestra el resultado o el error. Para cada proveedor muestra si cobra, si los datos salen de la máquina y qué hace el proveedor con ellos. El modelo nunca se escribe: se elige de una lista (los alias de Claude Code; los modelos instalados en Ollama; y, para OpenAI, Anthropic y Gemini, la lista que da el proveedor, pedida por el daemon con la clave ya guardada). Si la lista no se puede leer, solo Anthropic ofrece una corta de modelos conocidos, marcada como tal; para OpenAI y Gemini se muestra el error y se puede volver a buscar. Un modelo fuera de la última lista conocida (misma dirección y misma clave, vigente) se rechaza al guardar; solo un servidor compatible que no da lista admite un nombre escrito |
 | RF-42 | Proveedor de respaldo | v1 | Si una llamada falla, esa conversación se reintenta con el proveedor de respaldo configurado, y el digest indica cuáles se resumieron con el respaldo |
 | RF-43 | Conversaciones solo locales | v1 | Una conversación marcada como "solo local" se resume siempre con un proveedor local (Ollama). Si no hay ninguno disponible, se omite y se avisa; nunca se envía a un proveedor externo |
 | RF-44 | Informar el costo o consumo | Luego | El historial muestra tokens usados por digest y proveedor |
@@ -124,9 +124,9 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
-| RF-60 | Programar digests desde la web | v1 | Un editor visual (días de la semana + hora) crea el horario; se ve la próxima ejecución calculada. Ejemplo: 9:00 y 19:00 todos los días |
+| RF-60 | Programar digests desde la web | v1 | Un editor visual (días de la semana + hora) crea el horario; se ve la próxima ejecución calculada. Ejemplo: 9:00 y 18:00 todos los días; el asistente crea esos dos horarios al terminar |
 | RF-61 | Cambios de horario en caliente | v1 | Crear, editar o borrar un horario se aplica sin reiniciar el daemon |
-| RF-62 | Zona horaria | v1 | Se detecta la del sistema y se puede cambiar por cuenta. Los horarios respetan los cambios de horario de verano |
+| RF-62 | Zona horaria | v1 | Se toma la zona de la computadora (la del navegador, sin consultar la red) al configurar y se puede cambiar después en los Ajustes. Los horarios respetan los cambios de horario de verano |
 | RF-63 | Resumir ahora | v1 | Botón en la web y comando en la CLI que genera y envía el digest en el momento |
 | RF-64 | Vista previa | v1 | Genera el digest y lo muestra en la web sin enviarlo ni mover el puntero |
 | RF-65 | Ejecuciones perdidas | v1 | Si la máquina estaba apagada a la hora programada, al arrancar el daemon corre el digest pendiente una sola vez (no uno por cada horario perdido) |
@@ -136,10 +136,10 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
-| RF-70 | Asistente de primer uso | v1 | Pasos: idioma → nombre → proveedor (con prueba) → transcripción → QR → sincronización → primer horario. Se puede retomar si se cierra a mitad |
+| RF-70 | Asistente de primer uso | v1 | Pasos: tu nombre y el de la cuenta → proveedor (con prueba y consentimiento) → QR y sincronización. La página empieza en español; en una instalación nueva sigue el idioma del navegador (español o inglés) y la zona horaria del navegador, y el primer paso tiene un selector Español | English (se escribe el idioma que se ve al guardarlo); después ambos se cambian en los Ajustes; al terminar se crean los horarios por defecto. La transcripción de audios no es un paso: está desactivada hasta que se activa en los Ajustes (RF-21). Se puede retomar si se cierra a mitad |
 | RF-71 | Panel | v1 | Estado de cada cuenta, último digest, próxima ejecución, botones de resumir ahora y vista previa |
 | RF-72 | Gestión de conversaciones | v1 | Listar y buscar conversaciones; marcarlas como excluidas o solo locales |
-| RF-73 | Configuración | v1 | Todas las opciones editables (solo no leídos, ocultar el resto, sin agendar destacados, máximo de caracteres, días de audios del historial, idioma). La configuración se valida al cargarla y al guardarla: un valor inválido se rechaza con un mensaje que indica la opción y el motivo, y una opción que falta toma su valor por defecto |
+| RF-73 | Configuración | v1 | Todas las opciones editables (solo no leídos, ocultar el resto, sin agendar destacados, máximo de caracteres, días de audios del historial, idioma, zona horaria). La configuración se valida al cargarla y al guardarla: un valor inválido se rechaza con un mensaje que indica la opción y el motivo, y una opción que falta toma su valor por defecto |
 | RF-74 | Historial | v1 | Lista de digests anteriores con su contenido completo, proveedor usado, duración y errores de cada ejecución |
 | RF-75 | Logs | v1 | Ver los últimos logs del daemon, filtrables por cuenta y nivel |
 
@@ -155,7 +155,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 
 | ID | Atributo | Requerimiento | Métrica o verificación |
 |---|---|---|---|
-| RNF-01 | Privacidad | Mensajes, audios, transcripciones y digests se guardan solo en el directorio de datos local. No hay telemetría | Revisión de código + test que falla si hay llamadas de red no declaradas |
+| RNF-01 | Privacidad | Mensajes, audios, transcripciones y digests se guardan solo en el directorio de datos local. No hay telemetría | Revisión de código + test que falla si hay llamadas de red no declaradas. Las llamadas declaradas incluyen pedir la lista de modelos al proveedor ya elegido, con su clave y solo a su host |
 | RNF-02 | Privacidad | Antes de activar un proveedor externo, la web muestra qué datos se envían y a quién | Paso obligatorio del asistente; queda registrado el consentimiento |
 | RNF-03 | Seguridad | La web escucha solo en `127.0.0.1` por defecto y exige un token generado en la instalación | Test de integración: sin token responde 401; exponerla en otra interfaz requiere una opción explícita |
 | RNF-04 | Seguridad | Las claves de API y la sesión de WhatsApp se guardan con permisos 600 (o ACL equivalente en Windows) y nunca aparecen en logs | Test que verifica permisos; los logs pasan por una lista de campos a ocultar |
