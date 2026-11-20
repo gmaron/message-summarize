@@ -18,11 +18,24 @@ export function fieldsText(fields: LogEntry['fields']): string {
     .join(' ')
 }
 
-/** The time of a line in the browser's zone, with seconds. A value that is not a date is shown as it came. */
-export function logTime(iso: string, locale: string): string {
+/** The time of a line in the browser's zone, with seconds (for the tooltip). A value that is not a date is shown as it came. */
+export function logTimeFull(iso: string, locale: string): string {
   const ms = Date.parse(iso)
   if (Number.isNaN(ms)) return iso
   return new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'medium' }).format(ms)
+}
+
+/** The time of a line as the list shows it: day, short month and 24-hour time ("19 nov, 19:58"). Not a date: as it came. */
+export function logTime(iso: string, locale: string): string {
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return iso
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(ms)
 }
 
 export const levelTone = (level: LogLevel): 'ok' | 'warn' | 'error' =>

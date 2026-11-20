@@ -6,11 +6,22 @@
   // What a provider costs and does with the text of the chats (RF-41, RNF-02). Fixed texts of the page: nothing here comes
   // from the daemon or from a chat.
   // `host`: the Ollama server is not on this machine, so the text goes there (the remote variant, with the host named).
-  let { texts, provider, host }: { texts: WebTexts; provider: ProviderName; host?: string } = $props()
+  // `compatible`: OpenAI pointed at another server (`host` is that server): external even when it is on this machine.
+  let {
+    texts,
+    provider,
+    host,
+    compatible = false,
+  }: { texts: WebTexts; provider: ProviderName; host?: string; compatible?: boolean } = $props()
 
   const d = $derived(texts.ui.disclosure)
   const remote = $derived(provider === 'ollama' && host !== undefined)
+  const api = $derived(provider === 'openai' || provider === 'anthropic' || provider === 'gemini')
   const info = $derived.by(() => {
+    if (provider === 'openai' && compatible) {
+      const c = d.providers['openai-compatible']
+      return { ...c, leaves: fmt(c.leaves, { host: host ?? '' }), who: fmt(c.who, { host: host ?? '' }) }
+    }
     const base = d.providers[provider]
     if (!remote) return base
     const r = d.ollamaRemote
@@ -38,6 +49,12 @@
 </dl>
 {#if info.tools !== undefined}
   <p class="notice info small">{info.tools}</p>
+{/if}
+{#if info.warning !== undefined}
+  <p class="notice warn small">{info.warning}</p>
+{/if}
+{#if api}
+  <p class="notice warn small">{d.apiLocalOnly}</p>
 {/if}
 {#if remote}
   <p class="notice warn small">{d.ollamaRemote.localOnly}</p>

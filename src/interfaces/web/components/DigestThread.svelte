@@ -133,13 +133,10 @@
 
   .bubble {
     background: var(--bubble);
-    border-radius: 4px 18px 18px 18px;
+    border-radius: 16px;
     padding: 20px 22px 12px;
     max-width: 680px;
     width: 100%;
-    box-shadow:
-      0 1px 2px var(--bubble-shadow),
-      0 6px 18px -8px var(--bubble-shadow);
     display: grid;
     gap: 14px;
     line-height: 1.55;
@@ -147,27 +144,7 @@
     overflow-wrap: anywhere;
   }
 
-  .bubble::before {
-    content: '';
-    position: absolute;
-    left: -8px;
-    top: 0;
-    width: 10px;
-    height: 14px;
-    background: var(--bubble);
-    clip-path: polygon(100% 0, 0 0, 100% 100%);
-  }
-
-  .bubble.cont {
-    border-radius: 18px;
-  }
-
-  .bubble.cont::before {
-    display: none;
-  }
-
-  .bubble.draft,
-  .bubble.draft::before {
+  .bubble.draft {
     background: color-mix(in srgb, var(--bubble) 70%, var(--ground));
   }
 

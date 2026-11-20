@@ -4,7 +4,7 @@
   import type { Api } from '../lib/api.js'
   import type { Controller } from '../lib/controller.js'
   import { errorText } from '../lib/digest.js'
-  import { accountLabel, createLogsList, fieldsText, INSTALLATION, LEVELS, type LogsUi, logTime } from '../lib/logs.js'
+  import { accountLabel, createLogsList, fieldsText, INSTALLATION, LEVELS, type LogsUi, logTime, logTimeFull } from '../lib/logs.js'
   import { hrefOf } from '../lib/router.js'
   import type { AccountView, LogLevel } from '../lib/types.js'
 
@@ -55,7 +55,7 @@
 
 <div class="page-inner">
   <div class="head"><h1>{t.title}</h1></div>
-  <div class="cluster wide end">
+  <div class="log-filters">
     <div class="field">
       <label for="log-acct">{t.accountLabel}</label>
       <select id="log-acct" value={selected} onchange={onAccount}>
@@ -66,12 +66,15 @@
         {/each}
       </select>
     </div>
-    <div class="chips" role="group" aria-label={t.levelLabel}>
-      {#each LEVELS as level (level)}
-        <button type="button" class="chip" aria-pressed={ui.level === level} onclick={() => list.setFilters({ level: level as LogLevel })}>
-          {t.levels[level]}
-        </button>
-      {/each}
+    <div class="field">
+      <span class="lab" id="log-level-label">{t.levelLabel}</span>
+      <div class="chips" role="group" aria-labelledby="log-level-label">
+        {#each LEVELS as level (level)}
+          <button type="button" class="chip" aria-pressed={ui.level === level} onclick={() => list.setFilters({ level: level as LogLevel })}>
+            {t.levels[level]}
+          </button>
+        {/each}
+      </div>
     </div>
   </div>
 
@@ -84,32 +87,20 @@
     <p class="muted" role="status">{texts.ui.loading}</p>
   {:else}
     <!-- Every value is drawn as text (never as markup), whatever it holds. -->
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">{t.timeColumn}</th>
-            <th scope="col">{t.levelColumn}</th>
-            <th scope="col">{t.accountColumn}</th>
-            <th scope="col">{t.messageColumn}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#if ui.items.length === 0}
-            <tr><td colspan="4" class="empty-cell">{t.empty}</td></tr>
-          {:else}
-            {#each ui.items as entry (entry.seq)}
-              <tr>
-                <td class="num nowrap">{logTime(entry.time, texts.locale)}</td>
-                <td><span class="lvl {entry.level}">{t.badge[entry.level]}</span></td>
-                <td>{accountLabel(entry.account, texts)}</td>
-                <td class="log">{entry.event}{Object.keys(entry.fields).length > 0 ? ` ${fieldsText(entry.fields)}` : ''}</td>
-              </tr>
-            {/each}
-          {/if}
-        </tbody>
-      </table>
-    </div>
+    <ul class="log-list">
+      {#if ui.items.length === 0}
+        <li class="none"><p class="msg empty">{t.empty}</p></li>
+      {:else}
+        {#each ui.items as entry (entry.seq)}
+          <li>
+            <time class="when" datetime={entry.time} title={logTimeFull(entry.time, texts.locale)}>{logTime(entry.time, texts.locale)}</time>
+            <span class="tag" class:warn={entry.level === 'warn'} class:bad={entry.level === 'error'}>{t.badge[entry.level]}</span>
+            <span class="who">{accountLabel(entry.account, texts)}</span>
+            <span class="msg">{entry.event}{Object.keys(entry.fields).length > 0 ? ` ${fieldsText(entry.fields)}` : ''}</span>
+          </li>
+        {/each}
+      {/if}
+    </ul>
     {#if ui.more}
       <div>
         <button type="button" class="btn" disabled={ui.loadingOlder} onclick={() => list.loadOlder()}>

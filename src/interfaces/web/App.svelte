@@ -3,6 +3,7 @@
   import ConfirmDialog from './components/ConfirmDialog.svelte'
   import Icon from './components/Icon.svelte'
   import Shell from './components/Shell.svelte'
+  import LanguageSwitch from './components/LanguageSwitch.svelte'
   import Wizard from './components/Wizard.svelte'
   import type { Api } from './lib/api.js'
   import { startClock } from './lib/clock.js'
@@ -107,6 +108,7 @@
     <p>{ui.unauthorizedText}</p>
     <p><code class="cmd">msum open</code></p>
     <p class="small muted">{ui.unauthorizedNote}</p>
+    <LanguageSwitch {texts} current={app.language} onchoose={(language) => controller.setLanguage(language)} />
   </main>
 {:else if app.accounts === null || app.setup === null}
   {#if app.loadError !== null}
