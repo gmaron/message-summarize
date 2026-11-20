@@ -326,6 +326,25 @@ describe('an account that is blocked does not stop the others', () => {
     expect(w.host.running).toEqual(['alpha'])
   })
 
+  it('says a block that the unit raised itself once, however many times the host looks at the account afterwards', async () => {
+    const w = await world(['alpha', 'beta'], { linked: ['alpha', 'beta'], autoConnect: false })
+    w.connection('alpha').onStart = () => w.connection('alpha').emit({ state: 'connected' })
+    w.connection('beta').onStart = () => w.connection('beta').emit({ state: 'loggedOut' })
+    await w.host.start()
+    await waitFor(() => {
+      expect(JSON.parse(readFileSync(w.h.accountOf('beta').blockedFile, 'utf8')).reason).toBe('loggedOut')
+    })
+    // Every new account that starts is a look at the whole installation, beta included, now without a unit.
+    for (const id of ['gamma', 'delta']) {
+      await w.installation.createAccount(id)
+      w.linked(id)
+      await started(w, id)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(named(w.h, 'daemon.blocked', 'beta')).toHaveLength(1)
+    expect(w.h.err.filter((line) => line.includes('msum unlink --account beta'))).toHaveLength(1)
+  })
+
   it('an account that was blocked when the daemon started is not started, and is said once', async () => {
     const w = await world(['alpha', 'beta'], { linked: ['alpha', 'beta'] })
     await writeBlocked(w.h.accountOf('beta').blockedFile, 'replaced', NOW)
