@@ -114,7 +114,7 @@ describe('LogStore seeding from the files', () => {
           event: 'good',
           count: 3,
           text: 'PRIVATE MESSAGE',
-          phone: '+5491100000001',
+          phone: '+9911963367943',
           nested: { a: 1 },
         }),
       ].join('\n'),
@@ -125,7 +125,7 @@ describe('LogStore seeding from the files', () => {
     expect(items).toHaveLength(1)
     expect(items[0]?.fields).toEqual({ count: 3 })
     expect(JSON.stringify(items)).not.toContain('PRIVATE')
-    expect(JSON.stringify(items)).not.toContain('5491100000001')
+    expect(JSON.stringify(items)).not.toContain('9911963367943')
   })
 
   it('reads only the tail of a file bigger than the bound, dropping the line it started inside', async () => {

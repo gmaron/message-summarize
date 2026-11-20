@@ -353,7 +353,7 @@ describe('msum unlink', () => {
 
     // B has its own message; the digest of B has only B
     const runtime = h.runtime()
-    await seedMessages(runtime, [{ id: 'b1', text: 'B-ONLY-TEXT', conversationId: '5491100000055@s.whatsapp.net' }])
+    await seedMessages(runtime, [{ id: 'b1', text: 'B-ONLY-TEXT', conversationId: '9915981279634@s.whatsapp.net' }])
     runtime.close()
     h.out.length = 0
     h.summarizer.requests.length = 0
@@ -429,7 +429,7 @@ describe('msum link', () => {
     expect(output).toContain('Scan the QR code')
     expect(output).toContain(h.account.qrFile)
     expect(output).toContain('Receiving the initial history')
-    expect(output).toContain('Done: account +54')
+    expect(output).toContain('Done: account +99')
     expect(output).not.toContain(ME.split('@')[0] as string)
     // POSIX file modes do not exist on Windows (the ACL of the profile applies there)
     if (!isWindows) expect(pngMode).toBe(0o600)
@@ -788,7 +788,7 @@ describe('msum status', () => {
     const text = h.out.join('\n')
     expect(text).toContain(h.layout.dataDir)
     expect(text).toContain(maskAccount(ME))
-    expect(text).not.toContain('5491100000009')
+    expect(text).not.toContain('9913174261432')
     expect(text).toMatch(/Last digest: +17 Nov 2026/)
     expect(text).toMatch(/^Pending deliveries: +1$/m)
     expect(text).toMatch(/^Daemon: +stopped$/m)
@@ -850,7 +850,7 @@ describe('msum status', () => {
   })
 
   it('masks account numbers', () => {
-    expect(maskAccount(ME)).toBe('+54*******0009')
+    expect(maskAccount(ME)).toBe('+99*******1432')
     expect(maskAccount('123@s.whatsapp.net')).toBe('+******')
   })
 })
@@ -952,7 +952,7 @@ describe('logs never contain message text (RNF-04)', () => {
     runtime.identity.bind(ME)
     await seedMessages(runtime, [
       { id: 'm1', text: `the code is ${SECRET}`, conversationName: `Ana ${SECRET}` },
-      { id: 'm2', text: `please call +5491155550000 ${SECRET}`, conversationId: '5491100000002@s.whatsapp.net' },
+      { id: 'm2', text: `please call +9923885366828 ${SECRET}`, conversationId: '9912465397241@s.whatsapp.net' },
     ])
     runtime.close()
 
@@ -979,7 +979,7 @@ describe('logs never contain message text (RNF-04)', () => {
     const everything = [...written, ...h.out, ...h.err, ...h.logs].join('\n')
     expect(written.length).toBeGreaterThan(0) // the structured logs did go to the streams
     expect(everything).not.toContain(SECRET)
-    expect(everything).not.toContain('5491155550000')
+    expect(everything).not.toContain('9923885366828')
     expect(everything).not.toContain('Ana')
     for (const line of written) expect(() => JSON.parse(line)).not.toThrow()
     // what the user is meant to receive does carry the text: it went to the own chat, not to the logs

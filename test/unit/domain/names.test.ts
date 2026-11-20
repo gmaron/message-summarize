@@ -27,28 +27,28 @@ describe('resolveConversationName', () => {
   it('unsaved with a push name: "alias ( address )" with spaces inside the parentheses', () => {
     const p = participant({ publicName: 'nico' })
     expect(resolveConversationName(conversation({ name: 'Other' }), p, labels)).toEqual({
-      name: 'nico ( +5491100000001 )',
+      name: 'nico ( +9911963367943 )',
       saved: false,
     })
   })
   it('unsaved without push name falls back to the conversation name as alias', () => {
     expect(resolveConversationName(conversation({ name: 'Promo' }), participant(), labels).name).toBe(
-      'Promo ( +5491100000001 )',
+      'Promo ( +9911963367943 )',
     )
   })
   it('an empty push name falls through to the chat name as alias', () => {
     const p = participant({ publicName: '' })
-    expect(resolveConversationName(conversation({ name: 'Alias' }), p, labels).name).toBe('Alias ( +5491100000001 )')
+    expect(resolveConversationName(conversation({ name: 'Alias' }), p, labels).name).toBe('Alias ( +9911963367943 )')
   })
   it('a chat with no contact row and only a chat name: "Alias ( +number )"', () => {
     expect(resolveConversationName(conversation({ name: 'Alias' }), null, labels)).toEqual({
-      name: 'Alias ( +5491100000001 )',
+      name: 'Alias ( +9911963367943 )',
       saved: false,
     })
   })
   it('unsaved with no alias: just the address', () => {
     expect(resolveConversationName(conversation(), participant(), labels)).toEqual({
-      name: '+5491100000001',
+      name: '+9911963367943',
       saved: false,
     })
   })
@@ -61,7 +61,7 @@ describe('resolveConversationName', () => {
   it('treats empty names as missing', () => {
     const p = participant({ savedName: '', publicName: '' })
     expect(resolveConversationName(conversation({ name: '' }), p, labels)).toEqual({
-      name: '+5491100000001',
+      name: '+9911963367943',
       saved: false,
     })
     expect(resolveConversationName(conversation({ isGroup: true, name: '' }), null, labels).name).toBe('UNNAMED')
@@ -98,15 +98,15 @@ describe('senderLabel', () => {
     expect(senderLabel(message({ senderName: 'Msg' }), null, owner)).toBe('Msg')
   })
   it('then the sender address: no contact row, or a row with both names null', () => {
-    expect(senderLabel(message(), null, owner)).toBe('+5491100000001')
-    expect(senderLabel(message(), participant(), owner)).toBe('+5491100000001')
+    expect(senderLabel(message(), null, owner)).toBe('+9911963367943')
+    expect(senderLabel(message(), participant(), owner)).toBe('+9911963367943')
   })
   it('a raw (non-phone) id comes through as the address the adapter computed', () => {
     expect(senderLabel(message({ senderAddress: 'raw@lid' }), null, owner)).toBe('raw@lid')
   })
   it('a group sender with nothing: "+number"', () => {
-    expect(senderLabel(message({ senderName: null, senderAddress: '+5491155550000' }), null, owner)).toBe(
-      '+5491155550000',
+    expect(senderLabel(message({ senderName: null, senderAddress: '+9923885366828' }), null, owner)).toBe(
+      '+9923885366828',
     )
   })
   it('without a sender id, "?"', () => {
@@ -114,7 +114,7 @@ describe('senderLabel', () => {
   })
   it('treats empty names as missing, at every step', () => {
     const p = participant({ savedName: '', publicName: '' })
-    expect(senderLabel(message({ senderName: '' }), p, owner)).toBe('+5491100000001')
+    expect(senderLabel(message({ senderName: '' }), p, owner)).toBe('+9911963367943')
     expect(senderLabel(message({ senderName: 'Msg' }), participant({ savedName: '', publicName: '' }), owner)).toBe(
       'Msg',
     )

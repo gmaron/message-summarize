@@ -294,7 +294,7 @@ describe('DeliverPending on SQLite (RNF-08, RF-52)', () => {
     const t = temp()
     const store = new SqliteDigestStore(t.open())
     const source = new InMemorySource()
-    for (const id of ['5491100000001', '5491100000002', '5491100000003', '5491100000004']) {
+    for (const id of ['9911963367943', '9912465397241', '9912752183123', '9912855188417']) {
       source.addConversation(conversation({ id, name: `Chat ${id}`, participantId: id, address: `+${id}` }))
       source.addParticipant({ id, savedName: `Chat ${id}`, publicName: null })
       source.addMessages(

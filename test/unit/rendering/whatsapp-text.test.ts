@@ -203,21 +203,21 @@ describe('golden outputs', () => {
     const lines = r.digest.render({
       sections: composeDigest(
         [
-          result('Mati ( +5491155550115 )', 'Mati avisa que la inmobiliaria ya depositó.', {
+          result('Mati ( +9928263724153 )', 'Mati avisa que la inmobiliaria ya depositó.', {
             unsaved: true,
             messageCount: 4,
           }),
-          result('Nico ( +5491155550112 )', 'Nico pide el contacto de un electricista, con urgencia.', {
+          result('Nico ( +9926775125784 )', 'Nico pide el contacto de un electricista, con urgencia.', {
             unsaved: true,
             messageCount: 3,
           }),
-          result('+5491155550114', 'Alguien del consorcio pide la foto del DNI antes del viernes.', {
+          result('+9928136413513', 'Alguien del consorcio pide la foto del DNI antes del viernes.', {
             unsaved: true,
             messageCount: 2,
             todos: ['Mandar la foto del DNI al consorcio'],
           }),
           result(
-            'Tienda Luz ( +5491155550113 )',
+            'Tienda Luz ( +9926862581772 )',
             'Tienda Luz avisa que el pedido de lámparas está listo para retirar.',
             {
               unsaved: true,

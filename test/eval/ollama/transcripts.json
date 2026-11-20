@@ -66,9 +66,9 @@
     "id": "c08",
     "source": "02-unsaved-flag-off/run-1",
     "owner": "Sofía",
-    "chatName": "Tienda Luz ( +5491155550113 )",
+    "chatName": "Tienda Luz ( +9926862581772 )",
     "isGroup": false,
-    "transcript": "Chat con: Tienda Luz ( +5491155550113 )\n\n[08:10] +5491155550113: Hola, te escribo de Tienda Luz por tu pedido de lámparas\n[08:12] +5491155550113: Ya está listo para retirar\n[08:13] +5491155550113: Abrimos hasta las 19\n[08:15] +5491155550113: ¡Gracias!",
+    "transcript": "Chat con: Tienda Luz ( +9926862581772 )\n\n[08:10] +9926862581772: Hola, te escribo de Tienda Luz por tu pedido de lámparas\n[08:12] +9926862581772: Ya está listo para retirar\n[08:13] +9926862581772: Abrimos hasta las 19\n[08:15] +9926862581772: ¡Gracias!",
     "legacyNeedsReply": false
   },
   {
@@ -77,7 +77,7 @@
     "owner": "Sofía",
     "chatName": "Grupo sin nombre",
     "isGroup": true,
-    "transcript": "Grupo: Grupo sin nombre\n\n[08:20] Ana Gómez: Chicos, mañana pasa el fumigador\n[08:21] Nico: Yo no estoy, dejo la llave en portería\n[08:22] Lucho (Plomero): El jueves arreglo la bomba de agua\n[08:23] +5491155550117: ¿Alguien sabe a qué hora cortan la luz?",
+    "transcript": "Grupo: Grupo sin nombre\n\n[08:20] Ana Gómez: Chicos, mañana pasa el fumigador\n[08:21] Nico: Yo no estoy, dejo la llave en portería\n[08:22] Lucho (Plomero): El jueves arreglo la bomba de agua\n[08:23] +9928774988971: ¿Alguien sabe a qué hora cortan la luz?",
     "legacyNeedsReply": false
   },
   {
@@ -93,27 +93,27 @@
     "id": "c11",
     "source": "02-unsaved-flag-off/run-1",
     "owner": "Sofía",
-    "chatName": "Mati ( +5491155550115 )",
+    "chatName": "Mati ( +9928263724153 )",
     "isGroup": false,
-    "transcript": "Chat con: Mati ( +5491155550115 )\n\n[08:40] Mati: Buenas, soy Mati, el que alquila el depto del 4°\n[08:41] Mati: Solo te aviso que ya depositó la inmobiliaria\n[08:42] Mati: Cualquier cosa me escribís",
+    "transcript": "Chat con: Mati ( +9928263724153 )\n\n[08:40] Mati: Buenas, soy Mati, el que alquila el depto del 4°\n[08:41] Mati: Solo te aviso que ya depositó la inmobiliaria\n[08:42] Mati: Cualquier cosa me escribís",
     "legacyNeedsReply": false
   },
   {
     "id": "c12",
     "source": "02-unsaved-flag-off/run-1",
     "owner": "Sofía",
-    "chatName": "+5491155550114",
+    "chatName": "+9928136413513",
     "isGroup": false,
-    "transcript": "Chat con: +5491155550114\n\n[08:50] +5491155550114: Hola, soy del consorcio, falta que mandes la foto del DNI\n[08:51] +5491155550114: La podés pasar por acá hasta el viernes",
+    "transcript": "Chat con: +9928136413513\n\n[08:50] +9928136413513: Hola, soy del consorcio, falta que mandes la foto del DNI\n[08:51] +9928136413513: La podés pasar por acá hasta el viernes",
     "legacyNeedsReply": false
   },
   {
     "id": "c13",
     "source": "02-unsaved-flag-off/run-1",
     "owner": "Sofía",
-    "chatName": "Nico ( +5491155550112 )",
+    "chatName": "Nico ( +9926775125784 )",
     "isGroup": false,
-    "transcript": "Chat con: Nico ( +5491155550112 )\n\n[09:00] Nico: Sofi, ¿me pasás el contacto del electricista?\n[09:01] Nico: Es urgente, se me fue la luz",
+    "transcript": "Chat con: Nico ( +9926775125784 )\n\n[09:00] Nico: Sofi, ¿me pasás el contacto del electricista?\n[09:01] Nico: Es urgente, se me fue la luz",
     "legacyNeedsReply": true
   },
   {
@@ -363,9 +363,9 @@
     "id": "c41",
     "source": "07-audios/run-1",
     "owner": "Sofía",
-    "chatName": "Nuevo Vecino ( +5491155550205 )",
+    "chatName": "Nuevo Vecino ( +9962744354761 )",
     "isGroup": false,
-    "transcript": "Chat con: Nuevo Vecino ( +5491155550205 )\n\n[10:30] Nuevo Vecino: 🎤 (audio) Hola, soy el nuevo del 4B, ¿tenés la llave del bicicletero?",
+    "transcript": "Chat con: Nuevo Vecino ( +9962744354761 )\n\n[10:30] Nuevo Vecino: 🎤 (audio) Hola, soy el nuevo del 4B, ¿tenés la llave del bicicletero?",
     "legacyNeedsReply": true
   },
   {
@@ -426,9 +426,9 @@
     "id": "c48",
     "source": "08-exclusions/run-1",
     "owner": "Sofía",
-    "chatName": "Marcos ( +5491155550213 )",
+    "chatName": "Marcos ( +9966713624961 )",
     "isGroup": false,
-    "transcript": "Chat con: Marcos ( +5491155550213 )\n\n[09:00] Marcos: Hola, me pasaron tu número por la mudanza",
+    "transcript": "Chat con: Marcos ( +9966713624961 )\n\n[09:00] Marcos: Hola, me pasaron tu número por la mudanza",
     "legacyNeedsReply": false
   },
   {

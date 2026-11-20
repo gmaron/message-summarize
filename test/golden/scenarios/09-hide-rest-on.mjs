@@ -29,22 +29,22 @@
 // summaries sit in sections that stay visible in both modes, so the splitting does not depend on the rest.
 // All message times are unique. All names, numbers and texts are invented.
 
-const gabriela = '5491155550221@s.whatsapp.net'
-const hernan = '5491155550222@s.whatsapp.net'
-const irene = '5491155550223@s.whatsapp.net'
-const joaquin = '5491155550224@s.whatsapp.net'
-const karina = '5491155550225@s.whatsapp.net'
-const leandro = '5491155550226@s.whatsapp.net'
-const marina = '120363000000000121@g.us'
-const mara = '5491155550227@s.whatsapp.net'
-const nora = '5491155550228@s.whatsapp.net'
-const omar = '5491155550229@s.whatsapp.net'
-const pablo = '5491155550230@s.whatsapp.net'
-const quique = '5491155550231@s.whatsapp.net'
-const rita = '5491155550232@s.whatsapp.net'
-const sergio = '5491155550233@s.whatsapp.net'
-const tina = '5491155550234@s.whatsapp.net'
-const ugo = '5491155550235@s.whatsapp.net'
+const gabriela = '9969196545112@s.whatsapp.net'
+const hernan = '9971782373273@s.whatsapp.net'
+const irene = '9972545211856@s.whatsapp.net'
+const joaquin = '9973251469848@s.whatsapp.net'
+const karina = '9974422756947@s.whatsapp.net'
+const leandro = '9974452313725@s.whatsapp.net'
+const marina = '120363853183932519@g.us'
+const mara = '9974855254851@s.whatsapp.net'
+const nora = '9976182811728@s.whatsapp.net'
+const omar = '9976632496298@s.whatsapp.net'
+const pablo = '9978497698123@s.whatsapp.net'
+const quique = '9978543456325@s.whatsapp.net'
+const rita = '9981336538977@s.whatsapp.net'
+const sergio = '9981442279162@s.whatsapp.net'
+const tina = '9982217557934@s.whatsapp.net'
+const ugo = '9982344849758@s.whatsapp.net'
 
 // Invented filler text of a given minimum length, made of numbered sentences
 const long = (topic, minLength) => {

@@ -35,18 +35,18 @@
 // context depends on messages from before the window that arrive earlier than everything else.
 // All message times are unique. All names, numbers and texts are invented.
 
-const agata = '5491155550151@s.whatsapp.net'
-const bruno = '5491155550152@s.whatsapp.net'
-const camila = '5491155550153@s.whatsapp.net'
-const diego = '5491155550154@s.whatsapp.net'
-const elena = '5491155550155@s.whatsapp.net'
-const fabian = '5491155550156@s.whatsapp.net'
-const gaby = '5491155550157@s.whatsapp.net'
-const hernan = '5491155550158@s.whatsapp.net'
-const irene = '5491155550159@s.whatsapp.net'
-const nacho = '5491155550160@s.whatsapp.net'
-const tomi = '5491155550161@s.whatsapp.net'
-const futbol = '120363000000000031@g.us'
+const agata = '9946511262991@s.whatsapp.net'
+const bruno = '9946691124419@s.whatsapp.net'
+const camila = '9946941896958@s.whatsapp.net'
+const diego = '9947787877411@s.whatsapp.net'
+const elena = '9949788747783@s.whatsapp.net'
+const fabian = '9951184868459@s.whatsapp.net'
+const gaby = '9951198694539@s.whatsapp.net'
+const hernan = '9952429388925@s.whatsapp.net'
+const irene = '9952723596281@s.whatsapp.net'
+const nacho = '9953164972271@s.whatsapp.net'
+const tomi = '9953474965423@s.whatsapp.net'
+const futbol = '120363563362171186@g.us'
 
 export default {
   description: 'soloNoLeidos: unread_count -1 / 0 / null / N, read flags, context of 5 messages, window edges.',

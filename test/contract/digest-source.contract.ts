@@ -97,7 +97,7 @@ export function describeDigestSourceContract(backend: PersistenceBackend): void 
           isGroup: false,
           name: 'Ana',
           participantId: 'p9',
-          address: '+5491100000009',
+          address: '+9913174261432',
         }
         seed.addConversation(group)
         seed.addConversation(named)
@@ -200,7 +200,7 @@ export function describeDigestSourceContract(backend: PersistenceBackend): void 
             read: i % 2 === 1,
             senderId: i === 4 ? null : 'p1',
             senderName: i === 5 ? 'Beto' : null,
-            senderAddress: i === 4 ? null : '+5491100000001',
+            senderAddress: i === 4 ? null : '+9911963367943',
           }),
         )
         seed.addMessages(...sent)

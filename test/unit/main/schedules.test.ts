@@ -248,7 +248,7 @@ describe('importing the schedules of the configuration (once per account)', () =
       probes: { commandVersion: async () => '1.0 (fake)' },
     })
     const runtime = h.runtime()
-    runtime.identity.bind('5491100000009@s.whatsapp.net')
+    runtime.identity.bind('9913174261432@s.whatsapp.net')
     runtime.close()
     writeFileSync(join(h.account.authDir, 'creds.json'), JSON.stringify({ me: { id: 'x' } }))
     expect(await run(h, 'doctor')).toBe(0)
@@ -423,7 +423,7 @@ describe('Daemon: schedules applied without a restart (RF-61)', () => {
     if (!opened.ok) throw new Error('refused')
     const { installation } = opened
     const runtime = harness.runtime()
-    runtime.identity.bind('5491100000009@s.whatsapp.net')
+    runtime.identity.bind('9913174261432@s.whatsapp.net')
     const daemon = new Daemon({
       runtime,
       connection: harness.connection,

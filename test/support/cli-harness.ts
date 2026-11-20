@@ -25,8 +25,8 @@ import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '.
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
 import type { ConnectionHooks, ManagedConnection } from '../../src/main/whatsapp.js'
 
-export const ME = '5491100000009@s.whatsapp.net'
-export const OTHER = '5491100000077@s.whatsapp.net'
+export const ME = '9913174261432@s.whatsapp.net'
+export const OTHER = '9916244224364@s.whatsapp.net'
 export const BA = 'America/Argentina/Buenos_Aires'
 /** 2026-11-17 12:00 in Buenos Aires. */
 export const NOW = Date.parse('2026-11-17T15:00:00Z')
@@ -353,7 +353,7 @@ export interface SeedMessage {
 export async function seedMessages(runtime: Runtime, messages: readonly SeedMessage[]): Promise<void> {
   const capture: CaptureMessages = runtime.capture
   for (const m of messages) {
-    const conversationId = m.conversationId ?? '5491100000001@s.whatsapp.net'
+    const conversationId = m.conversationId ?? '9911963367943@s.whatsapp.net'
     await capture.participantInfo({
       participant: { id: conversationId, savedName: m.conversationName ?? 'Ana Test', publicName: null },
     })
@@ -363,7 +363,7 @@ export async function seedMessages(runtime: Runtime, messages: readonly SeedMess
         isGroup: false,
         name: null,
         participantId: conversationId,
-        address: '+5491100000001',
+        address: '+9911963367943',
       },
     })
     await capture.receiveMessage({
@@ -374,7 +374,7 @@ export async function seedMessages(runtime: Runtime, messages: readonly SeedMess
         conversationId,
         senderId: conversationId,
         senderName: null,
-        senderAddress: '+5491100000001',
+        senderAddress: '+9911963367943',
         fromMe: false,
         timestamp: m.timestamp ?? NOW - 3_600_000,
         kind: 'text',

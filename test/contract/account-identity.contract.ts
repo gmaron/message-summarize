@@ -20,8 +20,8 @@ export const accountBackends: readonly AccountBackend[] = [
   },
 ]
 
-const A = '5491100000009@s.whatsapp.net'
-const B = '5491100000077@s.whatsapp.net'
+const A = '9913174261432@s.whatsapp.net'
+const B = '9916244224364@s.whatsapp.net'
 
 /** Contract of the AccountIdentity port (src/application/ports/account-identity.ts), for every adapter. */
 export function describeAccountIdentityContract(backend: AccountBackend): void {

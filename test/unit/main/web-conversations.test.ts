@@ -10,12 +10,12 @@ afterEach(async () => {
   disposeHarnesses()
 })
 
-const ANA = '5491100000001@s.whatsapp.net'
-const BETO = '5491100000002@s.whatsapp.net'
-const GROUP = '120363000000000001@g.us'
+const ANA = '9911963367943@s.whatsapp.net'
+const BETO = '9912465397241@s.whatsapp.net'
+const GROUP = '120363146125332922@g.us'
 /** Its id contains the one of NUMBER (the substring trap). */
-const NUMBER = '5491112345678@s.whatsapp.net'
-const LONGER = '15491112345678@s.whatsapp.net'
+const NUMBER = '9922979713568@s.whatsapp.net'
+const LONGER = '19922979713568@s.whatsapp.net'
 const SECRET_TEXT = 'PRIVATE-CHAT-TEXT: the plan for friday'
 
 /** A configuration with an Ollama model: "local only" needs one. */
@@ -93,7 +93,7 @@ describe('GET /api/accounts/:id/conversations (RF-72)', () => {
         id: BETO,
         name: 'Beto Test',
         isGroup: false,
-        address: '+5491100000001',
+        address: '+9911963367943',
         lastMessageAt: 5_000,
         messages: 1,
         unread: { kind: 'unknown' },
@@ -137,7 +137,7 @@ describe('GET /api/accounts/:id/conversations (RF-72)', () => {
     expect(await search('_')).toEqual([GROUP])
     expect(await search('a_b')).toEqual([GROUP])
     expect(await search('%%')).toEqual([])
-    expect(await search('+549110000000')).toHaveLength(4)
+    expect(await search('+99')).toHaveLength(4)
     const none = await w.api('GET', `${url('alpha')}?q=zzz`)
     expect(none.body).toMatchObject({ total: 0, items: [] })
   })
@@ -145,7 +145,7 @@ describe('GET /api/accounts/:id/conversations (RF-72)', () => {
   it('pages with limit and offset, and refuses numbers that are not', async () => {
     const w = await world({ accounts: ['alpha'], linked: ['alpha'], start: false })
     const chats = Array.from({ length: 5 }, (_, n) => ({
-      id: `54911000000${n}0@s.whatsapp.net`,
+      id: `99571313112${n}0@s.whatsapp.net`,
       name: `Chat ${n}`,
       timestamp: 1_000 + n * 100,
     }))
@@ -427,7 +427,7 @@ describe('PUT /api/accounts/:id/conversations/:cid/marks (RF-14, RF-43, RF-72)',
     const logs = w.h.logs.join('\n')
     expect(logs).toContain('"event":"conversation.marked"')
     expect(logs).toContain('"event":"conversation.purged"')
-    for (const secret of ['Ana Test', '5491100000001', SECRET_TEXT]) {
+    for (const secret of ['Ana Test', '9911963367943', SECRET_TEXT]) {
       expect(logs).not.toContain(secret)
       expect(JSON.stringify(w.sse)).not.toContain(secret)
     }
@@ -510,7 +510,7 @@ describe('marks and the two ids of one person (a LID and the phone number)', () 
     expect(rows(w, 'alpha', `SELECT id FROM messages WHERE conversation_id = '${ANA}'`)).toEqual([])
     // a pair that touches no mark changes nothing
     const before = readFileSync(accountFile(w, 'alpha'), 'utf8')
-    await w.h.connection.learnAlias('99900000003@lid', '5491100000003@s.whatsapp.net')
+    await w.h.connection.learnAlias('99900000003@lid', '9912752183123@s.whatsapp.net')
     expect(readFileSync(accountFile(w, 'alpha'), 'utf8')).toBe(before)
     expect(w.h.logs.join('\n')).toContain('"event":"conversation.aliasCovered"')
   })

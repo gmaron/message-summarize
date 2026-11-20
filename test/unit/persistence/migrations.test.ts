@@ -63,7 +63,7 @@ describe('openDatabase and migrations', () => {
       "INSERT INTO digests (since, until, created_at, text, summarized, failed) VALUES (1, 2, 3, 'old digest', 4, 5)",
     )
     first.exec("INSERT INTO outbox (digest_id, text, created_at) VALUES (1, 'part', 3)")
-    first.exec("INSERT INTO account (id, jid, linked_at) VALUES (1, '5491100000000@s.whatsapp.net', 9)")
+    first.exec("INSERT INTO account (id, jid, linked_at) VALUES (1, '9911243739479@s.whatsapp.net', 9)")
     expect(currentVersion(first)).toBe(2)
     first.close()
     // Only up to version 3: the runs table is what this test is about (migration 4 is covered below).
@@ -74,7 +74,7 @@ describe('openDatabase and migrations', () => {
       { text: 'old digest', summarized: 4, failed: 5 },
     ])
     expect(upgraded.prepare('SELECT digest_id, text FROM outbox').all()).toEqual([{ digest_id: 1, text: 'part' }])
-    expect(upgraded.prepare('SELECT jid FROM account').all()).toEqual([{ jid: '5491100000000@s.whatsapp.net' }])
+    expect(upgraded.prepare('SELECT jid FROM account').all()).toEqual([{ jid: '9911243739479@s.whatsapp.net' }])
     expect(upgraded.prepare('SELECT COUNT(*) AS n FROM digest_runs').get()).toEqual({ n: 0 })
     // The new table works on the migrated database, and an old digest can be referenced by a run.
     upgraded.exec("INSERT INTO digest_runs (trigger_kind, started_at, digest_id) VALUES ('manual', 10, 1)")

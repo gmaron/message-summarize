@@ -9,7 +9,7 @@ import { createRuntime, type Runtime } from '../../../src/main/runtime.js'
 import { BA, disposeHarnesses, type Harness, makeHarness, NOW } from '../../support/cli-harness.js'
 import { FakeTranscriber } from '../../support/transcription-fakes.js'
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const DAY = 86_400_000
 
 const runtimes: Runtime[] = []
@@ -58,7 +58,7 @@ function openRuntime(
 async function queueAudio(h: Harness, runtime: Runtime, id: string, minutesAgo = 60): Promise<string> {
   await runtime.capture.participantInfo({ participant: { id: ANA, savedName: 'Ana Test', publicName: null } })
   await runtime.capture.conversationMetadata({
-    conversation: { id: ANA, isGroup: false, name: null, participantId: ANA, address: '+5491100000001' },
+    conversation: { id: ANA, isGroup: false, name: null, participantId: ANA, address: '+9911963367943' },
   })
   await runtime.capture.receiveMessage({
     origin: 'history',
@@ -68,7 +68,7 @@ async function queueAudio(h: Harness, runtime: Runtime, id: string, minutesAgo =
       conversationId: ANA,
       senderId: ANA,
       senderName: null,
-      senderAddress: '+5491100000001',
+      senderAddress: '+9911963367943',
       fromMe: false,
       timestamp: NOW - minutesAgo * 60_000,
       kind: 'audio',
@@ -286,7 +286,7 @@ describe('the audios of the history of the last N days (RF-15)', () => {
         conversationId: ANA,
         senderId: ANA,
         senderName: null,
-        senderAddress: '+5491100000001',
+        senderAddress: '+9911963367943',
         fromMe: false,
         timestamp: NOW - daysOld * DAY,
         kind: 'audio',

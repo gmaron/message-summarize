@@ -2,37 +2,37 @@
   "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
   "calls": [
     {
-      "jid": "5491155550151@s.whatsapp.net",
+      "jid": "9946511262991@s.whatsapp.net",
       "chatName": "Ágata Fuentes",
       "isGroup": false,
       "userMessage": "Chat con: Ágata Fuentes\n\n[08:10] Ágata Fuentes: Buen día, ¿ya viste los pasajes?\n[08:15] Sofía [VOS]: Todavía no, los miro hoy\n[08:20] Ágata Fuentes: Dale, avisame"
     },
     {
-      "jid": "5491155550154@s.whatsapp.net",
+      "jid": "9947787877411@s.whatsapp.net",
       "chatName": "Diego Iglesias",
       "isGroup": false,
       "userMessage": "Chat con: Diego Iglesias\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[18:10] Diego Iglesias: Empate, jugamos mal\n[18:15] Sofía [VOS]: Qué lástima\n[09:00] Diego Iglesias: Che, ¿mañana jugás?\n[09:05] Sofía [VOS]: Sí, si no llueve\n[09:10] Diego Iglesias: Genial\n\nMensajes sin leer (resumí estos):\n[09:20] Diego Iglesias: Sofi, ¿puedo pasar a buscarte a las 20?\n[09:25] Sofía [VOS]: Mejor a las 20:30\n[09:30] Diego Iglesias: Perfecto, 20:30 entonces\n[09:35] Diego Iglesias: Llevo yo las pelotas"
     },
     {
-      "jid": "5491155550155@s.whatsapp.net",
+      "jid": "9949788747783@s.whatsapp.net",
       "chatName": "Elena Juárez",
       "isGroup": false,
       "userMessage": "Chat con: Elena Juárez\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[22:00] Elena Juárez: Sofi, buen día de mañana\n[10:00] Elena Juárez: Te cuento lo de la mudanza\n\nMensajes sin leer (resumí estos):\n[10:05] Elena Juárez: Ya tengo el camión para el sábado\n[10:10] Sofía [VOS]: Qué bueno, ¿a qué hora?\n[10:15] Elena Juárez: A las 9, si podés ayudar\n[10:20] Elena Juárez: Traé guantes y cinta"
     },
     {
-      "jid": "5491155550156@s.whatsapp.net",
+      "jid": "9951184868459@s.whatsapp.net",
       "chatName": "Fabián Kramer",
       "isGroup": false,
       "userMessage": "Chat con: Fabián Kramer\n\n[10:30] Fabián Kramer: Hola Sofi, soy Fabián, el del curso de fotografía\n[10:35] Sofía [VOS]: Hola Fabián, ¿cómo estás?\n[10:40] Fabián Kramer: Bien, quería pasarte el programa\n[10:45] Fabián Kramer: Empieza el 15"
     },
     {
-      "jid": "120363000000000031@g.us",
+      "jid": "120363563362171186@g.us",
       "chatName": "Equipo de Fútbol 5",
       "isGroup": true,
       "userMessage": "Grupo: Equipo de Fútbol 5\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[12:00] Nacho Olivera: Hoy juego a las 21 en la cancha de siempre\n[12:05] Sofía [VOS]: Yo llevo las pecheras\n\nMensajes sin leer (resumí estos):\n[12:10] Nacho Olivera: Perfecto, gracias Sofi\n[12:15] Tomi Paz: ¿Hay lugar para uno más?"
     },
     {
-      "jid": "5491155550159@s.whatsapp.net",
+      "jid": "9952723596281@s.whatsapp.net",
       "chatName": "Irene Navarro",
       "isGroup": false,
       "userMessage": "Chat con: Irene Navarro\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[07:00] Irene Navarro: Sofi, ¿tenés el contacto del gasista?\n\nMensajes sin leer (resumí estos):\n[19:30] Irene Navarro: Perdón, también necesito el del plomero"

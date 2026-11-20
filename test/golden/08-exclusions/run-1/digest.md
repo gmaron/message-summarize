@@ -8,7 +8,7 @@
 *🟡 Con pendientes*
 • *Familia Rey*: Almuerzo el domingo en lo de los abuelos; Bruno lleva el postre.
    ☐ Confirmar asistencia al almuerzo
-• *Marcos ( +5491155550213 )*: Un contacto nuevo, Marcos, escribe por la mudanza.
+• *Marcos ( +9966713624961 )*: Un contacto nuevo, Marcos, escribe por la mudanza.
    ☐ Responderle a Marcos sobre la mudanza
 
 *⚪ El resto*

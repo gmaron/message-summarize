@@ -5,7 +5,7 @@ export const message = (overrides: Partial<Message> = {}): Message => ({
   conversationId: 'c1',
   senderId: 'p1',
   senderName: null,
-  senderAddress: '+5491100000001',
+  senderAddress: '+9911963367943',
   fromMe: false,
   timestamp: 1_000,
   kind: 'text',
@@ -27,7 +27,7 @@ export const conversation = (overrides: Partial<Conversation> = {}): Conversatio
   isGroup: false,
   participantId: 'p1',
   name: null,
-  address: '+5491100000001',
+  address: '+9911963367943',
   ...overrides,
 })
 

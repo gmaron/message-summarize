@@ -63,7 +63,7 @@ describe('msum daemon: the local web (RF-01, RNF-03)', () => {
           blockedAt: null,
           retryAfter: null,
           fix: null,
-          maskedNumber: '+54*******0009',
+          maskedNumber: '+99*******1432',
           lastDigest: null,
           nextRun: null,
           timezone: expect.any(String),
@@ -73,7 +73,7 @@ describe('msum daemon: the local web (RF-01, RNF-03)', () => {
         },
       ])
       // the full number never leaves the process
-      expect(JSON.stringify(body)).not.toContain('5491100000009')
+      expect(JSON.stringify(body)).not.toContain('9913174261432')
     })
     h.shutdown()
     expect(await finished).toBe(0)
@@ -245,7 +245,7 @@ describe('msum daemon: the local web (RF-01, RNF-03)', () => {
     const reply = await get(port as number, '/api/accounts', token(h))
     const body = (await reply.json()) as { accounts: { id: string; maskedNumber: string | null }[] }
     expect(body.accounts.find((a) => a.id === 'alpha')?.maskedNumber).toBeNull()
-    expect(body.accounts.find((a) => a.id === 'beta')?.maskedNumber).toBe('+54*******0009')
+    expect(body.accounts.find((a) => a.id === 'beta')?.maskedNumber).toBe('+99*******1432')
     h.shutdown()
     await finished
   })

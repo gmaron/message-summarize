@@ -112,7 +112,7 @@ describe('msum import: the main installation', () => {
     expect(byId[ANA]).toMatchObject({
       is_group: 0,
       name: 'Ana Prueba',
-      address: '+5491100000101',
+      address: '+9916915573293',
       unread_kind: 'count',
       unread_count: 2,
     })
@@ -185,7 +185,7 @@ describe('msum import: the main installation', () => {
     expect(output).toContain('(1 messages were edited')
     expect(output).toContain('--schedule 07:00,19:00')
     const everything = [text(h.out), text(h.err), ...h.logs].join('\n')
-    expect(everything).not.toContain('5491100000011')
+    expect(everything).not.toContain('9915434879818')
     expect(everything).not.toContain('DESPUES-')
     expect(everything).not.toContain('Ana Prueba')
     expect(everything).not.toContain('AAAA-one')
@@ -198,7 +198,7 @@ describe('msum import: the main installation', () => {
     const account = h.accountOf('default')
     // byte for byte
     const source = hashTree(join(root, 'auth'))
-    expect(Object.keys(source).sort()).toEqual(['creds.json', 'pre-key-1.json', 'session-5491100000999_1.0.json'])
+    expect(Object.keys(source).sort()).toEqual(['creds.json', 'pre-key-1.json', 'session-9919357142173_1.0.json'])
     expect(hashTree(account.authDir)).toEqual(source)
     // private
     if (!isWindows) expect(mode(account.dir)).toBe(0o700)
@@ -423,7 +423,7 @@ describe('msum import: instances', () => {
     buildLegacy(
       root,
       { config: LEGACY_CONFIG, prompt: LEGACY_PROMPT },
-      { taller: tallerOptions(), Casa_Dos: { ...tallerOptions(), me: '5491100000033:1@s.whatsapp.net', prompt: null } },
+      { taller: tallerOptions(), Casa_Dos: { ...tallerOptions(), me: '9915842349337:1@s.whatsapp.net', prompt: null } },
     )
     const before = hashTree(root)
     expect(await run(h, 'import', '--from', root, '--all', '--yes')).toBe(0)
@@ -431,7 +431,7 @@ describe('msum import: instances', () => {
     for (const [id, number] of [
       ['default', MAIN_ME_CHAT],
       ['taller', TALLER_ME_CHAT],
-      ['casa-dos', '5491100000033@s.whatsapp.net'],
+      ['casa-dos', '9915842349337@s.whatsapp.net'],
     ] as const) {
       const runtime = h.runtime(id)
       expect(runtime.identity.get(), id).toBe(number)
@@ -466,7 +466,7 @@ describe('msum import: refusals', () => {
     buildLegacy(root)
     writeFileSync(
       join(h.account.authDir, 'creds.json'),
-      JSON.stringify({ me: { id: '5491100000055:1@s.whatsapp.net' } }),
+      JSON.stringify({ me: { id: '9915981279634:1@s.whatsapp.net' } }),
     )
     const before = hashTree(h.account.dir)
     expect(await run(h, 'import', '--from', root, '--yes')).toBe(1)
@@ -481,7 +481,7 @@ describe('msum import: refusals', () => {
     buildLegacy(root)
     writeFileSync(
       join(h.account.authDir, 'creds.json'),
-      JSON.stringify({ me: { id: '5491100000055:1@s.whatsapp.net' } }),
+      JSON.stringify({ me: { id: '9915981279634:1@s.whatsapp.net' } }),
     )
     const lock = await acquireDaemonLock(h.layout.lockFile, process.pid)
     expect(await run(h, 'import', '--from', root, '--yes')).toBe(1)
@@ -502,7 +502,7 @@ describe('msum import: refusals', () => {
         conversationId: ANA,
         senderId: ANA,
         senderName: null,
-        senderAddress: '+5491100000101',
+        senderAddress: '+9916915573293',
         fromMe: false,
         timestamp: 1,
         kind: 'text',
@@ -867,7 +867,7 @@ describe('msum import: the privacy lists are never dropped silently', () => {
 })
 
 describe('msum import: the daemon never starts an account that is being imported', () => {
-  const GAMMA = '5491100000033@s.whatsapp.net'
+  const GAMMA = '9915842349337@s.whatsapp.net'
 
   /** A daemon host over the same installation, with a fake socket that records which accounts it was asked to open. */
   async function withHost(h: Harness) {

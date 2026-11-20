@@ -12,15 +12,15 @@ describe('isExcluded', () => {
     expect(isExcluded(['CERÁMICA'], 'a', 'Taller de Cerámica')).toBe(true)
   })
   it('matches by identifier', () => {
-    expect(isExcluded(['55550203'], '5491155550203@s.whatsapp.net', 'Proveedor')).toBe(true)
+    expect(isExcluded(['43136842'], '9962543136842@s.whatsapp.net', 'Proveedor')).toBe(true)
     expect(isExcluded(['G.US'], '120363@g.us', 'x')).toBe(true)
   })
   it('is a plain substring: "ana" excludes "Mariana"', () => {
     expect(isExcluded(['ana'], 'p1', 'Mariana Paz')).toBe(true)
   })
   it('matches the number shown in an unsaved name but not "+" in the id', () => {
-    expect(isExcluded(['+5491155550205'], '5491155550205@s.whatsapp.net', 'Nico ( +5491155550205 )')).toBe(true)
-    expect(isExcluded(['+5491155550205'], '5491155550205@s.whatsapp.net', null)).toBe(false)
+    expect(isExcluded(['+9962744354761'], '9962744354761@s.whatsapp.net', 'Nico ( +9962744354761 )')).toBe(true)
+    expect(isExcluded(['+9962744354761'], '9962744354761@s.whatsapp.net', null)).toBe(false)
   })
   it('does not treat a pattern as a regular expression', () => {
     expect(isExcluded(['a.c'], 'abc', 'abc')).toBe(false)
@@ -39,10 +39,10 @@ describe('isExcluded', () => {
     expect(isExcluded(['zzz', 'gym'], 'a', 'Gym')).toBe(true)
   })
   describe('the exact form id:<conversation id>', () => {
-    const mine = '5491112345678@s.whatsapp.net'
+    const mine = '9922979713568@s.whatsapp.net'
     it('matches only that id', () => {
       expect(isExcluded([`id:${mine}`], mine, 'Nico')).toBe(true)
-      expect(isExcluded([`id:${mine}`], '5491100000000@s.whatsapp.net', 'Nico')).toBe(false)
+      expect(isExcluded([`id:${mine}`], '9911243739479@s.whatsapp.net', 'Nico')).toBe(false)
     })
     it('is not caught by the substring trap: the id of another chat that contains it is not matched', () => {
       expect(isExcluded([mine], `1${mine}`, 'Other')).toBe(true) // the plain form IS a substring

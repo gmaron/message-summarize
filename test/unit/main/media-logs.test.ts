@@ -13,7 +13,7 @@ afterEach(() => {
   disposeHarnesses()
 })
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const KEY = Buffer.alloc(32, 0xab)
 const DIRECT_PATH = '/v/t62.7117-24/777_888_n.enc?ccb=11-4&oh=SECRETTOKEN&oe=65f0'
 

@@ -13,15 +13,15 @@ import { BufferJSON, initAuthCreds } from 'baileys'
 export const NOW = Date.parse('2026-11-17T15:00:00Z')
 const HOUR = 3_600_000
 
-export const ANA = '5491100000101@s.whatsapp.net'
-export const BETO = '5491100000102@s.whatsapp.net'
-export const CAMI = '5491100000103@s.whatsapp.net'
-export const GROUP = '120363000000000001@g.us'
+export const ANA = '9916915573293@s.whatsapp.net'
+export const BETO = '9918786733911@s.whatsapp.net'
+export const CAMI = '9918931164137@s.whatsapp.net'
+export const GROUP = '120363146125332922@g.us'
 /** The linked numbers (with the device suffix that `creds.me.id` has). */
-export const MAIN_ME = '5491100000011:7@s.whatsapp.net'
-export const MAIN_ME_CHAT = '5491100000011@s.whatsapp.net'
-export const TALLER_ME = '5491100000022:3@s.whatsapp.net'
-export const TALLER_ME_CHAT = '5491100000022@s.whatsapp.net'
+export const MAIN_ME = '9915434879818:7@s.whatsapp.net'
+export const MAIN_ME_CHAT = '9915434879818@s.whatsapp.net'
+export const TALLER_ME = '9915544595846:3@s.whatsapp.net'
+export const TALLER_ME_CHAT = '9915544595846@s.whatsapp.net'
 
 /** The end of the last digest of the main installation: messages before it were summarized by the previous tool. */
 export const MAIN_POINTER = NOW - 150 * 60_000
@@ -243,7 +243,7 @@ function writeSession(authDir: string, me: string, extra: Record<string, string>
   const creds = { ...initAuthCreds(), me: { id: me, name: 'Dueño de Prueba' } }
   writeFileSync(join(authDir, 'creds.json'), JSON.stringify(creds, BufferJSON.replacer))
   writeFileSync(join(authDir, 'pre-key-1.json'), JSON.stringify({ made: 'up', key: 'AAAA-one' }))
-  writeFileSync(join(authDir, 'session-5491100000999_1.0.json'), JSON.stringify({ made: 'up', key: 'BBBB-two' }))
+  writeFileSync(join(authDir, 'session-9919357142173_1.0.json'), JSON.stringify({ made: 'up', key: 'BBBB-two' }))
   for (const [name, content] of Object.entries(extra)) writeFileSync(join(authDir, name), content)
 }
 

@@ -23,9 +23,9 @@ afterEach(() => {
   disposeHarnesses()
 })
 
-const ANA = '5491100000001@s.whatsapp.net'
-const BETO = '5491100000002@s.whatsapp.net'
-const SECRET = '5491100000003@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
+const BETO = '9912465397241@s.whatsapp.net'
+const SECRET = '9912752183123@s.whatsapp.net'
 const TEXT = 'PRIVATE-CHAT-TEXT: the plan for friday'
 
 const run = (h: Harness, ...argv: string[]) => runMain(argv, h.ctx)

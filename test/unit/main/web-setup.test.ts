@@ -32,7 +32,7 @@ import { BASE, disposeWorlds, type World, world } from '../../support/web-world.
 
 const VALID = { resumen: 'A made-up chat.', pendientes: [], necesita_respuesta: false, prioridad: 'baja' }
 const SECRET_NAME = 'Zulema-Privada'
-const SECRET_NUMBER = '5491100000009'
+const SECRET_NUMBER = '9913174261432'
 
 let dir: string
 const revoke: Array<() => void> = []

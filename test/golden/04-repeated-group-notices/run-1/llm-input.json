@@ -2,37 +2,37 @@
   "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
   "calls": [
     {
-      "jid": "5491155550141@s.whatsapp.net",
+      "jid": "9941738467278@s.whatsapp.net",
       "chatName": "Marcos Acosta",
       "isGroup": false,
       "userMessage": "Chat con: Marcos Acosta\n\n[07:30] Marcos Acosta: Recordatorio: la reunión de consorcio es el jueves a las 18 hs.\n[07:35] Marcos Acosta: Recordatorio: la reunión de consorcio es el jueves a las 18 hs."
     },
     {
-      "jid": "5491155550142@s.whatsapp.net",
+      "jid": "9942937919782@s.whatsapp.net",
       "chatName": "Lucía Benítez",
       "isGroup": false,
       "userMessage": "Chat con: Lucía Benítez\n\n[07:45] Lucía Benítez: Se cortará el agua del edificio el sábado de 9 a 13 por obras."
     },
     {
-      "jid": "120363000000000021@g.us",
+      "jid": "120363387184672398@g.us",
       "chatName": "Consorcio Los Aromos",
       "isGroup": true,
       "userMessage": "Grupo: Consorcio Los Aromos\n\n[08:00] Nora Cabrera: Buen día a todos\n[10:15] Marcos Acosta: Recordatorio: la reunión de consorcio es el jueves a las 18 hs. (mismo mensaje en 3 grupos más)\n[10:20] Marcos Acosta: ¡Gracias!"
     },
     {
-      "jid": "120363000000000022@g.us",
+      "jid": "120363448592332448@g.us",
       "chatName": "Vecinos del 3°",
       "isGroup": true,
       "userMessage": "Grupo: Vecinos del 3°\n\n[08:30] Lucía Benítez: Buen día vecinos\n[08:50] Lucía Benítez: Se cortará el agua del edificio el sábado de 9 a 13 por obras. (mismo mensaje en 1 grupo más)\n[08:55] Rita Escobar: Pasen por secretaría a retirar el sello \n[09:00] Marcos Acosta: ¡Gracias!\n[09:01] Rita Escobar: 🎤 (audio) Les cuento por audio que el jueves la reunión se pasa para las 19 en el SUM."
     },
     {
-      "jid": "120363000000000023@g.us",
+      "jid": "120363458646478911@g.us",
       "chatName": "Feria de Plaza Sur",
       "isGroup": true,
       "userMessage": "Grupo: Feria de Plaza Sur\n\n[09:05] Rita Escobar: Buenas, ¿alguien va a la feria?\n[09:20] Sofía [VOS]: Gracias a todos por venir a la reunión, fue muy productiva. (mismo mensaje en 1 grupo más)\n[09:25] Rita Escobar: Se vende bicicleta rodado 26, impecable, consultas por privado. (mismo mensaje en 1 grupo más)\n[09:36] Rita Escobar: Pasen por secretaría a retirar el sello \n[09:37] Rita Escobar: 🎤 (audio) Les cuento por audio que el jueves la reunión se pasa para las 19 en el SUM.\n[09:40] Marcos Acosta: ¡Gracias!"
     },
     {
-      "jid": "120363000000000024@g.us",
+      "jid": "120363472499538539@g.us",
       "chatName": "Comisión de Obras",
       "isGroup": true,
       "userMessage": "Grupo: Comisión de Obras\n\n[09:50] Pedro Duarte: Mañana pasa el recolector de residuos voluminosos desde las 8. (mismo mensaje en 1 grupo más)\n[09:55] Nora Cabrera: Recordatorio: la reunión de consorcio es el jueves a las 18 hs.\n[10:02] ?: Gracias a todos por venir a la reunión, fue muy productiva.\n[10:05] Pedro Duarte: Pasen por secretaría a retirar el recibo (mismo mensaje en 1 grupo más)"

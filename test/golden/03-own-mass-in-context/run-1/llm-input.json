@@ -2,7 +2,7 @@
   "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
   "calls": [
     {
-      "jid": "5491155550131@s.whatsapp.net",
+      "jid": "9935141724411@s.whatsapp.net",
       "chatName": "Lola Vega",
       "isGroup": false,
       "userMessage": "Chat con: Lola Vega\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[08:50] Lola Vega: Buen día Sofi\n[09:00] Lola Vega: Hola Sofi, ¿viste mi mensaje?\n[09:05] Sofía [VOS]: (mensaje masivo tuyo, no es una respuesta personal) «Atención a todos: el consultorio atiende de 9 a 17 hs. Graci…»\n[09:10] Sofía [VOS]: (mensaje masivo tuyo, no es una respuesta personal) «Aviso: hoy no atiendo, escribime mañana.…»\n[09:15] Lola Vega: Dale, quedo atenta\n\nMensajes sin leer (resumí estos):\n[10:20] Lola Vega: Sofi, ¿confirmás el turno de mañana?\n[10:25] Lola Vega: Necesito saber antes de las 18"

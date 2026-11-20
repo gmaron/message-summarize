@@ -10,7 +10,7 @@ afterEach(() => {
   disposeHarnesses()
 })
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const KEY = Buffer.alloc(32, 0xcd)
 
 describe('msum link and audios (RF-15, RNF-09)', () => {

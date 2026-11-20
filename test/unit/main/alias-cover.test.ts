@@ -11,7 +11,7 @@ afterEach(async () => {
   disposeHarnesses()
 })
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const LID = '99900000001@lid'
 const TEXT = 'PRIVATE-CHAT-TEXT: the plan'
 const WITH_OLLAMA = { ...BASE, provider: { primary: 'claude-cli', ollama: { model: 'llama-test' } } }

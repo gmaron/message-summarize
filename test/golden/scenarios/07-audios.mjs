@@ -19,14 +19,14 @@
 // merged branches changes the exact line of at least one message. Rendering is per message, so there is
 // no sort or grouping rule involved. All message times are unique. All names, numbers and texts are invented.
 
-const lucia = '5491155550201@s.whatsapp.net'
-const mateo = '5491155550202@s.whatsapp.net'
-const julia = '5491155550203@s.whatsapp.net'
-const valentin = '5491155550204@s.whatsapp.net'
-const nuevo = '5491155550205@s.whatsapp.net' // not in the agenda, only a push name
-const primo = '5491155550206@s.whatsapp.net' // group member, only a push name
-const cumple = '120363000000000101@g.us'
-const vecinos = '120363000000000102@g.us'
+const lucia = '9961674862244@s.whatsapp.net'
+const mateo = '9961982157221@s.whatsapp.net'
+const julia = '9962543136842@s.whatsapp.net'
+const valentin = '9962743112629@s.whatsapp.net'
+const nuevo = '9962744354761@s.whatsapp.net' // not in the agenda, only a push name
+const primo = '9963342211548@s.whatsapp.net' // group member, only a push name
+const cumple = '120363611635657528@g.us'
+const vecinos = '120363643426751743@g.us'
 
 export default {
   description: 'Audio messages with and without transcript, in individual chats and groups, from me and from others.',

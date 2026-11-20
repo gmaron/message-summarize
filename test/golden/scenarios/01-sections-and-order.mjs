@@ -15,14 +15,14 @@
 // First-message order: Marta 08:10, Ana 08:30, Rosa 08:50, Luis 09:00, Torre 09:30, Carlos 10:00, Ajedrez 10:30.
 // All message times are unique. All names, numbers and texts are invented.
 
-const ana = '5491155550101@s.whatsapp.net'
-const luis = '5491155550102@s.whatsapp.net'
-const marta = '5491155550103@s.whatsapp.net'
-const carlos = '5491155550104@s.whatsapp.net'
-const rosa = '5491155550106@s.whatsapp.net'
-const torre = '120363000000000001@g.us'
-const ajedrez = '120363000000000002@g.us'
-const vecina = '5491155550105@s.whatsapp.net' // group member who is not in the agenda, only a push name
+const ana = '9923967495227@s.whatsapp.net'
+const luis = '9924915839685@s.whatsapp.net'
+const marta = '9925826569519@s.whatsapp.net'
+const carlos = '9926162235251@s.whatsapp.net'
+const rosa = '9926335321926@s.whatsapp.net'
+const torre = '120363146125332922@g.us'
+const ajedrez = '120363278292219878@g.us'
+const vecina = '9926289778392@s.whatsapp.net' // group member who is not in the agenda, only a push name
 
 export default {
   description: 'Sections (needs reply / to-dos / rest) and sorting by priority then message count.',

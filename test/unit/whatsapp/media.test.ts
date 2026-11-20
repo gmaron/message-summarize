@@ -39,7 +39,7 @@ const mediaDir = (): string => {
   return join(root, 'media') // does not exist: the first download creates it
 }
 
-const KEY = { conversationId: '5491155550201@s.whatsapp.net', messageId: 'MSG-1' }
+const KEY = { conversationId: '9961674862244@s.whatsapp.net', messageId: 'MSG-1' }
 const DIRECT_PATH = '/v/t62.7117-24/123_456_n.enc?ccb=11-4&oh=abc&oe=65f0'
 /** The download descriptor of an audio, as the capture stores it (the key is 32 bytes, as WhatsApp's are). */
 const audioMessage = (
@@ -354,7 +354,7 @@ describe('downloading an audio (RF-15)', () => {
       const ref = mediaRefOf(KEY.conversationId, KEY.messageId)
       expect(result).toEqual({ ok: true, value: ref })
       expect(ref).toMatch(/^[0-9a-f]{32}\.ogg$/)
-      expect(ref).not.toContain('5491155550201') // the number of the contact is not in the file name
+      expect(ref).not.toContain('9961674862244') // the number of the contact is not in the file name
       expect(readFileSync(join(dir, ref), 'utf8')).toBe('OggS fake voice note')
       expect(files(dir)).toEqual([ref]) // no temporary file left
     })

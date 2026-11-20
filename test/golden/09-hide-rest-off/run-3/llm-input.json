@@ -2,19 +2,19 @@
   "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
   "calls": [
     {
-      "jid": "5491155550228@s.whatsapp.net",
+      "jid": "9976182811728@s.whatsapp.net",
       "chatName": "Nora Giménez",
       "isGroup": false,
       "userMessage": "Chat con: Nora Giménez\n\n[14:10] Nora Giménez: Sofi, te mando el resumen de todo lo hablado\n[14:15] Nora Giménez: ¿Me confirmás que está bien?"
     },
     {
-      "jid": "5491155550229@s.whatsapp.net",
+      "jid": "9976632496298@s.whatsapp.net",
       "chatName": "Omar Ríos",
       "isGroup": false,
       "userMessage": "Chat con: Omar Ríos\n\n[14:30] Omar Ríos: Recordá renovar el seguro del auto\n[14:31] Omar Ríos: Vence a fin de mes"
     },
     {
-      "jid": "5491155550230@s.whatsapp.net",
+      "jid": "9978497698123@s.whatsapp.net",
       "chatName": "Pablo Duarte",
       "isGroup": false,
       "userMessage": "Chat con: Pablo Duarte\n\n[14:50] Pablo Duarte: Saludos desde la costa\n[14:52] Pablo Duarte: Hace mucho viento"

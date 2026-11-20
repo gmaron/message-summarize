@@ -43,7 +43,7 @@ const message = (id: string, chat: string) => ({
     conversationId: `${chat}@s.whatsapp.net`,
     senderId: `${chat}@s.whatsapp.net`,
     senderName: null,
-    senderAddress: '+5491100000001',
+    senderAddress: '+9911963367943',
     fromMe: false,
     timestamp: Date.now() - 60_000,
     kind: 'text' as const,
@@ -220,10 +220,10 @@ describe('linking an account from the web (RF-01)', () => {
     expect(w.host.isLinking('alpha')).toBe(false)
     await waitFor(async () => {
       const list = (await w.api('GET', '/api/accounts')).body.accounts as { maskedNumber: string | null }[]
-      expect(list[0]?.maskedNumber).toBe('+54*******0009')
+      expect(list[0]?.maskedNumber).toBe('+99*******1432')
     })
     // the number appeared in an `accounts` snapshot without anything else changing state
-    expect(w.eventsOf('accounts').some((e) => JSON.stringify(e.data).includes('+54*******0009'))).toBe(true)
+    expect(w.eventsOf('accounts').some((e) => JSON.stringify(e.data).includes('+99*******1432'))).toBe(true)
     // and the unit works as any other: what arrives is captured
     expect(await w.h.connection.receive(message('m4', 'chat-c'))).toBe(true)
     expect(w.h.connection.sent).toEqual([])

@@ -51,17 +51,17 @@ const T40 = chars('Pasen por secretaría a retirar el recibo', 40)
 const T39 = `${chars('Pasen por secretaría a retirar el sello', 39)} ` // raw length 40, trimmed length 39
 for (const t of [N1, N2, N4, N5, SELF]) if (t.length < 40) throw new Error(`Notice too short: ${t}`)
 
-const marcos = '5491155550141@s.whatsapp.net'
-const lucia = '5491155550142@s.whatsapp.net'
-const nora = '5491155550143@s.whatsapp.net'
-const pedro = '5491155550144@s.whatsapp.net'
-const rita = '5491155550145@s.whatsapp.net'
-const ga = '120363000000000021@g.us'
-const gb = '120363000000000022@g.us'
-const gc = '120363000000000023@g.us'
-const gd = '120363000000000024@g.us'
-const ge = '120363000000000025@g.us'
-const gf = '120363000000000026@g.us'
+const marcos = '9941738467278@s.whatsapp.net'
+const lucia = '9942937919782@s.whatsapp.net'
+const nora = '9943988591875@s.whatsapp.net'
+const pedro = '9944124255411@s.whatsapp.net'
+const rita = '9945138449688@s.whatsapp.net'
+const ga = '120363387184672398@g.us'
+const gb = '120363448592332448@g.us'
+const gc = '120363458646478911@g.us'
+const gd = '120363472499538539@g.us'
+const ge = '120363485428972779@g.us'
+const gf = '120363537851146659@g.us'
 
 export default {
   description: 'Repeated notices across groups: key, 40-character threshold, chat order, annotations, disappearing groups.',

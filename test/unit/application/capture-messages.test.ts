@@ -155,7 +155,7 @@ describe('CaptureMessages: exclusion (RF-14)', () => {
   })
 
   describe('a chat excluded by its exact id (id:<id>)', () => {
-    const meta = { conversation: conversation({ id: 'c1', name: 'Ana Test', address: '+5491100000001' }) }
+    const meta = { conversation: conversation({ id: 'c1', name: 'Ana Test', address: '+9911963367943' }) }
     it('does not store its metadata either, so its row and name do not come back', async () => {
       const { capture, repository } = setup(['id:C1'])
       await capture.conversationMetadata(meta)
@@ -705,11 +705,11 @@ describe('capture to digest, on SQLite', () => {
   it('a captured conversation ends up in the digest, one excluded by id does not', async () => {
     const { temp, capture, summarizer, digest } = sqliteSetup()
     try {
-      await capture.participantInfo({ participant: participant({ id: '5491100000001', savedName: 'Ana Gómez' }) })
+      await capture.participantInfo({ participant: participant({ id: '9911963367943', savedName: 'Ana Gómez' }) })
       await capture.conversationMetadata({
-        conversation: conversation({ id: '5491100000001', participantId: '5491100000001', address: '+5491100000001' }),
+        conversation: conversation({ id: '9911963367943', participantId: '9911963367943', address: '+9911963367943' }),
       })
-      await capture.receiveMessage(live('m1', '5491100000001', 9, 'lunch at noon?'))
+      await capture.receiveMessage(live('m1', '9911963367943', 9, 'lunch at noon?'))
       await capture.receiveMessage(live('m2', 'excluded-chat', 10, 'private stuff'))
       const result = await digest()
       expect(result.ok && result.value.summarized).toBe(1)
@@ -730,7 +730,7 @@ describe('capture to digest, on SQLite', () => {
       })
       await capture.participantInfo({ participant: participant({ id: 'p-mar', savedName: 'Mariana López' }) })
       await capture.conversationMetadata({
-        conversation: conversation({ id: 'p-mar', participantId: 'p-mar', address: '+5491100000009' }),
+        conversation: conversation({ id: 'p-mar', participantId: 'p-mar', address: '+9913174261432' }),
       })
       await capture.participantInfo({ participant: participant({ id: 'p-ana', savedName: 'Ana Gómez' }) })
 
@@ -828,7 +828,7 @@ describe('capture to digest, on SQLite', () => {
       const inGroup = (id: string, senderId: string | null, text: string, hour: number, fromMe = false) =>
         message({ id, conversationId: 'g-vecinos', senderId, fromMe, text, timestamp: hourAt(hour) })
       await capture.receiveMessage({
-        message: inGroup('m1', '5491100000001', 'meeting at noon', 9),
+        message: inGroup('m1', '9911963367943', 'meeting at noon', 9),
         isGroup: true,
         origin: 'live',
       })
@@ -840,7 +840,7 @@ describe('capture to digest, on SQLite', () => {
       // a member rewrites both the other member's message and the owner's; the original of m3 never arrived
       for (const id of ['m1', 'm2']) {
         const outcome = await capture.editMessage({
-          message: inGroup(id, '5491100000077', `(edited) FORGED ${id}`, 10),
+          message: inGroup(id, '9916244224364', `(edited) FORGED ${id}`, 10),
           editedAt: hourAt(10),
           isGroup: true,
         })
@@ -848,18 +848,18 @@ describe('capture to digest, on SQLite', () => {
       }
       // the real author edits m1
       await capture.editMessage({
-        message: inGroup('m1', '5491100000001', '(edited) meeting at one', 10),
+        message: inGroup('m1', '9911963367943', '(edited) meeting at one', 10),
         editedAt: hourAt(10),
         isGroup: true,
       })
       // a forged edit of a message that arrives later is replaced by the original
       await capture.editMessage({
-        message: inGroup('m3', '5491100000077', '(edited) FORGED m3', 10),
+        message: inGroup('m3', '9916244224364', '(edited) FORGED m3', 10),
         editedAt: hourAt(10),
         isGroup: true,
       })
       await capture.receiveMessage({
-        message: inGroup('m3', '5491100000002', 'bring chairs', 11),
+        message: inGroup('m3', '9912465397241', 'bring chairs', 11),
         isGroup: true,
         origin: 'live',
       })

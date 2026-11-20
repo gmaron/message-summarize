@@ -28,7 +28,7 @@ vi.mock('baileys', async (importOriginal) => {
       groupMetadata: async () => ({ subject: 'Vecinos' }),
       signalRepository: {
         lidMapping: {
-          getPNForLID: async () => '5491100000001@s.whatsapp.net',
+          getPNForLID: async () => '9911963367943@s.whatsapp.net',
           // These two end in a USync query to WhatsApp's servers when the mapping is not stored: never reachable.
           getLIDForPN: async () => {
             made.sent.push('getLIDForPN')
@@ -77,7 +77,7 @@ const { BAILEYS_SOCKET_OPTIONS, baileysSocketFactory } = await import(
 
 const dirs: string[] = []
 beforeEach(() => {
-  made.user = { id: '5491100000009:1@s.whatsapp.net', lid: '99900000009:1@lid' }
+  made.user = { id: '9913174261432:1@s.whatsapp.net', lid: '99900000009:1@lid' }
 })
 afterEach(() => {
   made.options.length = 0
@@ -182,9 +182,9 @@ describe('the Baileys socket configuration', () => {
     expect(full.sendPresenceUpdate).toBeUndefined()
     expect(full.readMessages).toBeUndefined()
     expect(made.sent).toEqual([])
-    expect(session.socket.user?.id).toBe('5491100000009:1@s.whatsapp.net')
+    expect(session.socket.user?.id).toBe('9913174261432:1@s.whatsapp.net')
     expect(await session.socket.groupMetadata('x@g.us')).toEqual({ subject: 'Vecinos' })
-    expect(await session.socket.signalRepository?.lidMapping?.getPNForLID('1@lid')).toBe('5491100000001@s.whatsapp.net')
+    expect(await session.socket.signalRepository?.lidMapping?.getPNForLID('1@lid')).toBe('9911963367943@s.whatsapp.net')
     session.socket.ev.on('messages.upsert', () => undefined)
     session.socket.ev.off('messages.upsert', () => undefined)
     session.socket.end(undefined)
@@ -205,7 +205,7 @@ describe('sendTextToSelf, the only way to send (RF-50, RF-51, RNF-17)', () => {
   it('sends a plain text to the own phone-number jid, without device, and nothing else', async () => {
     const { session } = await create()
     await session.socket.sendTextToSelf('*Resumen*\n_hola_')
-    expect(made.messages).toEqual([['5491100000009@s.whatsapp.net', { text: '*Resumen*\n_hola_', linkPreview: null }]])
+    expect(made.messages).toEqual([['9913174261432@s.whatsapp.net', { text: '*Resumen*\n_hola_', linkPreview: null }]])
     expect(made.sent).toEqual(['sendMessage']) // no presence update, no read receipt
   })
 
@@ -214,23 +214,23 @@ describe('sendTextToSelf, the only way to send (RF-50, RF-51, RNF-17)', () => {
     expect(session.socket.sendTextToSelf.length).toBe(1)
     await (session.socket.sendTextToSelf as (...args: unknown[]) => Promise<void>)(
       'text',
-      '5491100000001@s.whatsapp.net',
+      '9911963367943@s.whatsapp.net',
     )
-    expect(made.messages.map((m) => m[0])).toEqual(['5491100000009@s.whatsapp.net'])
+    expect(made.messages.map((m) => m[0])).toEqual(['9913174261432@s.whatsapp.net'])
   })
 
   it('follows the user of the socket at the moment of sending', async () => {
     const { session } = await create()
-    made.user = { id: '5491100000010:2@s.whatsapp.net' }
+    made.user = { id: '9915127348271:2@s.whatsapp.net' }
     await session.socket.sendTextToSelf('hi')
-    expect(made.messages.map((m) => m[0])).toEqual(['5491100000010@s.whatsapp.net'])
+    expect(made.messages.map((m) => m[0])).toEqual(['9915127348271@s.whatsapp.net'])
   })
 
   it.each([
     ['no user', undefined],
     ['an empty id', { id: '' }],
     ['a LID', { id: '99900000009:1@lid' }],
-    ['a group', { id: '120363000000000001@g.us' }],
+    ['a group', { id: '120363146125332922@g.us' }],
     ['a broadcast list', { id: 'status@broadcast' }],
     ['something that is not a jid', { id: 'hello' }],
   ])('rejects and sends nothing when the user is %s', async (_name, user) => {
@@ -255,11 +255,11 @@ describe('the LID mapping of the narrow socket (RNF-01, RNF-17)', () => {
   it('reads the number-to-LID mapping from the stored keys, and asks nobody', async () => {
     const { session, options } = await create()
     const auth = options.auth as { keys: { set(data: Record<string, Record<string, string>>): Promise<void> } }
-    await auth.keys.set({ 'lid-mapping': { '5491100000001': '99900000001', '99900000001_reverse': '5491100000001' } })
+    await auth.keys.set({ 'lid-mapping': { '9911963367943': '99900000001', '99900000001_reverse': '9911963367943' } })
     const mapping = session.socket.signalRepository?.lidMapping
-    expect(await mapping?.storedLidForPN?.('5491100000001:7@s.whatsapp.net')).toBe('99900000001@lid')
-    expect(await mapping?.storedLidForPN?.('5491100000002@s.whatsapp.net')).toBeNull()
-    expect(await mapping?.getPNForLID('99900000001@lid')).toBe('5491100000001@s.whatsapp.net')
+    expect(await mapping?.storedLidForPN?.('9911963367943:7@s.whatsapp.net')).toBe('99900000001@lid')
+    expect(await mapping?.storedLidForPN?.('9912465397241@s.whatsapp.net')).toBeNull()
+    expect(await mapping?.getPNForLID('99900000001@lid')).toBe('9911963367943@s.whatsapp.net')
     expect(made.sent).toEqual([])
   })
 })

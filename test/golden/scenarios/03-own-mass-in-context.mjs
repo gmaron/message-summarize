@@ -17,9 +17,9 @@ const MASS_LONG = 'Atención a todos:  el  consultorio\natiende de 9 a 17 hs.  G
 const MASS_SHORT = 'Aviso: hoy no atiendo, escribime mañana.'
 if ([...MASS_SHORT].length !== 40) throw new Error('MASS_SHORT must have 40 characters')
 
-const lola = '5491155550131@s.whatsapp.net'
-const mario = '5491155550132@s.whatsapp.net'
-const nora = '5491155550133@s.whatsapp.net'
+const lola = '9935141724411@s.whatsapp.net'
+const mario = '9936448572259@s.whatsapp.net'
+const nora = '9937467983239@s.whatsapp.net'
 
 export default {
   description: 'Own mass messages rendered as context lines with soloNoLeidos.',
