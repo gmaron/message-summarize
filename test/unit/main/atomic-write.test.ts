@@ -5,13 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isWindows } from '../../support/platform.js'
 
 // `rename` can be made to fail: that is the moment between "written aside" and "in place".
-const failing = vi.hoisted(() => ({ rename: false, write: false }))
+// `renameTimes` 0 means every attempt fails; otherwise only the first `renameTimes` do.
+const failing = vi.hoisted(() => ({ renameCode: '', renameTimes: 0, renames: 0, write: false }))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
     rename: async (...args: Parameters<typeof actual.rename>) => {
-      if (failing.rename) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+      if (failing.renameCode) {
+        failing.renames++
+        if (failing.renameTimes === 0 || failing.renames <= failing.renameTimes) {
+          throw Object.assign(new Error('busy'), { code: failing.renameCode })
+        }
+      }
       return actual.rename(...args)
     },
     open: async (...args: Parameters<typeof actual.open>) => {
@@ -34,7 +40,9 @@ const { writeFileAtomic } = await import('../../../src/main/atomic-write.js')
 let dir = ''
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'msum-atomic-'))
-  failing.rename = false
+  failing.renameCode = ''
+  failing.renameTimes = 0
+  failing.renames = 0
   failing.write = false
 })
 afterEach(() => {
@@ -54,10 +62,33 @@ describe('writeFileAtomic', () => {
   it('keeps the old content and removes the temporary file when the rename fails', async () => {
     const file = join(dir, 'x.json')
     writeFileSync(file, 'old\n')
-    failing.rename = true
+    failing.renameCode = 'EBUSY'
     await expect(writeFileAtomic(file, 'new\n')).rejects.toMatchObject({ code: 'EBUSY' })
+    expect(failing.renames).toBe(5)
     expect(readFileSync(file, 'utf8')).toBe('old\n')
     expect(readdirSync(dir)).toEqual(['x.json'])
+  })
+
+  it.each(['EPERM', 'EBUSY', 'EACCES'])(
+    'retries the rename after a passing %s and writes the new content',
+    async (code) => {
+      const file = join(dir, 'x.json')
+      writeFileSync(file, 'old\n')
+      failing.renameCode = code
+      failing.renameTimes = 3
+      await writeFileAtomic(file, 'new\n')
+      expect(failing.renames).toBe(4)
+      expect(readFileSync(file, 'utf8')).toBe('new\n')
+      expect(readdirSync(dir)).toEqual(['x.json'])
+    },
+  )
+
+  it('does not retry an error that is not a passing lock', async () => {
+    const file = join(dir, 'x.json')
+    failing.renameCode = 'ENOSPC'
+    await expect(writeFileAtomic(file, 'new\n')).rejects.toMatchObject({ code: 'ENOSPC' })
+    expect(failing.renames).toBe(1)
+    expect(readdirSync(dir)).toEqual([])
   })
 
   it('keeps the old content, and never shows a partial file, when the write dies half way', async () => {
