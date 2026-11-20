@@ -30,6 +30,16 @@ npm ci
 
 When you change a dependency, run `npm ci` and then `npm run notices`, and commit the updated file.
 
+## Pre-push check
+
+`.githooks/pre-push` runs what the quality job of CI runs (`lint`, `typecheck` and `test:coverage`, about a minute) and stops the push when one fails. Enable it once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+To skip it for one push, use `MSUM_SKIP_CHECKS=1 git push`. CI still runs everything, plus the build, the installers and the other operating systems.
+
 ## Architecture in one screen
 
 Ports and adapters. Dependencies only point inward.
