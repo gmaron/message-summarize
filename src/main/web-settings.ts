@@ -1,5 +1,6 @@
 import { consentKeyFor } from '../domain/setup.js'
 import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
+import { isOpenAiHost } from '../infrastructure/llm/index.js'
 import { HttpError, type Route } from '../interfaces/http/router.js'
 import {
   type AppConfig,
@@ -14,15 +15,18 @@ import {
   validateEffective,
 } from './config.js'
 import { updateAccountConfig } from './config-writer.js'
-import { consentStateOfKey } from './consent.js'
+import { consentRequiredBody, consentStateOfKey } from './consent.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
 import { accountLayoutOf, unsafeAccountPath } from './paths.js'
+import { type ModelCatalog, unknownModelIn } from './web-models.js'
 import { type AccountRoutesSource, knownAccount } from './web-routes.js'
 
 export interface SettingsRoutesSource extends AccountRoutesSource {
   readonly ctx: Pick<CommandContext, 'layout'>
   readonly host: DaemonHost
+  /** The models the user may choose: a model that is not in the last list known is refused (see `ModelCatalog.accepts`). */
+  readonly models?: ModelCatalog
 }
 
 type Kind = 'string' | 'boolean' | 'number'
@@ -49,15 +53,26 @@ const EDITABLE: Readonly<Record<string, { readonly kind: Kind; readonly nullable
   'provider.claudeCli.timeoutMs': { kind: 'number' },
   'provider.ollama.baseUrl': { kind: 'string' },
   'provider.ollama.model': { kind: 'string' },
+  'provider.openai.model': { kind: 'string' },
+  'provider.openai.baseUrl': { kind: 'string' },
+  'provider.anthropic.model': { kind: 'string' },
+  'provider.gemini.model': { kind: 'string' },
 }
 
 /**
- * The providers the web can choose today: the ones whose whole setup is a model or an address (Claude Code, Ollama). The
- * rest of the table in `provider-info` (the APIs, the generic CLI, and the presets shipped disabled) needs a key, a model
- * of its own or a command that the web has no field for: they are chosen with `msum provider use`, which also records
- * the consent for what they disclose. A provider the file already holds stays visible (and keeps working).
+ * The providers the web can choose: the ones whose whole setup is a model, an address and, for the APIs, a key that the
+ * web stores (`PUT /api/accounts/:id/keys/:provider`). The rest of the table in `provider-info` (the generic CLI and the presets
+ * shipped disabled) needs a command that the web has no field for: they are chosen with `msum provider use`, which also
+ * records the consent for what they disclose. A provider the file already holds stays visible (and keeps working).
+ * `baseUrl` is only an option of `openai` (LM Studio, OpenRouter...): Anthropic and Gemini have fixed hosts.
  */
-export const WEB_PROVIDERS = ['claude-cli', 'ollama'] as const satisfies readonly ProviderKind[]
+export const WEB_PROVIDERS = [
+  'claude-cli',
+  'ollama',
+  'openai',
+  'anthropic',
+  'gemini',
+] as const satisfies readonly ProviderKind[]
 
 const providersOffered = (config: AppConfig): ProviderKind[] => {
   const offered: ProviderKind[] = [...WEB_PROVIDERS]
@@ -92,6 +107,9 @@ export interface SettingsValues {
     readonly backup: ProviderKind | null
     readonly claudeCli: { readonly model: string; readonly timeoutMs: number }
     readonly ollama: { readonly baseUrl: string; readonly model: string | null }
+    readonly openai: { readonly baseUrl: string; readonly model: string | null }
+    readonly anthropic: { readonly model: string | null }
+    readonly gemini: { readonly model: string | null }
   }
 }
 
@@ -125,6 +143,9 @@ const valuesOf = (config: AppConfig): SettingsValues => ({
     backup: config.provider.backup,
     claudeCli: { model: config.provider.claudeCli.model, timeoutMs: config.provider.claudeCli.timeoutMs },
     ollama: { baseUrl: config.provider.ollama.baseUrl, model: config.provider.ollama.model },
+    openai: { baseUrl: config.provider.openai.baseUrl, model: config.provider.openai.model },
+    anthropic: { model: config.provider.anthropic.model },
+    gemini: { model: config.provider.gemini.model },
   },
 })
 
@@ -258,22 +279,39 @@ export function settingsRoutes(source: SettingsRoutesSource, onChanged: () => vo
           dryRun: true,
         })
         if (preview.ok) {
-          const { primary, backup, ollama } = preview.value.provider
+          const { primary, backup, ollama, openai } = preview.value.provider
+          const officialOpenAi = isOpenAiHost(openai.baseUrl)
           const keys = new Set<string | null>()
           for (const option of ['provider.primary', 'provider.backup']) {
             const chosen = patch[option]
-            if (typeof chosen === 'string') keys.add(consentKeyFor(chosen, ollama.baseUrl))
+            if (typeof chosen === 'string') keys.add(consentKeyFor(chosen, ollama.baseUrl, officialOpenAi))
           }
-          if (typeof patch['provider.ollama.baseUrl'] === 'string' && (primary === 'ollama' || backup === 'ollama')) {
-            keys.add(consentKeyFor('ollama', ollama.baseUrl))
+          // Also when the change removes the address (back to the one the installation or the default gives): what counts is
+          // the address in force before and after, so a change that leaves it where it was asks nothing.
+          const ollamaBefore = held.ok ? held.view.values.provider.ollama.baseUrl : null
+          if (
+            'provider.ollama.baseUrl' in patch &&
+            ollama.baseUrl !== ollamaBefore &&
+            (primary === 'ollama' || backup === 'ollama')
+          ) {
+            keys.add(consentKeyFor('ollama', ollama.baseUrl, officialOpenAi))
+          }
+          // Another address for OpenAI sends the chats (and the key) to another host: the agreement is asked again, also
+          // when the change removes the address (back to OpenAI's own).
+          if ('provider.openai.baseUrl' in patch && (primary === 'openai' || backup === 'openai')) {
+            keys.add(consentKeyFor('openai', ollama.baseUrl, officialOpenAi))
           }
           for (const key of keys) {
             // Against the configuration this change would leave: the same rule as `doctor` (kind, current text, hosts).
             if (key !== null && consentStateOfKey(source.installation.setup, id, key, preview.value) === 'missing') {
-              return { status: 409, body: { error: 'consentRequired', provider: key } }
+              return { status: 409, body: consentRequiredBody(key, preview.value) }
             }
           }
         }
+        // A model is chosen from a list: one that is not in the last list known for its provider is refused (not what the
+        // account already holds, which may have been set by hand). "Test connection" stays the final proof.
+        const unknown = await unknownModelIn(source, id, patch, held.ok ? held.view.values : null)
+        if (unknown !== null) return { status: 422, body: { error: 'unknownModel', option: unknown } }
         const written = await updateAccountConfig({
           rootFile: ctx.layout.configFile,
           accountFile: account.configFile,

@@ -1,40 +1,47 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { SETUP_STEPS } from '../../../domain/setup.js'
+  import { SETUP_STEPS_SHOWN } from '../../../domain/setup.js'
   import type { WebTexts } from '../../../infrastructure/i18n/catalog.js'
-  import { isAccountIdValid } from '../lib/accounts.js'
+  import { accountIdFrom, badgeOf } from '../lib/accounts.js'
+  import { displayHostOf, isApiProvider, isOpenAiUrl } from '../lib/api-providers.js'
   import { type Api, ApiError } from '../lib/api.js'
   import type { Controller } from '../lib/controller.js'
   import { errorText } from '../lib/digest.js'
-  import { fmt } from '../lib/i18n.js'
-  import { dayLabel, newDraft, scheduleIssueOf, shortTime, validateDraft } from '../lib/schedules.js'
+  import { isUtcZone } from '../lib/format.js'
+  import { browserTimeZone, fmt } from '../lib/i18n.js'
   import { issueReason, issuesOf, optionLabel } from '../lib/settings.js'
   import {
-    DEFAULT_OLLAMA_URL,
+    ollamaUrlOf,
     emptyDraft,
     consentKeyOf,
     hostOf,
+    openaiAddressInvalid,
+    openaiUrlOf,
+    shownOriginOf,
+    recipientOf,
+    recipientOfDraft,
+    withOpenAiBaseUrl,
     nameBody,
     nameIssue,
     previousStep,
     providerBody,
     providerIssue,
     stepIndicator,
-    SUGGESTED_SCHEDULES,
     testBody,
     withBaseUrl,
     WIZARD_PROVIDERS,
     type WizardDraft,
   } from '../lib/setup.js'
   import type { AppState } from '../lib/state.js'
-  import type { AccountView, Language, SchedulesView, SetupStep, SetupView } from '../lib/types.js'
+  import type { AccountView, SetupStep, SetupView } from '../lib/types.js'
+  import ApiKeyField from './ApiKeyField.svelte'
+  import ModelPicker from './ModelPicker.svelte'
   import Disclosure from './Disclosure.svelte'
   import Icon from './Icon.svelte'
+  import LanguageSwitch from './LanguageSwitch.svelte'
   import LinkStart from './LinkStart.svelte'
   import LinkView from './LinkView.svelte'
   import ProviderTest from './ProviderTest.svelte'
-  import ConfirmDialog from './ConfirmDialog.svelte'
-  import ScheduleForm from './ScheduleForm.svelte'
 
   let {
     controller,
@@ -46,29 +53,43 @@
 
   const w = $derived(texts.ui.wizard)
   const step: SetupStep = $derived(setup.step)
-  const total = SETUP_STEPS.length
+  const total = SETUP_STEPS_SHOWN.length
   const account = $derived(setup.account)
   const accountView: AccountView | null = $derived(
     account === null ? null : (app.accounts?.find((row) => row.id === account) ?? null),
   )
 
   // What the user typed. It is restored from the daemon when the wizard is reopened (the account's own settings).
-  let draft: WizardDraft = $state.raw(untrack(() => emptyDraft(app.language)))
+  let draft: WizardDraft = $state.raw(untrack(() => emptyDraft(setup.language)))
   let saving = $state(false)
   let problem: string | null = $state(null)
   let issueLines: string[] = $state.raw([])
   let confirmSkip = $state(false)
-  /** The schedule form (outside the wizard's own form: forms are never nested): null hidden, id null for a new schedule. */
-  let editor: { id: number | null; initial: { days: readonly number[]; time: string } } | null = $state.raw(null)
-  let scheduleProblem: string | null = $state(null)
-  let removing: { id: number; time: string; days: readonly number[] } | null = $state.raw(null)
-  let schedules: SchedulesView | null = $state.raw(null)
-
+  /** The addresses the account has saved: an agreement already recorded covers only those, not what is typed now. */
+  let saved: { ollama: string; openai: string } | null = $state.raw(null)
   const patch = (change: Partial<WizardDraft>): void => {
     draft = { ...draft, ...change }
     problem = null
     issueLines = []
   }
+
+  // The account name is checked once the user leaves the field (not while they are still typing the other one).
+  let accountTouched = $state(false)
+  // Changes when a key is saved or removed: the list of models of the provider is asked again.
+  let keyVersion = $state(0)
+  // The time zone the digests follow (read from the system by the daemon; shown, never asked).
+  let zone: string | null = $state(null)
+  $effect(() => {
+    if (step !== 'done' || account === null) return
+    const id = account
+    untrack(async () => {
+      try {
+        zone = (await api.schedules(id)).timezone
+      } catch {
+        zone = null
+      }
+    })
+  })
 
   // Reopened halfway: what was saved for the account fills the form again.
   let restored: string | null = null
@@ -80,6 +101,8 @@
       try {
         const view = await api.settings(id)
         const provider = view.values.provider.primary
+        const openaiUrl = view.values.provider.openai.baseUrl
+        saved = { ollama: view.values.provider.ollama.baseUrl, openai: openaiUrl }
         patch({
           ownerName: view.values.ownerName ?? '',
           accountId: id,
@@ -90,6 +113,11 @@
                 claudeModel: provider === 'claude-cli' ? view.values.provider.claudeCli.model : '',
                 ollamaBaseUrl: view.values.provider.ollama.baseUrl,
                 ollamaModel: view.values.provider.ollama.model ?? '',
+                // OpenAI's own address is the default: the field stays empty unless a server of the user's is in force.
+                openaiBaseUrl: isOpenAiUrl(openaiUrl) ? '' : openaiUrl,
+                openaiModel: view.values.provider.openai.model ?? '',
+                anthropicModel: view.values.provider.anthropic.model ?? '',
+                geminiModel: view.values.provider.gemini.model ?? '',
               }),
         })
       } catch {
@@ -97,14 +125,41 @@
       }
     })
   })
-  // The agreement already recorded for this account is shown as given.
+  // The address Ollama has when its field is empty, as the daemon says it (it may not be on this machine).
+  $effect(() => {
+    const inherited = setup.ollamaBaseUrl
+    if (inherited !== draft.ollamaInherited) untrack(() => patch({ ollamaInherited: inherited }))
+  })
+  // The address OpenAI has in the configuration: what an empty field means.
+  $effect(() => {
+    const inherited = setup.openaiBaseUrl
+    if (inherited !== draft.openaiInherited) untrack(() => patch({ openaiInherited: inherited }))
+  })
+  // The agreement already recorded for this account is shown as given, but only for the recipient it was given for: another
+  // address (a compatible server, a remote Ollama) is another recipient and asks again.
   $effect(() => {
     const key = consentKeyOf(draft)
-    const given = key !== null && setup.consents.includes(key)
+    const recipient = recipientOfDraft(draft)
+    const given =
+      key !== null &&
+      setup.consents.includes(key) &&
+      saved !== null &&
+      recipient === recipientOf(draft.provider, saved.ollama, saved.openai)
     if (given && !draft.consent) untrack(() => patch({ consent: true }))
   })
 
   const nameProblem = $derived(nameIssue(draft, account !== null))
+  /** What the account is called: what was typed, turned into an id (shown live, and what is sent). */
+  const accountId = $derived(accountIdFrom(draft.accountId))
+  /** An account of that name already exists and is not linked: the wizard takes it (it is not an error). */
+  const adopting = $derived(
+    account === null && accountId !== '' && (app.accounts ?? []).some((row) => row.id === accountId && badgeOf(row) === 'notLinked'),
+  )
+  const previewText = $derived(
+    account !== null || accountId === ''
+      ? ''
+      : fmt(adopting ? texts.ui.addAccount.idPreviewExisting : texts.ui.addAccount.idPreview, { id: accountId }),
+  )
   const providerProblem = $derived(providerIssue(draft))
   const phase = $derived(account === null ? 'idle' : (app.links[account]?.phase ?? 'idle'))
   const linkBusy = $derived(['waitingQr', 'qr', 'syncing'].includes(phase))
@@ -125,69 +180,6 @@
     }
   })
 
-  async function loadSchedules() {
-    if (account === null) return
-    try {
-      schedules = await api.schedules(account)
-    } catch {
-      schedules = null
-    }
-  }
-  $effect(() => {
-    if ((step === 'schedule' || step === 'done') && account !== null) untrack(loadSchedules)
-  })
-
-  async function saveSchedule(next: { days: readonly number[]; time: string }) {
-    if (account === null || editor === null) return
-    const issue = validateDraft({ days: next.days, time: next.time })
-    if (issue !== null) {
-      scheduleProblem = texts.scheduleIssues[issue]
-      return
-    }
-    saving = true
-    scheduleProblem = null
-    try {
-      const input = { days: [...next.days], time: next.time }
-      if (editor.id === null) await api.addSchedule(account, input)
-      else await api.updateSchedule(account, editor.id, input)
-      editor = null
-      await loadSchedules()
-    } catch (error) {
-      const found = scheduleIssueOf(error)
-      scheduleProblem =
-        found !== null ? texts.scheduleIssues[found] : errorText(error instanceof ApiError ? error.code : 'internal', texts)
-    } finally {
-      saving = false
-    }
-  }
-
-  async function removeSchedule() {
-    const target = removing
-    removing = null
-    if (account === null || target === null) return
-    try {
-      await api.deleteSchedule(account, target.id)
-      if (editor?.id === target.id) editor = null
-      await loadSchedules()
-    } catch (error) {
-      problem = errorText(error instanceof ApiError ? error.code : 'internal', texts)
-    }
-  }
-
-  async function suggest() {
-    if (account === null) return
-    saving = true
-    problem = null
-    try {
-      for (const one of SUGGESTED_SCHEDULES) await api.addSchedule(account, { days: [...one.days], time: one.time })
-      await loadSchedules()
-    } catch (error) {
-      problem = errorText(error instanceof ApiError ? error.code : 'internal', texts)
-    } finally {
-      saving = false
-    }
-  }
-
   /** Saves a step (or goes back) and shows what the daemon refused with, if it did. */
   async function send(body: Record<string, unknown>): Promise<boolean> {
     saving = true
@@ -202,8 +194,23 @@
       issueLines = issues.map((issue) =>
         fmt(texts.ui.settings.issue, { option: optionLabel(issue.option, texts), reason: issueReason(issue, texts) }),
       )
-    } else if (error?.code === 'consentRequired') problem = texts.ui.disclosure.consentNeeded
-    else problem = errorText(error?.code ?? 'internal', texts)
+    } else if (error?.code === 'consentRequired') {
+      // The daemon decides who the recipient is. If it is not the one on screen, the agreement given does not stand: the box
+      // is cleared and the page says so (the setup is asked again, so the notice shows what the daemon has).
+      const shown = consentKeyOf(draft)
+      const previous = draft
+      draft = { ...draft, consent: false }
+      const origin = error.origin
+      const other =
+        error.provider !== undefined &&
+        (error.provider !== shown || (origin !== undefined && origin !== shownOriginOf(previous)))
+      problem = other
+        ? fmt(texts.ui.disclosure.consentChanged, {
+            provider: (origin !== undefined ? displayHostOf(origin) : null) ?? consentName(error.provider ?? ''),
+          })
+        : texts.ui.disclosure.consentNeeded
+      void controller.loadSetup()
+    } else problem = errorText(error?.code ?? 'internal', texts)
     return false
   }
 
@@ -211,11 +218,8 @@
     event?.preventDefault()
     if (saving) return
     switch (step) {
-      case 'language':
-        await send({ from: 'language', language: draft.language })
-        break
-      case 'name':
-        if (nameProblem === null) await send(nameBody(draft, account !== null))
+      case 'you':
+        if (nameProblem === null) await send(nameBody({ ...draft, language: app.language }, account !== null, browserTimeZone()))
         break
       case 'provider':
         if (providerProblem === null) await send(providerBody(draft))
@@ -242,21 +246,53 @@
   }
 
   const nameProblemText = (code: NonNullable<typeof nameProblem>): string =>
-    code === 'invalidAccountId' ? texts.errors.invalidAccountId : texts.ui.wizard.name[code]
+    code === 'invalidAccountId' ? texts.errors.invalidAccountId : texts.ui.wizard.you[code]
+  const consentName = (key: string): string => {
+    const names = texts.ui.disclosure.providers as Record<string, { name: string }>
+    return names[key === 'ollama-remote' ? 'ollama' : key]?.name ?? key
+  }
   const providerName = (name: string): string =>
     (texts.ui.disclosure.providers as Record<string, { name: string }>)[name]?.name ?? name
   const consentKey = $derived(consentKeyOf(draft))
-  /** The host of an Ollama that is not on this machine (the text goes there), or null. */
-  const remoteHost = $derived(consentKey === 'ollama-remote' ? hostOf(draft.ollamaBaseUrl.trim() === '' ? DEFAULT_OLLAMA_URL : draft.ollamaBaseUrl) : null)
+  /** An address that is not a web address names no recipient: no notice is shown for it and nothing can be sent. */
+  const openaiInvalid = $derived(draft.provider === 'openai' && openaiAddressInvalid(draft))
+  const openaiCompatible = $derived(draft.provider === 'openai' && !openaiInvalid && !isOpenAiUrl(openaiUrlOf(draft)))
+  /** The host of the server that gets the text when it is not a fixed provider (a remote Ollama, a compatible server), or null. */
+  const remoteHost = $derived(
+    consentKey === 'ollama-remote'
+      ? hostOf(ollamaUrlOf(draft))
+      : openaiCompatible
+        ? displayHostOf(openaiUrlOf(draft))
+        : null,
+  )
+  const modelField = { openai: 'openaiModel', anthropic: 'anthropicModel', gemini: 'geminiModel' } as const
   const canContinue = $derived(
-    step === 'link' ? setup.linked && !linkBusy : step === 'name' ? nameProblem === null : step === 'provider' ? providerProblem === null : true,
+    step === 'link' ? setup.linked && !linkBusy : step === 'you' ? nameProblem === null : step === 'provider' ? providerProblem === null : true,
   )
 </script>
+
+{#snippet consentBox()}
+  {#if consentKey !== null && !openaiInvalid}
+    <label class="check">
+      <input
+        type="checkbox"
+        checked={draft.consent}
+        onchange={(event) => patch({ consent: event.currentTarget.checked })}
+      />
+      <span>{fmt(texts.ui.disclosure.consentCheckbox, { provider: remoteHost ?? providerName(draft.provider) })}</span>
+    </label>
+  {/if}
+{/snippet}
 
 <div class="wizard-page">
   <div class="head">
     <h1>{w.title}</h1>
-    <span class="muted small">{fmt(w.stepOf, { n: SETUP_STEPS.indexOf(step) + 1, total })}</span>
+    <div class="r">
+      {#if step !== 'done'}<span class="muted small">{fmt(w.stepOf, { n: Math.min(SETUP_STEPS_SHOWN.indexOf(step) + 1, total), total })}</span>{/if}
+      {#if setup.freshInstall}
+        <LanguageSwitch {texts} current={app.language} onchoose={(language) => controller.setLanguage(language)} />
+      {/if}
+    </div>
   </div>
 
   <ol class="stepper" aria-label={w.stepsLabel}>
@@ -268,30 +304,11 @@
   </ol>
 
   <form class="form-section" onsubmit={next}>
-    {#if step === 'language'}
-      <h2>{w.language.heading}</h2>
-      <p>{w.language.intro}</p>
-      <div class="field w-200">
-        <label for="wizard-language">{w.language.label}</label>
-        <select
-          id="wizard-language"
-          value={draft.language}
-          onchange={(event) => {
-            const language = event.currentTarget.value as Language
-            patch({ language })
-            controller.setLanguage(language)
-          }}
-        >
-          {#each ['es', 'en'] as const as language (language)}
-            <option value={language}>{texts.ui.settings.languageNames[language]}</option>
-          {/each}
-        </select>
-      </div>
-    {:else if step === 'name'}
-      <h2>{w.name.heading}</h2>
-      <p>{w.name.intro}</p>
+    {#if step === 'you'}
+      <h2>{w.you.heading}</h2>
+      <p>{w.you.intro}</p>
       <div class="field">
-        <label for="wizard-owner">{w.name.ownerLabel}</label>
+        <label for="wizard-owner">{w.you.ownerLabel}</label>
         <input
           id="wizard-owner"
           type="text"
@@ -301,28 +318,33 @@
           maxlength="80"
           aria-describedby="owner-hint"
         />
-        <span class="hint" id="owner-hint">{w.name.ownerHint}</span>
+        <span class="hint" id="owner-hint">{w.you.ownerHint}</span>
       </div>
       <div class="field">
-        <label for="wizard-account">{w.name.accountLabel}</label>
+        <label for="wizard-account">{w.you.accountLabel}</label>
         <input
           id="wizard-account"
           type="text"
           value={draft.accountId}
           oninput={(event) => patch({ accountId: event.currentTarget.value })}
+          onblur={() => (accountTouched = true)}
           disabled={account !== null}
+          required
+          placeholder={texts.ui.addAccount.idPlaceholder}
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
-          maxlength="32"
-          aria-describedby="account-hint"
+          maxlength="64"
+          aria-describedby="account-hint account-preview"
         />
-        <span class="hint" id="account-hint">{account !== null ? w.name.accountLocked : w.name.accountHint}</span>
+        <span class="hint" id="account-hint">{account !== null ? w.you.accountLocked : w.you.accountHint}</span>
+        <!-- Always there (only its text changes) so it is announced and the description always points at something. -->
+        <span class="hint strong" id="account-preview" aria-live="polite">{previewText}</span>
       </div>
-      {#if draft.ownerName !== '' && nameProblem !== null}
+      {#if nameProblem === 'ownerTooLong'}
         <p class="err small bad-text" role="alert">{nameProblemText(nameProblem)}</p>
-      {:else if account === null && draft.accountId !== '' && !isAccountIdValid(draft.accountId.trim())}
-        <p class="err small bad-text" role="alert">{texts.errors.invalidAccountId}</p>
+      {:else if account === null && accountTouched && accountId === ''}
+        <p class="err small bad-text" role="alert">{texts.ui.addAccount.idNothing}</p>
       {/if}
     {:else if step === 'provider'}
       <h2>{w.provider.heading}</h2>
@@ -343,20 +365,46 @@
               <span>{providerName(provider)}</span>
             </label>
             {#if draft.provider === provider}
-              <Disclosure {texts} {provider} host={remoteHost ?? undefined} />
+              {#if provider === 'openai' && openaiInvalid}
+                <p class="muted small">{w.provider.openaiBaseUrlInvalid}</p>
+              {:else}
+                <Disclosure {texts} {provider} host={remoteHost ?? undefined} compatible={openaiCompatible} />
+              {/if}
               {#if provider === 'claude-cli'}
-                <div class="field">
-                  <label for="wizard-claude-model">{w.provider.modelLabel}</label>
-                  <input
+                {#if account !== null}
+                  <ModelPicker
+                    {api}
+                    {texts}
+                    {account}
+                    provider="claude-cli"
                     id="wizard-claude-model"
-                    type="text"
+                    label={w.provider.modelLabel}
                     value={draft.claudeModel}
-                    oninput={(event) => patch({ claudeModel: event.currentTarget.value })}
-                    autocomplete="off"
-                    spellcheck="false"
-                    placeholder="sonnet"
+                    onchange={(model) => patch({ claudeModel: model })}
                   />
-                </div>
+                {/if}
+              {:else if isApiProvider(provider)}
+                {#if provider === 'openai'}
+                  <div class="field">
+                    <label for="wizard-openai-url">{w.provider.openaiBaseUrlLabel}</label>
+                    <input
+                      id="wizard-openai-url"
+                      type="text"
+                      value={draft.openaiBaseUrl}
+                      oninput={(event) => {
+                        draft = withOpenAiBaseUrl(draft, event.currentTarget.value)
+                        problem = null
+                        issueLines = []
+                      }}
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder="https://api.openai.com/v1"
+                      aria-describedby="wizard-openai-url-hint"
+                    />
+                    <span class="hint" id="wizard-openai-url-hint">{w.provider.openaiBaseUrlHint}</span>
+                  </div>
+                {/if}
               {:else}
                 <div class="field">
                   <label for="wizard-ollama-url">{w.provider.baseUrlLabel}</label>
@@ -373,31 +421,55 @@
                     spellcheck="false"
                   />
                 </div>
-                <div class="field">
-                  <label for="wizard-ollama-model">{w.provider.ollamaModelLabel}</label>
-                  <input
+                {#if account !== null}
+                  <ModelPicker
+                    {api}
+                    {texts}
+                    {account}
+                    provider="ollama"
                     id="wizard-ollama-model"
-                    type="text"
+                    label={w.provider.ollamaModelLabel}
+                    hint={w.provider.ollamaModelHint}
                     value={draft.ollamaModel}
-                    oninput={(event) => patch({ ollamaModel: event.currentTarget.value })}
-                    autocomplete="off"
-                    spellcheck="false"
-                    aria-describedby="ollama-model-hint"
+                    onchange={(model) => patch({ ollamaModel: model })}
+                    baseUrl={ollamaUrlOf(draft)}
+                    consent={consentKey === 'ollama-remote' && draft.consent ? 'ollama-remote' : undefined}
                   />
-                  <span class="hint" id="ollama-model-hint">{w.provider.ollamaModelHint}</span>
-                </div>
+                {/if}
               {/if}
-              {#if consentKey !== null}
-                <label class="check">
-                  <input
-                    type="checkbox"
-                    checked={draft.consent}
-                    onchange={(event) => patch({ consent: event.currentTarget.checked })}
-                  />
-                  <span>{fmt(texts.ui.disclosure.consentCheckbox, { provider: remoteHost ?? providerName(provider) })}</span>
-                </label>
+              {#if isApiProvider(provider) && account !== null}
+                <ApiKeyField
+                  {api}
+                  {texts}
+                  {account}
+                  {provider}
+                  baseUrl={provider === 'openai' ? openaiUrlOf(draft) : ''}
+                  idSuffix="wizard-{provider}"
+                  lockedNote={provider === 'openai' && openaiInvalid ? w.provider.openaiBaseUrlInvalid : undefined}
+                  test={{ body: testBody(draft), blocked: providerProblem !== null }}
+                  beforeTest={consentBox}
+                  onkeychange={() => (keyVersion += 1)}
+                >
+                  {#snippet afterKey()}
+                    <ModelPicker
+                      {api}
+                      {texts}
+                      {account}
+                      {provider}
+                      id="wizard-{provider}-model"
+                      label={w.provider.apiModelLabel}
+                      hint={w.provider.apiModelHint}
+                      value={draft[modelField[provider]]}
+                      onchange={(model) => patch({ [modelField[provider]]: model })}
+                      reload={keyVersion}
+                      typingOnly={provider === 'openai' && openaiCompatible}
+                    />
+                  {/snippet}
+                </ApiKeyField>
+              {:else}
+                {@render consentBox()}
+                <ProviderTest {api} {texts} body={testBody(draft)} blocked={providerProblem !== null} />
               {/if}
-              <ProviderTest {api} {texts} body={testBody(draft)} blocked={providerProblem !== null} />
               {#if providerProblem === 'consent'}
                 <p class="muted small">{texts.ui.disclosure.test.needsConsent}</p>
               {/if}
@@ -405,9 +477,6 @@
           </div>
         {/each}
       </fieldset>
-    {:else if step === 'transcription'}
-      <h2>{w.transcription.heading}</h2>
-      <p>{w.transcription.text}</p>
     {:else if step === 'link'}
       <h2>{w.link.heading}</h2>
       <p>{w.link.intro}</p>
@@ -423,62 +492,14 @@
           <p class="muted small">{w.link.needsLink}</p>
         {/if}
       {/if}
-    {:else if step === 'schedule'}
-      <h2>{w.schedule.heading}</h2>
-      <p>{w.schedule.intro}</p>
-      {#if schedules !== null}
-        <p class="muted small">{fmt(w.schedule.timezone, { timezone: schedules.timezone })}</p>
-        <h3>{w.schedule.current}</h3>
-        {#if schedules.schedules.length === 0}
-          <p>{w.schedule.none}</p>
-        {:else}
-          <ul class="list">
-            {#each schedules.schedules as one (one.id)}
-              <li class="sched">
-                <div>
-                  <div class="t num">{shortTime(one.time)}</div>
-                  <div class="small muted">{dayLabel(one.days, texts)}</div>
-                </div>
-                <div class="cluster">
-                  <button
-                    type="button"
-                    class="btn quiet sm"
-                    onclick={() => ((editor = { id: one.id, initial: { days: one.days, time: one.time } }), (scheduleProblem = null))}
-                  >
-                    {texts.ui.schedules.edit}
-                  </button>
-                  <button
-                    type="button"
-                    class="btn quiet sm danger"
-                    aria-label={fmt(texts.ui.schedules.deleteLabel, { time: shortTime(one.time) })}
-                    onclick={() => (removing = { id: one.id, time: one.time, days: one.days })}
-                  >
-                    {texts.ui.schedules.delete}
-                  </button>
-                </div>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      {/if}
-      <div class="cluster">
-        {#if schedules !== null && schedules.schedules.length === 0}
-          <button type="button" class="btn primary" onclick={suggest} disabled={saving}>{w.schedule.suggest}</button>
-        {/if}
-        <button
-          type="button"
-          class="btn"
-          onclick={() => ((editor = { id: null, initial: newDraft() }), (scheduleProblem = null))}
-        >
-          {texts.ui.schedules.addTitle}
-        </button>
-      </div>
-      <p class="muted small">{w.schedule.skipNote}</p>
     {:else}
       <h2>{w.done.heading}</h2>
       <p>{w.done.text}</p>
-      {#if schedules !== null && schedules.schedules.length === 0}
-        <p class="notice warn" role="status">{w.done.noSchedule}</p>
+      <p class="muted small">{w.done.schedules}</p>
+      {#if zone !== null}
+        <p class="muted small">
+          {fmt(texts.ui.schedules.zoneLine, { zone })}{#if isUtcZone(zone)} {texts.ui.schedules.zoneUtcHint}{/if}
+        </p>
       {/if}
     {/if}
 
@@ -503,23 +524,6 @@
     </div>
   </form>
 
-  {#if step === 'schedule' && editor !== null}
-    {#key `${editor.id}`}
-      <section class="form-section" aria-labelledby="wizard-schedule-form">
-        <h2 id="wizard-schedule-form">{editor.id === null ? texts.ui.schedules.addTitle : texts.ui.schedules.editTitle}</h2>
-        <ScheduleForm
-          {texts}
-          initial={editor.initial}
-          submitLabel={editor.id === null ? texts.ui.schedules.add : texts.ui.schedules.save}
-          busy={saving}
-          problem={scheduleProblem}
-          onsubmit={(next) => void saveSchedule(next)}
-          oncancel={() => ((editor = null), (scheduleProblem = null))}
-        />
-      </section>
-    {/key}
-  {/if}
-
   <div class="stack-sm">
     {#if confirmSkip}
       <p class="notice warn" role="alert">{w.skipConfirm}</p>
@@ -532,16 +536,3 @@
     {/if}
   </div>
 </div>
-
-{#if removing !== null}
-  <ConfirmDialog
-    title={texts.ui.schedules.deleteTitle}
-    confirmLabel={texts.ui.schedules.delete}
-    cancelLabel={texts.ui.cancel}
-    tone="danger"
-    onconfirm={removeSchedule}
-    oncancel={() => (removing = null)}
-  >
-    <p>{fmt(texts.ui.schedules.deleteText, { time: shortTime(removing.time), days: dayLabel(removing.days, texts) })}</p>
-  </ConfirmDialog>
-{/if}

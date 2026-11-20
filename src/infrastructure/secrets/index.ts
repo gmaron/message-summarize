@@ -2,6 +2,7 @@ export {
   envNames,
   InvalidSecretsFileError,
   isKeyProvider,
+  isPlausibleKey,
   KEY_PROVIDERS,
   type KeyLookup,
   type KeyProvider,

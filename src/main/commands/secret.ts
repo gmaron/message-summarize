@@ -1,6 +1,7 @@
 import {
   envNames,
   InvalidSecretsFileError,
+  isPlausibleKey,
   KEY_PROVIDERS,
   type KeySource,
   removeApiKey,
@@ -12,9 +13,6 @@ import { installationCatalog } from '../account-command.js'
 import { openInstallation } from '../accounts.js'
 import type { CommandContext } from '../context.js'
 import { accountLayoutOf, ensureDataDirs } from '../paths.js'
-
-/** A key is one token: no spaces, line breaks or control characters (a pasted line with extra text would never work). */
-const isPlausibleKey = (key: string): boolean => !/[\s\p{Cc}]/u.test(key)
 
 /**
  * `msum secret set|rm <provider>` and `msum secret ls` (RNF-04). The keys live in `<data directory>/secrets.json`, or in

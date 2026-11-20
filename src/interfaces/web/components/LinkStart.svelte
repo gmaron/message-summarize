@@ -16,7 +16,7 @@
   }
 </script>
 
-<section class="notice note warn" aria-labelledby={`risk-title-${idSuffix}`}>
+<section class="notice warn" aria-labelledby={`risk-title-${idSuffix}`}>
   <h4 id={`risk-title-${idSuffix}`}>{t.heading}</h4>
   <ul>
     <li>{t.unofficial}</li>
@@ -30,8 +30,8 @@
   <input type="checkbox" bind:checked />
   <span>{t.checkbox}</span>
 </label>
-<div class="buttons">
-  <button type="button" class="primary" disabled={!canStartLink(true, checked)} onclick={start}>{t.start}</button>
+<div class="cluster">
+  <button type="button" class="btn primary" disabled={!canStartLink(true, checked)} onclick={start}>{t.start}</button>
 </div>
 
 <style>
@@ -54,19 +54,6 @@
   }
 
   a {
-    color: var(--accent);
-  }
-
-  .check {
-    display: inline-flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    cursor: pointer;
-  }
-
-  .buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    color: inherit;
   }
 </style>

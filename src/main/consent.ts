@@ -101,11 +101,25 @@ export function recordConsent(
 }
 
 /**
- * The web names a consent by a key (`consentKeyFor` of the domain: `claude-cli`, or `ollama-remote` for an Ollama that is
- * not on this machine). This is the kind of the table that the key stands for.
+ * The web names a consent by a key (`consentKeyFor` of the domain: `claude-cli`, `ollama-remote` for an Ollama that is not on
+ * this machine, `openai`, `openai-compatible`, `anthropic`, `gemini`). This is the kind of the table that the key stands for.
  */
-export const kindOfConsentKey = (key: string): ProviderInfoKind | null =>
-  key === 'claude-cli' ? 'claude-cli' : key === OLLAMA_REMOTE ? 'ollama' : null
+export const kindOfConsentKey = (key: string): ProviderInfoKind | null => {
+  if (key === OLLAMA_REMOTE) return 'ollama'
+  return (
+    (['claude-cli', 'openai', 'openai-compatible', 'anthropic', 'gemini'] as const).find((kind) => kind === key) ?? null
+  )
+}
+
+/**
+ * The kind a web key applies to for this configuration, or null: `openai` and `openai-compatible` are the same provider
+ * told apart by its address, so each applies only when `provider.openai.baseUrl` says so.
+ */
+function applicableKind(key: string, config: AppConfig): ProviderInfoKind | null {
+  const kind = kindOfConsentKey(key)
+  if (kind === 'openai' || kind === 'openai-compatible') return kindOfProvider(config, 'openai') === kind ? kind : null
+  return kind
+}
 
 /**
  * Where the consent named by a web key stands for this configuration: `notNeeded` (the key does not apply, for example an
@@ -117,9 +131,27 @@ export function consentStateOfKey(
   key: string,
   config: AppConfig,
 ): 'notNeeded' | 'given' | 'missing' {
-  const kind = kindOfConsentKey(key)
+  const kind = applicableKind(key, config)
   if (kind === null || consentTarget(kind, config) === null) return 'notNeeded'
   return findConsent(setup, account, kind, config) === null ? 'missing' : 'given'
+}
+
+/**
+ * The origin that receives the text for a consent key, for the keys whose recipient is a server of the user's choice
+ * (`openai-compatible`, `ollama-remote`): the effective address after the change that asked. The page shows it in the
+ * notice and sends it back to record the agreement, so what is recorded is always what was shown. Undefined for the
+ * keys whose recipient is fixed.
+ */
+export function consentOriginOf(key: string, config: AppConfig): string | undefined {
+  if (key === OLLAMA_REMOTE) return originOf(config.provider.ollama.baseUrl)
+  if (key === 'openai-compatible') return originOf(config.provider.openai.baseUrl)
+  return undefined
+}
+
+/** The body of a 409 `consentRequired`: the key and, for a server of the user's choice, its origin. */
+export const consentRequiredBody = (key: string, config: AppConfig): Record<string, string> => {
+  const origin = consentOriginOf(key, config)
+  return { error: 'consentRequired', provider: key, ...(origin === undefined ? {} : { origin }) }
 }
 
 /** Records the consent named by a web key for this configuration. False when the key does not apply to it. */
@@ -129,7 +161,7 @@ export function recordConsentOfKey(
   key: string,
   config: AppConfig,
 ): boolean {
-  const kind = kindOfConsentKey(key)
+  const kind = applicableKind(key, config)
   if (kind === null || consentTarget(kind, config) === null) return false
   recordConsent(setup, account, kind, config)
   return true

@@ -19,6 +19,7 @@ const view = (over: Partial<PromptView> = {}): PromptView => ({
   source: 'default',
   text: 'Original for {{name}}.',
   defaultText: 'Original for {{name}}.',
+  presets: [{ id: 'full', text: 'Original for {{name}}.' }],
   variables: ['{{name}}'],
   maxLength: 100,
   ownerName: 'Marta Prueba',

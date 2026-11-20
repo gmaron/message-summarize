@@ -1,6 +1,7 @@
 import { isAccountIdValid } from './accounts.js'
 import { type Api, ApiError } from './api.js'
-import { pickLanguage } from './i18n.js'
+import { OPENAI_BASE_URL } from './api-providers.js'
+import { languageFromBrowser, pickLanguage } from './i18n.js'
 import { connectEvents, type EventSourceLike } from './sse.js'
 import {
   type AppState,
@@ -18,8 +19,10 @@ import type { Language, SetupView } from './types.js'
 export interface ControllerOptions {
   readonly api: Api
   readonly createEventSource: () => EventSourceLike
-  /** `navigator.language`, for when the daemon does not say. */
-  readonly browserLanguage: string | undefined
+  /** `navigator.language`. Used with `browserLanguages` only on a fresh install and on the page that has no access. */
+  readonly browserLanguage?: string | undefined
+  /** `navigator.languages`: the order of preference of the user. */
+  readonly browserLanguages?: readonly string[] | undefined
   readonly retryMs?: number
 }
 
@@ -28,11 +31,14 @@ export type AddAccountResult = { readonly ok: true } | { readonly ok: false; rea
 /** What the page assumes when the daemon cannot say where the wizard is: it is over, so the panel opens. */
 const FALLBACK_SETUP: SetupView = {
   completed: true,
-  step: 'language',
+  step: 'you',
   account: null,
   linked: false,
-  language: 'en',
+  language: 'es',
+  freshInstall: false,
   consents: [],
+  openaiBaseUrl: OPENAI_BASE_URL,
+  ollamaBaseUrl: 'http://127.0.0.1:11434',
 }
 
 export type SetupResult = { readonly ok: true } | { readonly ok: false; readonly error: ApiError | null }
@@ -46,7 +52,11 @@ const codeOf = (error: unknown): string => (error instanceof ApiError ? error.co
  */
 export function createController(options: ControllerOptions) {
   const { api } = options
-  let state: AppState = initialState(pickLanguage(undefined, options.browserLanguage))
+  // Spanish until something says otherwise (the first render, before the daemon answers).
+  let state: AppState = initialState(pickLanguage(undefined))
+  /** The user chose a language with the switch: nothing the browser says changes it any more. */
+  let languageChosen = false
+  const fromBrowser = () => languageFromBrowser(options.browserLanguages, options.browserLanguage)
   const listeners = new Set<(state: AppState) => void>()
   const historyListeners = new Set<(account: string) => void>()
   const logListeners = new Set<() => void>()
@@ -65,7 +75,10 @@ export function createController(options: ControllerOptions) {
   const unauthorized = (): void => {
     stream?.close()
     stream = null
-    update((s) => (s.unauthorized ? s : { ...s, unauthorized: true }))
+    // The page that has no access has no installation language to show: it follows the browser (Spanish when it says nothing).
+    update((s) =>
+      s.unauthorized ? s : { ...s, unauthorized: true, language: languageChosen ? s.language : fromBrowser() },
+    )
   }
   /** A 401 anywhere means the session is not valid. */
   const failed = (error: unknown): void => {
@@ -86,7 +99,12 @@ export function createController(options: ControllerOptions) {
   const loadSetup = async (): Promise<void> => {
     try {
       const setup = await api.setup()
-      update((s) => ({ ...s, setup }))
+      // A fresh install has no language of its own yet: the wizard speaks the browser's from its first screen.
+      update((s) => ({
+        ...s,
+        setup,
+        language: setup.freshInstall && !setup.completed && !languageChosen ? fromBrowser() : s.language,
+      }))
     } catch (error) {
       failed(error)
       update((s) => (s.setup === null ? { ...s, setup: { ...FALLBACK_SETUP, language: s.language } } : s))
@@ -143,7 +161,7 @@ export function createController(options: ControllerOptions) {
     async start(): Promise<void> {
       try {
         const info = await api.info()
-        update((s) => ({ ...s, language: pickLanguage(info.language, options.browserLanguage) }))
+        update((s) => ({ ...s, language: pickLanguage(info.language) }))
       } catch (error) {
         failed(error)
       }
@@ -195,6 +213,7 @@ export function createController(options: ControllerOptions) {
 
     /** The page's language changes at once (the wizard's first step shows it live); the daemon is told when the step is saved. */
     setLanguage(language: Language): void {
+      languageChosen = true
       update((s) => (s.language === language ? s : { ...s, language }))
     },
 
@@ -204,7 +223,7 @@ export function createController(options: ControllerOptions) {
         const setup = await api.saveSetup(body)
         update((s) => ({ ...s, setup }))
         // A step may have created the account or changed what a card shows.
-        if (body.from === 'name' || body.from === 'provider') await refreshAccounts()
+        if (body.from === 'you' || body.from === 'provider') await refreshAccounts()
         return { ok: true }
       } catch (error) {
         failed(error)

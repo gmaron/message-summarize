@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ok } from '../../../src/domain/result.js'
 import { makeSchedule } from '../../../src/domain/schedule.js'
+import { CONSENT_TEXT_VERSION } from '../../../src/domain/setup.js'
 import { nextRunOf } from '../../../src/infrastructure/scheduling/croner-scheduler.js'
 import { PROVIDERS } from '../../../src/main/config.js'
 import { disposeHarnesses, FakeSummarizer, SUMMARY, seedMessages, until, waitFor } from '../../support/cli-harness.js'
@@ -60,6 +61,9 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
         backup: null,
         claudeCli: { model: 'opus', timeoutMs: 180000 },
         ollama: { baseUrl: 'http://127.0.0.1:11434', model: null },
+        openai: { baseUrl: 'https://api.openai.com/v1', model: null },
+        anthropic: { model: null },
+        gemini: { model: null },
       },
     })
     expect(reply.body.sources).toMatchObject({
@@ -73,7 +77,10 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
       maxCharsPerConversation: 'default',
       'provider.ollama.model': 'default',
     })
-    expect(reply.body.options).toEqual({ providers: ['claude-cli', 'ollama'], languages: ['es', 'en'] })
+    expect(reply.body.options).toEqual({
+      providers: ['claude-cli', 'ollama', 'openai', 'anthropic', 'gemini'],
+      languages: ['es', 'en'],
+    })
   })
 
   it('writes the patch into the ACCOUNT file only, answers with the new settings and leaves other accounts alone', async () => {
@@ -516,7 +523,7 @@ describe('a change of the settings applies to the running unit without reconnect
 })
 
 describe('the providers of the table that the web cannot set up yet (RNF-02)', () => {
-  const remoteKind = ['openai', 'anthropic', 'gemini', 'generic-cli', 'gemini-cli', 'codex-cli']
+  const remoteKind = ['generic-cli', 'gemini-cli', 'codex-cli']
 
   it('are not chosen from the settings: no provider that sends the chats out is activated without its consent', async () => {
     const w = await world({ accounts: ['alpha'] })
@@ -534,9 +541,15 @@ describe('the providers of the table that the web cannot set up yet (RNF-02)', (
       config: { ...BASE, provider: { primary: 'openai', openai: { model: 'm' } } },
     })
     const reply = await w.api('GET', url('alpha'))
-    expect(reply.body.options).toEqual({ providers: ['claude-cli', 'ollama', 'openai'], languages: ['es', 'en'] })
+    expect(reply.body.options).toEqual({
+      providers: ['claude-cli', 'ollama', 'openai', 'anthropic', 'gemini'],
+      languages: ['es', 'en'],
+    })
+    // (choosing a provider that sends the chats out asks for the consent, also when it is the one already held)
+    expect((await w.api('PUT', url('alpha'), { provider: { primary: 'openai' }, unreadOnly: true })).status).toBe(409)
+    w.installation.setup.recordConsent('alpha', 'openai', CONSENT_TEXT_VERSION)
     expect((await w.api('PUT', url('alpha'), { provider: { primary: 'openai' }, unreadOnly: true })).status).toBe(200)
     // ...but the web does not move it to another provider it cannot set up
-    expect((await w.api('PUT', url('alpha'), { provider: { primary: 'anthropic' } })).status).toBe(400)
+    expect((await w.api('PUT', url('alpha'), { provider: { primary: 'generic-cli' } })).status).toBe(400)
   })
 })

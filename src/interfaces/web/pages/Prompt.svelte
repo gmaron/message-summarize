@@ -84,6 +84,27 @@
     }
   })
 
+  /** The template whose text is the one in the editor (ignoring line breaks and the edges), or null. */
+  const activePreset = $derived(
+    loaded === null ? null : (loaded.presets.find((one) => normalizeText(one.text).trim() === normalizeText(draft).trim())?.id ?? null),
+  )
+
+  /** The template waiting for the user to agree to replace what they typed and did not save. */
+  let pendingPreset: string | null = $state(null)
+
+  /** Loads a template into the editor: it is not saved until the user saves. Typed, unsaved text is replaced only after asking. */
+  function loadPreset(text: string) {
+    pendingPreset = null
+    clearMessages()
+    draft = normalizeText(text)
+    notice = t.templates.loaded
+  }
+
+  function choosePreset(text: string) {
+    if (dirty) pendingPreset = text
+    else loadPreset(text)
+  }
+
   function clearMessages() {
     failure = null
     refused = null
@@ -167,6 +188,16 @@
           <p class="notice warn" role="alert">{t.fileMissing}</p>
         {/if}
         <div class="field">
+          <span class="lab" id="prompt-templates">{t.templates.label}</span>
+          <div class="chips" role="group" aria-labelledby="prompt-templates">
+            {#each loaded.presets as one (one.id)}
+              <button type="button" class="chip" aria-pressed={activePreset === one.id} onclick={() => choosePreset(one.text)}>
+                {t.templates.names[one.id]}
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="field">
           <label for="prompt-text">{t.label}</label>
           <textarea
             id="prompt-text"
@@ -216,6 +247,18 @@
     </div>
   {/if}
 </div>
+
+{#if pendingPreset !== null}
+  <ConfirmDialog
+    title={t.templates.confirmTitle}
+    confirmLabel={t.templates.confirmYes}
+    cancelLabel={t.templates.confirmNo}
+    onconfirm={() => loadPreset(pendingPreset ?? '')}
+    oncancel={() => (pendingPreset = null)}
+  >
+    <p>{t.templates.confirmText}</p>
+  </ConfirmDialog>
+{/if}
 
 {#if confirming}
   <ConfirmDialog

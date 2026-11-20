@@ -22,7 +22,9 @@ import { removeWebAddress, writeWebAddress } from './web-address.js'
 import { conversationRoutes } from './web-conversations.js'
 import { digestRoutes } from './web-digest.js'
 import { historyRoutes } from './web-history.js'
+import { keysRoutes } from './web-keys.js'
 import { logRoutes } from './web-logs.js'
+import { modelCatalog } from './web-models.js'
 import { promptRoutes } from './web-prompt.js'
 import { accountCreator, accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
@@ -102,6 +104,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
   const listenHost = ctx.web?.host ?? options.web.host
   const listenPort = ctx.web?.port ?? options.web.port
   const source = { ctx, installation, host }
+  const models = modelCatalog(source)
   const bus = new EventBus<WebEvents>()
   const previews = new PreviewService({
     ctx,
@@ -150,9 +153,11 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       handler: async () => ({ body: { accounts: await describeAccounts(source) } }),
     },
     ...accountRoutes(source, createAccount),
-    ...setupRoutes({ ...source, create: createAccount, onChanged: () => void publishAccounts() }),
+    ...setupRoutes({ ...source, models, create: createAccount, onChanged: () => void publishAccounts() }),
     ...scheduleRoutes(source, () => void publishAccounts()),
-    ...settingsRoutes(source, () => void publishAccounts()),
+    ...settingsRoutes({ ...source, models }, () => void publishAccounts()),
+    ...models.routes,
+    ...keysRoutes(source),
     ...promptRoutes(source, () => void publishAccounts()),
     ...digestRoutes({ ...source, previews }),
     ...conversationRoutes(source),

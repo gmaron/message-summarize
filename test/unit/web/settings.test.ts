@@ -37,6 +37,9 @@ const view = (over: Partial<SettingsView['values']> = {}): SettingsView => ({
       backup: null,
       claudeCli: { model: 'sonnet', timeoutMs: 180000 },
       ollama: { baseUrl: 'http://127.0.0.1:11434', model: null },
+      openai: { baseUrl: 'https://api.openai.com/v1', model: null },
+      anthropic: { model: null },
+      gemini: { model: null },
     },
     ...over,
   },
@@ -124,16 +127,19 @@ describe('the issues of a refused save', () => {
     )
     expect(issueReason({ option: 'x', code: 'somethingNew' as never }, webEn)).toBe(webEn.errors.invalidConfig)
     expect(optionLabel('somethingNew', webEn)).toBe('somethingNew')
+    // The time zone is not a field of the form, but a daemon issue about it is not shown under the raw key.
+    expect(optionLabel('timezone', webEn)).toBe('Time zone')
+    expect(optionLabel('timezone', webEs)).toBe('Zona horaria')
   })
 
   it('puts each issue next to its field, and the ones of no field in a general list', () => {
     const grouped = groupIssues([
-      { option: 'timezone', code: 'invalidTimezone' },
-      { option: 'timezone', code: 'notString' },
+      { option: 'language', code: 'notOneOf' },
+      { option: 'language', code: 'notString' },
       { option: '(config)', code: 'invalidJson' },
       { option: 'web', code: 'installationOnly' },
     ])
-    expect(grouped.byOption.timezone).toHaveLength(2)
+    expect(grouped.byOption.language).toHaveLength(2)
     expect(grouped.general.map((issue) => issue.option)).toEqual(['(config)', 'web'])
   })
 
@@ -157,6 +163,15 @@ describe('the issues of a refused save', () => {
 
   it('offers the time zones of the browser, or none where it cannot tell', () => {
     expect(timeZoneChoices()).toContain('Europe/Madrid')
+  })
+
+  it('shows the time zone as an editable field of the language group, and sends it when it changes', () => {
+    expect(FIELDS.find((field) => field.option === 'timezone')).toMatchObject({
+      kind: 'timezone',
+      group: 'languageTime',
+    })
+    const draft = { ...draftOf(view()), timezone: 'America/Argentina/Buenos_Aires' }
+    expect(buildPatch(view(), draft)).toEqual({ ok: true, patch: { timezone: 'America/Argentina/Buenos_Aires' } })
   })
 
   it('knows an Ollama address that is not this machine', () => {

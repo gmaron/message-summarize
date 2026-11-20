@@ -66,7 +66,7 @@ describe('SqliteSetupRepository', () => {
   it('has no state until it is ensured, which never replaces what is there', () => {
     const { db, repo } = open()
     expect(repo.get()).toBeNull()
-    expect(repo.ensure(false)).toEqual({ step: 'language', account: null, completedAt: null })
+    expect(repo.ensure(false)).toEqual({ step: 'you', account: null, completedAt: null })
     repo.save('provider', null)
     expect(repo.ensure(true)).toMatchObject({ step: 'provider', completedAt: null })
     db.close()
@@ -87,7 +87,7 @@ describe('SqliteSetupRepository', () => {
     repo.complete()
     const completedAt = repo.get()?.completedAt
     expect(completedAt).not.toBeNull()
-    repo.save('language', null)
+    repo.save('you', null)
     repo.complete()
     expect(repo.get()).toEqual({ step: 'link', account: 'alpha', completedAt })
     db.close()
@@ -104,7 +104,20 @@ describe('SqliteSetupRepository', () => {
     const { db, repo } = open()
     repo.ensure(false)
     db.prepare("UPDATE setup SET step = 'from-the-future'").run()
-    expect(repo.get()?.step).toBe('language')
+    expect(repo.get()?.step).toBe('you')
+    db.close()
+  })
+
+  it.each([
+    ['language', 'you'],
+    ['name', 'you'],
+    ['transcription', 'link'],
+    ['schedule', 'link'],
+  ])('resumes a wizard saved at the old step %s at %s', (old, expected) => {
+    const { db, repo } = open()
+    repo.ensure(false)
+    db.prepare('UPDATE setup SET step = ?').run(old)
+    expect(repo.get()?.step).toBe(expected)
     db.close()
   })
 

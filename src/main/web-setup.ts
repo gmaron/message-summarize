@@ -1,29 +1,44 @@
 import { DEFAULT_ACCOUNT_ID, isValidAccountId } from '../domain/account-id.js'
+import { ALL_WEEKDAYS, makeSchedule } from '../domain/schedule.js'
 import {
   CONSENT_TEXT_VERSION,
   consentKeyFor,
+  DEFAULT_SCHEDULE_TIMES,
   EXTERNAL_PROVIDERS,
   isEarlier,
   isSetupStep,
-  nextStep,
+  OLLAMA_REMOTE,
   providerNeedsConsent,
   type SetupStep,
   stepIndex,
 } from '../domain/setup.js'
 import { LANGUAGES, type Language } from '../infrastructure/i18n/index.js'
+import { isOpenAiHost, OPENAI_BASE_URL } from '../infrastructure/llm/index.js'
 import type { SetupRecord } from '../infrastructure/persistence/sqlite/index.js'
+import { isValidTimezone } from '../infrastructure/scheduling/croner-scheduler.js'
+import { envNames, type KeyProvider, resolveApiKey } from '../infrastructure/secrets/index.js'
 import { HttpError, type Route, type RouteResult } from '../interfaces/http/router.js'
-import { type AppConfig, DEFAULT_LANGUAGE, isObject, type ProviderKind, readConfigObject } from './config.js'
+import {
+  type AppConfig,
+  DEFAULT_LANGUAGE,
+  isObject,
+  loadEffectiveConfig,
+  type ProviderKind,
+  readConfigObject,
+} from './config.js'
 import {
   serialized,
   type UpdateAccountConfigResult,
   updateAccountConfig,
   updateInstallationLanguage,
 } from './config-writer.js'
-import { consentStateOfKey, recordConsentOfKey } from './consent.js'
+import { consentRequiredBody, consentStateOfKey, recordConsentOfKey } from './consent.js'
 import { type CommandContext, hasSession } from './context.js'
 import { accountLayoutOf, unsafeAccountPath } from './paths.js'
 import { TEST_TIMEOUT_MS, testProvider } from './provider-test.js'
+import { openAiKeyProvider } from './providers.js'
+import { readKey } from './web-keys.js'
+import { type ModelCatalog, unknownModelIn } from './web-models.js'
 import { type AccountRoutesSource, knownAccount } from './web-routes.js'
 import { issueViews, WEB_PROVIDERS } from './web-settings.js'
 
@@ -31,6 +46,8 @@ export interface SetupRoutesSource extends AccountRoutesSource {
   readonly ctx: Pick<CommandContext, 'layout' | 'env' | 'web' | 'clock'>
   /** Creates an account as `POST /api/accounts` does (same checks). */
   readonly create: (id: string) => Promise<void>
+  /** The models the user may choose: a model outside the last list known is refused. */
+  readonly models?: ModelCatalog
   /** Told when something an account card shows changed (its settings), so the page hears of it. */
   readonly onChanged: () => void
 }
@@ -40,17 +57,28 @@ export interface SetupView {
   /** True when the wizard is over, skipped, or was never needed (the installation already had a linked account). */
   readonly completed: boolean
   readonly step: SetupStep
-  /** The account the wizard is setting up, once the "name" step made it. */
+  /** The account the wizard is setting up, once the "you" step made it. */
   readonly account: string | null
   /** The account has a registered session (the "link" step can continue). */
   readonly linked: boolean
-  /** The language of the installation as the first step left it. */
+  /** The language of the installation (the first step takes the browser's, with its time zone, only on a fresh install). */
   readonly language: Language
+  /**
+   * A truly fresh install: no setup progress, no account and the language still the one `msum init` writes. Only then the
+   * page speaks the browser's language from the first screen, and the first step saves it as the installation's.
+   */
+  readonly freshInstall: boolean
   /** The external providers the account agreed to (RNF-02). */
   readonly consents: readonly string[]
+  /** The address Ollama has when its field is emptied (the installation's, without the account's own): who would get the text. */
+  readonly ollamaBaseUrl: string
+  /** The address `openai` has for this account now (its config or the installation's, or OpenAI's own): who would get the text. */
+  readonly openaiBaseUrl: string
 }
 
 const OWNER_NAME_MAX = 80
+/** What an Ollama address is when nothing sets one. */
+const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
 
 const object = (body: unknown): Record<string, unknown> => {
   if (!isObject(body)) throw new HttpError(400, 'invalidRequest')
@@ -78,15 +106,41 @@ function readProvider(body: Record<string, unknown>): {
   }
   const patch: Record<string, unknown> = { 'provider.primary': provider }
   const model = text('model')
-  if (provider === 'claude-cli') {
-    if (model !== undefined) patch['provider.claudeCli.model'] = model
-  } else {
-    const baseUrl = text('baseUrl')
-    if (baseUrl !== undefined) patch['provider.ollama.baseUrl'] = baseUrl
-    if (model !== undefined) patch['provider.ollama.model'] = model
+  const baseUrl = text('baseUrl')
+  // Only Ollama and OpenAI (for LM Studio, OpenRouter...) have an address of their own: the other providers have a fixed
+  // host, and one given for them is a mistake of the caller, not something to ignore.
+  if (baseUrl !== undefined && provider !== 'ollama' && provider !== 'openai')
+    throw new HttpError(400, 'invalidRequest')
+  switch (provider) {
+    case 'claude-cli':
+      if (model !== undefined) patch['provider.claudeCli.model'] = model
+      break
+    case 'ollama':
+      if (baseUrl !== undefined) patch['provider.ollama.baseUrl'] = baseUrl
+      if (model !== undefined) patch['provider.ollama.model'] = model
+      break
+    default:
+      if (baseUrl !== undefined) patch['provider.openai.baseUrl'] = baseUrl
+      if (model !== undefined) patch[`provider.${provider}.model`] = model
   }
   return { provider: provider as ProviderKind, patch }
 }
+
+/** The consent key of a provider as `config` would have it (`openai` depends on its address, Ollama on where it is). */
+const consentKeyOf = (provider: string, config: AppConfig): string | null =>
+  consentKeyFor(provider, config.provider.ollama.baseUrl, isOpenAiHost(config.provider.openai.baseUrl))
+
+/** The consents whose recipient is fixed by the program: `true` is enough for them (the page of before sent only that). */
+const FIXED_RECIPIENT_KEYS: readonly string[] = ['claude-cli', 'openai', 'anthropic', 'gemini']
+
+/**
+ * Whether the body agrees to what `key` discloses. The agreement names its recipient: `consent` is the KEY of the consent
+ * (what `consentKeyFor` gives, which the server answers in a 409 `consentRequired`), so an agreement to one recipient is
+ * never taken for another (the address of a compatible server or of Ollama may come from the configuration, not from the
+ * body). `true` still counts for the keys with a fixed recipient (Claude Code, OpenAI itself, Anthropic, Gemini).
+ */
+const consentGiven = (value: unknown, key: string): boolean =>
+  value === key || (value === true && FIXED_RECIPIENT_KEYS.includes(key))
 
 /**
  * The first-use wizard (RF-70) and the consent to external providers (RNF-02).
@@ -124,8 +178,8 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     }
     if (record.completedAt === null) {
       const known = record.account !== null && installation.accounts().some((row) => row.id === record?.account)
-      if (!known && (record.account !== null || stepIndex(record.step) > stepIndex('name'))) {
-        const step = stepIndex(record.step) > stepIndex('name') ? 'name' : record.step
+      if (!known && (record.account !== null || stepIndex(record.step) > stepIndex('you'))) {
+        const step = stepIndex(record.step) > stepIndex('you') ? 'you' : record.step
         setup.save(step, null)
         record = setup.get() ?? record
       }
@@ -149,6 +203,39 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     return EXTERNAL_PROVIDERS.filter((key) => consentStateOfKey(setup, account, key, resolved.config) === 'given')
   }
 
+  const openaiBaseUrlOf = async (account: string | null): Promise<string> => {
+    if (account !== null) {
+      const resolved = await resolveConfig(account, {})
+      if (resolved.ok) return resolved.config.provider.openai.baseUrl
+    }
+    const root = await readConfigObject(ctx.layout.configFile)
+    const provider = root.ok && isObject(root.value.provider) ? root.value.provider : {}
+    const openai = isObject(provider.openai) ? provider.openai : {}
+    return typeof openai.baseUrl === 'string' && openai.baseUrl !== '' ? openai.baseUrl : OPENAI_BASE_URL
+  }
+
+  /**
+   * The address Ollama has when the field of the page is emptied: the installation's (or the default), without the account's
+   * own value. The page uses it for the notice, the agreement (a server that is not on this machine asks for one) and the
+   * list of models, so it never assumes the local default.
+   */
+  const ollamaBaseUrlOf = async (account: string | null): Promise<string> => {
+    if (account !== null) {
+      const resolved = await resolveConfig(account, { 'provider.ollama.baseUrl': undefined })
+      if (resolved.ok) return resolved.config.provider.ollama.baseUrl
+    }
+    const loaded = await loadEffectiveConfig(ctx.layout.configFile, null)
+    return loaded.ok ? loaded.value.provider.ollama.baseUrl : DEFAULT_OLLAMA_BASE_URL
+  }
+
+  /** The one rule of a fresh install, for the view and for the first step. */
+  const isFresh = async (record: SetupRecord): Promise<boolean> =>
+    record.completedAt === null &&
+    record.step === 'you' &&
+    record.account === null &&
+    installation.accounts().length === 0 &&
+    (await languageOf()) === DEFAULT_LANGUAGE
+
   const view = async (record?: SetupRecord): Promise<SetupView> => {
     const stored = record ?? (await current())
     const account = stored.account
@@ -158,7 +245,10 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
       account,
       linked: account === null ? false : await linkedOf(account),
       language: await languageOf(),
+      freshInstall: await isFresh(stored),
       consents: account === null ? [] : await givenConsents(account),
+      openaiBaseUrl: await openaiBaseUrlOf(account),
+      ollamaBaseUrl: await ollamaBaseUrlOf(account),
     }
   }
 
@@ -204,23 +294,19 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     return { body: await view() }
   }
 
-  const stepLanguage = async (body: Record<string, unknown>, record: SetupRecord): Promise<RouteResult> => {
-    if (typeof body.language !== 'string') throw new HttpError(400, 'invalidRequest')
-    const written = await updateInstallationLanguage({
-      rootFile: ctx.layout.configFile,
-      language: body.language as Language,
-    })
-    if (!written.ok) {
-      if (written.error.some((issue) => issue.code === 'concurrentEdit')) throw new HttpError(409, 'concurrentEdit')
-      return { status: 422, body: { error: 'invalidConfig', issues: issueViews(written.error) } }
-    }
-    onChanged()
-    return advance('name', record.account)
-  }
-
-  const stepName = async (body: Record<string, unknown>, record: SetupRecord): Promise<RouteResult> => {
+  const stepYou = async (body: Record<string, unknown>, record: SetupRecord): Promise<RouteResult> => {
     const ownerName = typeof body.ownerName === 'string' ? body.ownerName.trim() : ''
     if (ownerName === '' || ownerName.length > OWNER_NAME_MAX) throw new HttpError(400, 'invalidRequest')
+    // The page sends the browser's language and time zone. They become the installation's only on a truly fresh install (no account yet and
+    // the language still the one `msum init` writes); in any other case it is ignored, so a choice already made stays.
+    if (
+      body.language !== undefined &&
+      (typeof body.language !== 'string' || !(LANGUAGES as readonly string[]).includes(body.language))
+    )
+      throw new HttpError(400, 'invalidRequest')
+    if (body.timezone !== undefined && (typeof body.timezone !== 'string' || body.timezone.length > 100))
+      throw new HttpError(400, 'invalidRequest')
+    const fresh = await isFresh(record)
     let id = record.account
     if (id === null) {
       const given = body.accountId ?? DEFAULT_ACCOUNT_ID
@@ -237,6 +323,25 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     }
     const failed = await writeAccount(id, { ownerName })
     if (failed !== null) return failed
+    // The browser's language and time zone become the installation's only on a truly fresh install. A zone that is not a valid
+    // IANA name is ignored (never an error: the daemon keeps the system's).
+    const language =
+      fresh && typeof body.language === 'string' && body.language !== DEFAULT_LANGUAGE
+        ? (body.language as Language)
+        : undefined
+    const timezone =
+      fresh && typeof body.timezone === 'string' && isValidTimezone(body.timezone) ? body.timezone : undefined
+    if (language !== undefined || timezone !== undefined) {
+      const written = await updateInstallationLanguage({
+        rootFile: ctx.layout.configFile,
+        ...(language === undefined ? {} : { language }),
+        ...(timezone === undefined ? {} : { timezone }),
+      })
+      if (!written.ok) {
+        if (written.error.some((issue) => issue.code === 'concurrentEdit')) throw new HttpError(409, 'concurrentEdit')
+        return { status: 422, body: { error: 'invalidConfig', issues: issueViews(written.error) } }
+      }
+    }
     await host.reloadConfig(id)
     onChanged()
     return advance('provider', id)
@@ -250,23 +355,41 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
     // for a choice that cannot be saved.
     const resolved = await resolveConfig(id, patch)
     if (!resolved.ok) return resolved.result
-    const key = consentKeyFor(provider, resolved.config.provider.ollama.baseUrl)
+    // The model is chosen from a list: one that is not in the last list known for the provider is refused.
+    // A model the account already holds (a resumed wizard) is not checked again: only a change is.
+    const current = await resolveConfig(id, {})
+    const unknown = await unknownModelIn(source, id, patch, current.ok ? current.config : null)
+    if (unknown !== null) return { status: 422, body: { error: 'unknownModel', option: unknown } }
+    const key = consentKeyOf(provider, resolved.config)
     // The consent is for what the configuration would be after this step (the kind and the hosts it discloses).
     const missing = key !== null && consentStateOfKey(setup, id, key, resolved.config) === 'missing'
-    if (key !== null && missing && body.consent !== true) {
-      return { status: 409, body: { error: 'consentRequired', provider: key } }
+    if (key !== null && missing && !consentGiven(body.consent, key)) {
+      return { status: 409, body: consentRequiredBody(key, resolved.config) }
     }
     if (key !== null && missing) recordConsentOfKey(setup, id, key, resolved.config)
     const failed = await writeAccount(id, patch)
     if (failed !== null) return failed
     await host.reloadConfig(id)
     onChanged()
-    return advance('transcription', id)
+    return advance('link', id)
   }
 
   const stepLink = async (record: SetupRecord): Promise<RouteResult> => {
     if (record.account === null || !(await linkedOf(record.account))) throw new HttpError(409, 'notLinked')
-    return advance('schedule', record.account)
+    return advance('done', record.account)
+  }
+
+  /**
+   * The schedules a finished wizard leaves (09:00 and 18:00, every day), unless the account already has some (a wizard
+   * reopened after the user added their own, or one that was completed before). They are edited in the schedules page.
+   */
+  const defaultSchedules = (account: string): void => {
+    if (installation.schedules.list(account).length > 0) return
+    for (const time of DEFAULT_SCHEDULE_TIMES) {
+      const made = makeSchedule(ALL_WEEKDAYS, time)
+      if (made.ok) installation.schedules.add(account, made.value)
+    }
+    onChanged()
   }
 
   return [
@@ -287,20 +410,18 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
           if (!isSetupStep(data.from)) throw new HttpError(400, 'invalidRequest')
           if (data.from !== record.step) throw new HttpError(409, 'wrongStep')
           switch (record.step) {
-            case 'language':
-              return stepLanguage(data, record)
-            case 'name':
-              return stepName(data, record)
+            case 'you':
+              return stepYou(data, record)
             case 'provider':
               return stepProvider(data, record)
             case 'link':
               return stepLink(record)
-            case 'done':
+            default:
+              // The closing screen only follows a linked account: a record that says `done` without one is not finished.
+              if (record.account === null || !(await linkedOf(record.account))) throw new HttpError(409, 'notLinked')
+              defaultSchedules(record.account)
               setup.complete()
               return { body: await view() }
-            default:
-              // transcription (nothing to save yet) and schedule (the schedules are added through their own routes)
-              return advance(nextStep(record.step) as SetupStep, record.account)
           }
         }),
     },
@@ -332,9 +453,32 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
           if (!resolved.ok) return resolved.result
           const config = resolved.config
           // The text of the test goes to the recipient: only with the consent given (ticked or recorded).
-          const key = consentKeyFor(provider, config.provider.ollama.baseUrl)
-          if (key !== null && data.consent !== true && consentStateOfKey(setup, id, key, config) === 'missing') {
-            return { status: 409, body: { error: 'consentRequired', provider: key } }
+          const key = consentKeyOf(provider, config)
+          if (
+            key !== null &&
+            !consentGiven(data.consent, key) &&
+            consentStateOfKey(setup, id, key, config) === 'missing'
+          ) {
+            return { status: 409, body: consentRequiredBody(key, config) }
+          }
+          // A key typed in the page is tried without saving it: it lives in the environment of this one call (it wins over
+          // the stored ones, like an environment variable does) and nowhere else.
+          const env = { ...ctx.env }
+          const slot: KeyProvider | null =
+            provider === 'openai'
+              ? openAiKeyProvider(config.provider.openai.baseUrl)
+              : provider === 'anthropic' || provider === 'gemini'
+                ? provider
+                : null
+          const typedKey = data.key === undefined ? undefined : readKey(data.key)
+          if (typedKey !== undefined) {
+            // A provider that takes no key (Claude Code, Ollama) is not given one.
+            if (slot === null) throw new HttpError(400, 'invalidRequest')
+            // The key goes to the address the configuration has, which may not be the one the page shows (it is inherited
+            // when the body brings none): the page says which key it means (`keyProvider`: `openai` for OpenAI itself,
+            // `openai-compatible` for another server) and it must be the one the effective address uses.
+            if (provider === 'openai' && data.keyProvider !== slot) throw new HttpError(400, 'invalidRequest')
+            env[envNames(slot)[0] as string] = typedKey
           }
           const limit = Math.min(ctx.web?.providerTestTimeoutMs ?? TEST_TIMEOUT_MS[provider], TEST_TIMEOUT_MS[provider])
           const tested = await testProvider(
@@ -347,11 +491,28 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
                   timeoutMs: Math.min(config.provider.claudeCli.timeoutMs, limit),
                 },
                 ollama: { ...config.provider.ollama, timeoutMs: Math.min(config.provider.ollama.timeoutMs, limit) },
+                openai: { ...config.provider.openai, timeoutMs: Math.min(config.provider.openai.timeoutMs, limit) },
+                anthropic: {
+                  ...config.provider.anthropic,
+                  timeoutMs: Math.min(config.provider.anthropic.timeoutMs, limit),
+                },
+                gemini: { ...config.provider.gemini, timeoutMs: Math.min(config.provider.gemini.timeoutMs, limit) },
               },
             },
-            ctx.env,
+            env,
+            Date.now,
+            accountLayoutOf(ctx.layout, id),
           )
-          return { body: tested }
+          // A server that answers 401 when no key was sent did not reject a key: there was none.
+          const hadKey =
+            typedKey !== undefined ||
+            slot === null ||
+            resolveApiKey(slot, {
+              env: ctx.env,
+              accountFile: accountLayoutOf(ctx.layout, id).secretsFile,
+              file: ctx.layout.secretsFile,
+            }) !== null
+          return { body: !tested.ok && tested.error === 'rejected' && !hadKey ? { ok: false, error: 'noKey' } : tested }
         } finally {
           testing = false
         }
@@ -367,9 +528,21 @@ export function setupRoutes(source: SetupRoutesSource): Route[] {
         if (baseUrl !== undefined && typeof baseUrl !== 'string') throw new HttpError(400, 'invalidRequest')
         // What is recorded is what the configuration discloses: for an Ollama that is not on this machine, the origin of
         // its address. The page sends the address it is about to save (the settings ask for the consent first).
+        const address = typeof baseUrl === 'string' ? baseUrl.trim() : ''
+        // A server of the user's choice is agreed to by its address, which the page took from the 409 that asked: without
+        // it the agreement would be for whatever the configuration has now, which may not be what was shown.
+        if (address === '' && (provider === OLLAMA_REMOTE || provider === 'openai-compatible')) {
+          throw new HttpError(400, 'invalidRequest')
+        }
         const resolved = await resolveConfig(
           id,
-          typeof baseUrl === 'string' && baseUrl.trim() !== '' ? { 'provider.ollama.baseUrl': baseUrl.trim() } : {},
+          address === ''
+            ? {}
+            : provider === OLLAMA_REMOTE
+              ? { 'provider.ollama.baseUrl': address }
+              : provider === 'openai' || provider === 'openai-compatible'
+                ? { 'provider.openai.baseUrl': address }
+                : {},
         )
         if (!resolved.ok) return resolved.result
         if (!recordConsentOfKey(setup, id, provider, resolved.config)) throw new HttpError(400, 'invalidRequest')

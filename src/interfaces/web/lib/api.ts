@@ -1,3 +1,4 @@
+import type { KeyName, KeyRemoved, KeyStatuses, KeyStored } from './api-providers.js'
 import type {
   AccountView,
   ConversationsView,
@@ -7,6 +8,8 @@ import type {
   LogLevel,
   LogsPage,
   MarksResult,
+  ModelProviderName,
+  ModelsView,
   PreviewView,
   PromptView,
   ProviderTestResult,
@@ -48,6 +51,8 @@ export class ApiError extends Error {
     readonly maxLength?: number,
     /** For a 409 `consentRequired`: the provider that needs the consent. */
     readonly provider?: string,
+    /** For a 409 `consentRequired` of a server of the user's choice: the origin that would receive the text. */
+    readonly origin?: string,
   ) {
     super(code)
     this.name = 'ApiError'
@@ -80,6 +85,7 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
       variables?: unknown
       maxLength?: unknown
       provider?: unknown
+      origin?: unknown
     }
     if (!reply.ok) {
       if (reply.status === 401) onUnauthorized()
@@ -92,6 +98,7 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
         Array.isArray(data.variables) ? data.variables.filter((v): v is string => typeof v === 'string') : undefined,
         typeof data.maxLength === 'number' ? data.maxLength : undefined,
         typeof data.provider === 'string' ? data.provider : undefined,
+        typeof data.origin === 'string' ? data.origin : undefined,
       )
     }
     return data as T
@@ -103,9 +110,42 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     /** Saves the step the wizard is on and moves to the next (`{ from, ...data }`), or goes back (`{ goto }`). */
     saveSetup: (body: Record<string, unknown>) => request<SetupView>('PUT', '/api/setup', body),
     skipSetup: () => request<SetupView>('POST', '/api/setup/skip'),
-    /** The real call of "Test connection": only on a click; `consent` is the ticked box for an external provider. */
-    testProvider: (body: { provider: string; options: Record<string, string>; consent?: boolean }) =>
-      request<ProviderTestResult>('POST', '/api/setup/test-provider', body),
+    /**
+     * The real call of "Test connection": only on a click. `consent` is the key of the recipient the user agreed to; `key` is a
+     * key typed in the page, tried without saving it (`keyProvider` says which key it is, for OpenAI).
+     */
+    testProvider: (body: {
+      provider: string
+      options: Record<string, string>
+      consent?: string
+      key?: string
+      keyProvider?: string
+    }) => request<ProviderTestResult>('POST', '/api/setup/test-provider', body),
+    /** Where the API keys of the account come from (never the keys themselves). */
+    keys: async (id: string) => (await request<{ keys: KeyStatuses }>('GET', `/api/accounts/${enc(id)}/keys`)).keys,
+    /**
+     * The models the user may choose for a provider (the daemon asks the provider with the saved key; the page never sees it).
+     * A POST because it makes a request to another host: `refresh` asks again instead of using what the daemon kept;
+     * `baseUrl` is the Ollama address on screen (none: the one the account uses); `consent` is the agreement ticked for an
+     * Ollama that is not on this machine.
+     */
+    models: (
+      id: string,
+      provider: ModelProviderName,
+      options: { refresh?: boolean; baseUrl?: string; consent?: string; inherit?: boolean } = {},
+    ) => {
+      const body: Record<string, unknown> = {}
+      if (options.refresh === true) body.refresh = true
+      if (options.baseUrl !== undefined && options.baseUrl.trim() !== '') body.baseUrl = options.baseUrl.trim()
+      if (options.consent !== undefined) body.consent = options.consent
+      if (options.inherit === true) body.inherit = true
+      return request<ModelsView>('POST', `/api/accounts/${enc(id)}/models/${enc(provider)}`, body)
+    },
+    /** Stores a key in the installation's file. The key is in this call only: it is not kept anywhere in the page. */
+    saveKey: (id: string, provider: KeyName, key: string) =>
+      request<KeyStored>('PUT', `/api/accounts/${enc(id)}/keys/${enc(provider)}`, { key }),
+    removeKey: (id: string, provider: KeyName) =>
+      request<KeyRemoved>('DELETE', `/api/accounts/${enc(id)}/keys/${enc(provider)}`),
     /**
      * Records the consent of an account to an external provider (RNF-02). `baseUrl` is the address of an Ollama that is not
      * on this machine: the consent is for the server that was disclosed.

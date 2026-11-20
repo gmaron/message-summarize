@@ -1,7 +1,7 @@
 import type { SettingsFieldKey, WebTexts } from '../../../infrastructure/i18n/catalog.js'
 import { ApiError } from './api.js'
 import { fmt } from './i18n.js'
-import type { SettingsIssue, SettingsView } from './types.js'
+import type { ProviderName, SettingsIssue, SettingsView } from './types.js'
 
 export type FieldKind = 'boolean' | 'number' | 'text' | 'choice' | 'language' | 'timezone'
 export type GroupName = 'digest' | 'languageTime' | 'provider'
@@ -13,6 +13,10 @@ export interface FieldSpec {
   readonly key: SettingsFieldKey
   readonly kind: FieldKind
   readonly group: GroupName
+  /** Shown only while this provider is the primary or the backup (its fields are noise otherwise). */
+  readonly only?: ProviderName
+  /** A required value: an empty field is not "use the installation's", so the hint does not say so. */
+  readonly required?: true
 }
 
 /** The fields of the form, in the order they are shown. */
@@ -31,7 +35,42 @@ export const FIELDS: readonly FieldSpec[] = [
   { option: 'provider.claudeCli.timeoutMs', key: 'claudeTimeoutMs', kind: 'number', group: 'provider' },
   { option: 'provider.ollama.baseUrl', key: 'ollamaBaseUrl', kind: 'text', group: 'provider' },
   { option: 'provider.ollama.model', key: 'ollamaModel', kind: 'text', group: 'provider' },
+  {
+    option: 'provider.openai.model',
+    key: 'openaiModel',
+    kind: 'text',
+    group: 'provider',
+    only: 'openai',
+    required: true,
+  },
+  { option: 'provider.openai.baseUrl', key: 'openaiBaseUrl', kind: 'text', group: 'provider', only: 'openai' },
+  {
+    option: 'provider.anthropic.model',
+    key: 'anthropicModel',
+    kind: 'text',
+    group: 'provider',
+    only: 'anthropic',
+    required: true,
+  },
+  {
+    option: 'provider.gemini.model',
+    key: 'geminiModel',
+    kind: 'text',
+    group: 'provider',
+    only: 'gemini',
+    required: true,
+  },
 ]
+
+/** True when an empty text in this field means "use the value of the installation" (the hint says so). */
+export const inheritsWhenEmpty = (option: string): boolean => {
+  const field = FIELDS.find((one) => one.option === option)
+  return field !== undefined && field.kind === 'text' && field.required !== true && option !== 'provider.openai.baseUrl'
+}
+
+/** The fields to show for the providers in use: those of no provider in particular, and those of a provider that is chosen. */
+export const fieldsFor = (group: GroupName, active: readonly string[]): readonly FieldSpec[] =>
+  FIELDS.filter((field) => field.group === group && (field.only === undefined || active.includes(field.only)))
 
 export const GROUPS: readonly GroupName[] = ['digest', 'languageTime', 'provider']
 
@@ -164,16 +203,6 @@ export function groupIssues(issues: readonly SettingsIssue[]): {
 export const issuesOf = (error: unknown): readonly SettingsIssue[] | null =>
   error instanceof ApiError && error.code === 'invalidConfig' && error.issues !== undefined ? error.issues : null
 
-/** The time zones the browser knows, for the suggestions of the field. Empty where it cannot tell (the field still works). */
-export function timeZoneChoices(): readonly string[] {
-  try {
-    const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
-    return intl.supportedValuesOf?.('timeZone') ?? []
-  } catch {
-    return []
-  }
-}
-
 /**
  * True when `value` is an address whose host is NOT this machine (anything but localhost, 127.0.0.0/8 and ::1). An
  * address that cannot be read is not "remote": the server says what is wrong with it.
@@ -187,4 +216,14 @@ export function isRemoteUrl(value: string): boolean {
   }
   if (host === '') return false
   return !(host === 'localhost' || host === '[::1]' || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host))
+}
+
+/** The time zones the browser knows, for the suggestions of the field. Empty where it cannot tell (the field still works). */
+export function timeZoneChoices(): readonly string[] {
+  try {
+    const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
+    return intl.supportedValuesOf?.('timeZone') ?? []
+  } catch {
+    return []
+  }
 }

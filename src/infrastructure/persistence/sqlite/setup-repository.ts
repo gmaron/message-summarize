@@ -1,4 +1,4 @@
-import { consentCovers, isSetupStep, type SetupStep } from '../../../domain/setup.js'
+import { consentCovers, normalizeSetupStep, type SetupStep } from '../../../domain/setup.js'
 import type { Database } from './database.js'
 
 /** The state of the setup wizard (RF-70). */
@@ -33,14 +33,14 @@ export class SqliteSetupRepository {
     return new Date(this.now()).toISOString()
   }
 
-  /** The state, or null when the wizard never started. A step this version does not know reads as the first. */
+  /** The state, or null when the wizard never started. A step of an older wizard reads as the nearest current one, and one nobody knows as the first. */
   get(): SetupRecord | null {
     const row = this.db.prepare('SELECT step, account_id, completed_at FROM setup WHERE id = 1').get() as
       | { step: string; account_id: string | null; completed_at: string | null }
       | undefined
     if (row === undefined) return null
     return {
-      step: isSetupStep(row.step) ? row.step : 'language',
+      step: normalizeSetupStep(row.step),
       account: row.account_id,
       completedAt: row.completed_at,
     }
@@ -54,7 +54,7 @@ export class SqliteSetupRepository {
     const at = this.stamp()
     this.db
       .prepare(
-        "INSERT INTO setup (id, step, account_id, completed_at, updated_at) VALUES (1, 'language', NULL, ?, ?) ON CONFLICT (id) DO NOTHING",
+        "INSERT INTO setup (id, step, account_id, completed_at, updated_at) VALUES (1, 'you', NULL, ?, ?) ON CONFLICT (id) DO NOTHING",
       )
       .run(completed ? at : null, at)
     return this.get() as SetupRecord
@@ -72,7 +72,7 @@ export class SqliteSetupRepository {
     const at = this.stamp()
     this.db
       .prepare(
-        "INSERT INTO setup (id, step, account_id, completed_at, updated_at) VALUES (1, 'language', NULL, ?, ?) ON CONFLICT (id) DO UPDATE SET completed_at = COALESCE(completed_at, excluded.completed_at), updated_at = excluded.updated_at",
+        "INSERT INTO setup (id, step, account_id, completed_at, updated_at) VALUES (1, 'you', NULL, ?, ?) ON CONFLICT (id) DO UPDATE SET completed_at = COALESCE(completed_at, excluded.completed_at), updated_at = excluded.updated_at",
       )
       .run(at, at)
   }

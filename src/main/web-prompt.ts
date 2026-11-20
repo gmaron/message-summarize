@@ -1,7 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { chmod, lstat, readFile, rename, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { PROMPT_MAX_LENGTH, PROMPT_VARIABLES, promptIssue } from '../domain/prompt.js'
+import {
+  PROMPT_MAX_LENGTH,
+  PROMPT_PRESET_IDS,
+  PROMPT_VARIABLES,
+  type PromptPresetId,
+  promptIssue,
+} from '../domain/prompt.js'
 import { getCatalog } from '../infrastructure/i18n/index.js'
 import { HttpError, type Route } from '../interfaces/http/router.js'
 import { isObject, isSetIn, readConfigObject, validateEffective } from './config.js'
@@ -31,6 +37,8 @@ export interface PromptView {
   readonly text: string
   /** The built-in template for the language of the account. */
   readonly defaultText: string
+  /** The templates the editor offers, in the language of the account; `full` is `defaultText`. */
+  readonly presets: readonly { readonly id: PromptPresetId; readonly text: string }[]
   readonly variables: readonly string[]
   readonly maxLength: number
   /** What `{{name}}` becomes now, or null (the language's own word is used then). */
@@ -71,9 +79,14 @@ export function promptRoutes(source: PromptRoutesSource, onChanged: () => void):
     const effective = validateEffective(root.value, own.value, layout.configFile, account.configFile)
     if (!effective.ok) return { ok: false, issues: issueViews(effective.error) }
     const config = effective.value
-    const defaultText = getCatalog(config.language).defaultSystemPrompt
+    const catalog = getCatalog(config.language)
+    const defaultText = catalog.defaultSystemPrompt
     const base = {
       defaultText,
+      presets: PROMPT_PRESET_IDS.map((presetId) => ({
+        id: presetId,
+        text: presetId === 'full' ? defaultText : catalog.promptPresets[presetId],
+      })),
       variables: PROMPT_VARIABLES,
       maxLength: PROMPT_MAX_LENGTH,
       ownerName: config.digest.ownerName,
