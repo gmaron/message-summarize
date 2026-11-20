@@ -147,7 +147,8 @@ try {
     # The app: package.json, the lockfile, the vendored sharp stub and the built dist/, then `npm ci` there, so the
     # exact versions of package-lock.json are installed (production only, no scripts). --install-links asks npm for
     # copies instead of links; whatever link is left is turned into a copy below.
-    Copy-Item -LiteralPath (Join-Path $repo 'package.json'), (Join-Path $repo 'package-lock.json') -Destination $app
+    # .npmrc carries legacy-peer-deps (sharp, the native peer of Baileys, stays out): without it `npm ci` fails with ERESOLVE.
+    Copy-Item -LiteralPath (Join-Path $repo 'package.json'), (Join-Path $repo 'package-lock.json'), (Join-Path $repo '.npmrc') -Destination $app
     Copy-Item -LiteralPath (Join-Path $repo 'vendor') -Destination (Join-Path $app 'vendor') -Recurse
     Copy-Item -LiteralPath (Join-Path $repo 'dist') -Destination (Join-Path $app 'dist') -Recurse
     $env:npm_config_update_notifier = 'false'
