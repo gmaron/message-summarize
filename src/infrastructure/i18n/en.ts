@@ -371,7 +371,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
           noCredit:
             'The API account has no credit left or reached its spending limit. Add credit in the provider console (an API account is billed separately from a chat subscription); waiting does not help.',
           timeout: 'The provider did not answer in time. Check the connection, or raise provider.<name>.timeoutMs.',
-          disabled: 'This provider is disabled: nothing was run. See "msum provider ls" and the README.',
+          disabled:
+            'This provider is disabled: nothing was run. See "msum provider ls" and docs/guides/cli-provider.md.',
           verifyFailed:
             'The CLI could not be verified to run without tools (RF-49), or was not found: see "msum doctor".',
           unreachable: 'It could not be reached: check that it is running and the address in the configuration.',
@@ -410,7 +411,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       done: (name, path) => `The model "${name}" was downloaded and its SHA-256 checksum is right: ${path}`,
       alreadyThere: (name, path) => `The model "${name}" is already there and its checksum is right: ${path}`,
       enableHint: (name) =>
-        `To use it, set "transcription": { "enabled": true, "model": "${name}" } in config.json (see the README).`,
+        `To use it, set "transcription": { "enabled": true, "model": "${name}" } in config.json (see docs/guides/transcription.md).`,
       unknownModel: (name, known) => `"${name}" is not a known model. Known models: ${known}.`,
       httpError: (status) => `The server answered with an error (HTTP ${status}). Nothing was saved.`,
       networkError: 'The connection failed or stopped. Nothing was saved; try again.',
@@ -432,7 +433,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       noneFits: (minGb) =>
         `No candidate fits in this machine's RAM (the smallest needs about ${minGb} GB). Use an API provider or the CLI of one instead ("msum provider ls").`,
       choose:
-        'You choose: nothing is picked or written for you. To use one, download it with "msum ollama pull <tag>" and set it with "msum provider use ollama --model <tag>" (or "provider.ollama.model" in config.json). Models marked "not evaluated" can be measured with "npm run eval:ollama -- --models <tag>" (see "Choosing a local model" in the README).',
+        'You choose: nothing is picked or written for you. To use one, download it with "msum ollama pull <tag>" and set it with "msum provider use ollama --model <tag>" (or "provider.ollama.model" in config.json). Models marked "not evaluated" can be measured with "npm run eval:ollama -- --models <tag>" (see docs/guides/local-model-ollama.md).',
       invalidTag: (tag) => `"${tag}" does not look like an Ollama model tag (for example qwen3:4b).`,
       remoteRefused: (origin) =>
         `The configured Ollama is at ${origin}, which is not this machine. Nothing was downloaded. Pull the model there, or repeat with --allow-remote if you really want this server to download it.`,
@@ -823,7 +824,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       cliDisabled: (provider) =>
         `${provider} is disabled: its documentation offers no way to run it without tools that can be verified`,
       cliDisabledFix: (provider) =>
-        `choose another provider. If you accept the risk, "generic-cli" can run ${provider} with your own arguments (see the README).`,
+        `choose another provider. If you accept the risk, "generic-cli" can run ${provider} with your own arguments (see docs/guides/cli-provider.md).`,
       genericNotAcknowledged: 'generic-cli is refused: its command may use tools on chat text written by third parties',
       genericNotAcknowledgedFix:
         'if you accept that risk, set "provider.genericCli.acknowledgeRisk" to true in config.json. Otherwise choose another provider.',

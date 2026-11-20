@@ -993,7 +993,7 @@ export interface WebTexts {
       readonly tryAgain: string
       readonly cancel: string
     }
-    /** The legal notice shown before a WhatsApp account is linked for the first time (README, "Important warning"). */
+    /** The legal notice shown before a WhatsApp account is linked for the first time (README, "Important warning" section). */
     readonly risk: {
       readonly heading: string
       readonly unofficial: string

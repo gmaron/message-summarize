@@ -52,3 +52,7 @@ msum puede pedirle los resúmenes al programa `claude` (Claude Code), usando el 
 
 - Instalación: <https://code.claude.com/docs/en/quickstart> y <https://code.claude.com/docs/en/terminal-guide>
 - Inicio de sesión: <https://code.claude.com/docs/en/authentication>
+
+---
+
+Volver al [README](../../README.es.md) · [Índice de guías](README.md)

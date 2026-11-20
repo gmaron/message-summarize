@@ -2,28 +2,87 @@
 
 [English](README.md)
 
-Lee los mensajes que llegan a tu cuenta de mensajería, los resume con el modelo de lenguaje que elijas y te manda un resumen periódico: qué chats necesitan respuesta, qué quedó pendiente y qué podés ignorar.
+Lee los mensajes que llegan a tu cuenta de mensajería, los resume con el modelo de lenguaje que elijas y te manda un resumen periódico: qué chats necesitan respuesta, qué quedó pendiente y qué podés ignorar. La primera plataforma soportada es **WhatsApp**; el núcleo no depende de ella, así que otras (Telegram, Slack, correo) se pueden sumar como adaptadores nuevos.
 
-La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella, así que otras plataformas (Telegram, Slack, correo) se pueden sumar más adelante como adaptadores nuevos.
+![Vista general: WhatsApp, captura local, resumen con el LLM que elijas y entrega a tu propio chat](docs/images/diagrams/overview.svg)
 
-## Estado
+*Los mensajes se guardan en tu máquina, un LLM los resume en los horarios que definas y el resumen vuelve solo a tu propio chat.*
 
-**Desarrollo temprano.** Todavía no hay una versión publicada (ver [Instalación](#instalación) para los instaladores y su estado). Se puede probar desde el código fuente una versión de línea de comandos con una página web local (ver [Probarlo](#probarlo-versión-temprana)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
+**Estado:** desarrollo temprano. Todavía no hay una versión publicada (ver [Limitaciones conocidas](#limitaciones-conocidas)); esperá asperezas. Los requerimientos aprobados están en [docs/requirements.md](docs/requirements.md) y el trabajo se organiza en las fases de la [hoja de ruta](#hoja-de-ruta).
 
-## Instalación
+## Qué hace
 
-**Todavía no hay una versión publicada.** Los instaladores de abajo están escritos y probados hasta donde permite una Mac, pero falta la primera versión publicada (v0.1.0), y el instalador de Windows nunca corrió en una máquina Windows real. Hasta entonces, usá Docker desde una copia del repositorio, o [probalo desde el código fuente](#probarlo-versión-temprana). Leé primero el [aviso importante](#aviso-importante).
+| Etapa | Qué hace |
+|---|---|
+| **Capturar** | Vincula tu cuenta escaneando un QR desde una página web local y la mantiene conectada sin marcarte "en línea", para que el celular siga recibiendo notificaciones. Guarda los mensajes solo en tu máquina (texto, y una representación en texto de imágenes, audios, documentos, encuestas, etc.). Opcional: transcribe los audios localmente con whisper.cpp; el audio nunca sale de tu máquina. Sin telemetría. |
+| **Resumir** | Resume cada conversación con el LLM que elijas: por **API** (OpenAI y cualquier API compatible, Anthropic, Gemini), con **Ollama** en tu máquina, o por la **CLI** del proveedor (Claude Code o un comando genérico), aprovechando el plan que ya pagás; las CLIs corren sin herramientas, en un directorio vacío y con tiempo máximo. Podés marcar conversaciones como "solo local": únicamente las resume tu propio servidor de Ollama. Si `provider.ollama.baseUrl` es otra computadora, esos chats sí salen hacia ese servidor (ver la [guía de proveedores](docs/guias/proveedores.md#servidores-compatibles-y-solo-local)). |
+| **Entregar** | Te manda el resumen a tu propio chat ("Mensaje a mí mismo"), ordenado en secciones: necesitan respuesta, tienen pendientes, el resto. Nunca se envía a nadie más, ni siquiera a otra cuenta de la misma instalación. |
+| **Programar** | Corre en los horarios que definas desde la web (por ejemplo, 9:00 y 18:00 todos los días), además de "resumir ahora" y una vista previa que no envía nada. Maneja varias cuentas en una misma instalación, cada una con sus datos, configuración y horarios. Se instala con Docker o de forma nativa en macOS, Linux y Windows. |
 
-**Docker (cualquier sistema, lo recomendado en Windows).** Con Docker o Docker Desktop instalado, desde una copia del repositorio:
+## Por qué estas tecnologías
+
+| Tecnología | Para qué | Por qué |
+|---|---|---|
+| [Baileys](https://github.com/WhiskeySockets/Baileys) | Conexión con WhatsApp | Es un cliente **no oficial** (ver el [aviso](#aviso-importante)); queda aislado en un adaptador, así que otras plataformas no tocan el núcleo. |
+| `node:sqlite` | Almacenamiento | Viene con Node 22: ningún módulo nativo de npm que compilar. |
+| `croner` | Horarios | Los horarios viven dentro del daemon; el programa nunca escribe en el cron ni en el planificador del sistema. |
+| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | Transcripción de audios (opcional) | Corre en tu máquina: el audio no se envía a ningún servicio. |
+| Proveedores de LLM: API, CLI y Ollama | Resumir cada conversación | Elegís entre pagar por uso (API), usar el plan que ya tenés (CLI sin herramientas) o no sacar nada de tu máquina (Ollama). |
+| Svelte 5 + Vite | La página web local | Se compila a archivos estáticos que sirve el daemon; sin biblioteca de componentes. |
+
+## Aviso importante
+
+Leé esto antes de usar message-summarize con tu cuenta.
+
+- **WhatsApp puede bloquear tu número.** message-summarize se conecta a través de [Baileys](https://github.com/WhiskeySockets/Baileys), un cliente **no oficial**. WhatsApp no permite clientes no oficiales y puede bloquear el número que los usa, de forma temporal o permanente. El proyecto intenta reducir ese riesgo (solo lectura, sin mensajes a terceros, sin marcarse en línea), pero no lo puede eliminar.
+- **El programa es de solo lectura.** Lee los mensajes que llegan, nunca responde, nunca te marca en línea y nunca manda nada a terceros. El único mensaje que envía es el resumen, a tu propio chat ("Mensaje a mí mismo").
+- **Modificar el programa o usarlo mal aumenta la probabilidad de un bloqueo.** Cambios que manden mensajes a otras personas, manden muchos mensajes, automaticen respuestas o cambien la forma en que el cliente se conecta pueden hacer que WhatsApp bloquee tu número. Si modificás el código, el riesgo es tuyo.
+- **Tus datos se quedan en tu máquina, salvo lo que va al LLM que elijas.** Salvo que uses un modelo local (Ollama) o marques una conversación como "solo local", el texto de tus conversaciones se envía al proveedor que configures, bajo sus términos. Algunos planes gratuitos pueden usar ese contenido para mejorar sus productos, incluida la revisión humana.
+- **La responsabilidad es tuya** de cumplir los términos de WhatsApp, los de tu proveedor de LLM y la ley de privacidad que se aplique a las conversaciones de terceros (las personas que te escriben) que leés y resumís.
+- **No hay garantía.** El software se entrega "tal cual", como dice la [licencia](LICENSE). Los autores no responden por un número bloqueado, una conversación filtrada ni ningún otro daño.
+
+Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por Meta.
+
+## Inicio rápido
+
+### 1. Requisitos
+
+- Una cuenta de WhatsApp y su celular, para escanear el QR (WhatsApp, Ajustes > Dispositivos vinculados).
+- **Docker** o Docker Desktop, o bien **Node 22.16 o posterior** para la instalación nativa y el código fuente.
+- Un proveedor de LLM. No hay uno por defecto: lo elegís en el paso 4.
+
+  | Proveedor | Qué necesita |
+  |---|---|
+  | [Claude Code](https://claude.com/claude-code) | La sesión iniciada en esta máquina (`claude`). Usa tu plan, sin clave. |
+  | [Ollama](https://ollama.com) | Un servidor local con un modelo ya descargado. Todo queda en tu máquina. |
+  | OpenAI, Anthropic o Gemini | Una clave de API. |
+
+El programa es de solo lectura: nunca te marca "en línea", nunca responde y nunca manda nada salvo el resumen, que va a tu propio chat. Leé primero el [aviso importante](#aviso-importante): esto usa un cliente no oficial y tu número puede ser bloqueado.
+
+### 2. Instalar
+
+**Todavía no hay una versión publicada.** Los instaladores están escritos y probados hasta donde permite una Mac, pero falta la primera versión (v0.1.0). Hasta entonces, usá Docker o el código fuente desde una copia del repositorio.
+
+| Camino | Cómo |
+|---|---|
+| **Docker** (cualquier sistema, lo recomendado en Windows) | Ver abajo. |
+| **macOS y Linux** | `sh packaging/install.sh` |
+| **Windows** | El instalador `message-summarize-<versión>-win-x64-setup.exe` o `.\packaging\install.ps1` |
+| **Código fuente** | `npm install`, `npm run build`, `node dist/main/cli.js init` |
+
+**Docker.** Con Docker o Docker Desktop instalado, desde una copia del repositorio:
 
 ```sh
 docker compose -f docker/compose.yaml up -d
 docker compose -f docker/compose.yaml exec message-summarize msum open --print   # la dirección de la página web, con su token de acceso
 ```
 
-Los datos viven en el volumen `msum-data` y el contenedor se reinicia solo. La página web se publica solo en `127.0.0.1:8787`: no la cambies a otra dirección, y usá `docker compose -f docker/compose.yaml exec` (nunca `docker compose run`) para los comandos. El perfil `cli` (`docker compose -f docker/compose.yaml --profile cli up -d`) usa una imagen que además trae Claude Code, Gemini CLI y Codex, para quien quiera usar una CLI como proveedor (la sesión se inicia adentro del contenedor; Gemini CLI y Codex están deshabilitadas por ahora, ver [Usar una CLI como proveedor](#usar-una-cli-como-proveedor)).
+- Los datos viven en el volumen `msum-data` y el contenedor se reinicia solo.
+- La página web se publica solo en `127.0.0.1:8787`: no la cambies a otra dirección.
+- Usá `docker compose -f docker/compose.yaml exec` (nunca `docker compose run`) para los comandos.
+- El perfil `cli` (`docker compose -f docker/compose.yaml --profile cli up -d`) usa una imagen que además trae Claude Code, Gemini CLI y Codex, para quien quiera usar una CLI como proveedor. La sesión se inicia adentro del contenedor (ver [Usar una CLI como proveedor](docs/guias/cli-como-proveedor.md)). Gemini CLI y Codex están deshabilitadas por ahora.
 
-**macOS y Linux.** `install.sh` no necesita permisos de administrador y no toca nada fuera de tu carpeta personal. Instala el programa (con su propia copia de Node.js, verificada contra el checksum oficial, si el tuyo es anterior a 22.16), registra el daemon como servicio de usuario y abre la página web:
+**macOS y Linux.** `install.sh` no necesita permisos de administrador y no toca nada fuera de tu carpeta personal. Instala el programa (con su propia copia de Node.js, verificada contra el checksum oficial, si el tuyo es anterior a 22.16), registra el daemon como servicio de usuario y abre la página web.
 
 ```sh
 sh packaging/install.sh              # desde una copia; --help lista las opciones
@@ -34,252 +93,189 @@ Opciones: `--no-service`, `--no-open`, `--modify-path`, `--prefix <carpeta>`, `-
 
 **Windows.** Dos caminos, ambos sin permisos de administrador: el instalador `message-summarize-<versión>-win-x64-setup.exe` que acompañará cada versión (todavía no está firmado, así que Windows SmartScreen va a avisar), o `install.ps1`, que hace lo mismo que `install.sh` (`.\packaging\install.ps1 -Help`). Al desinstalar se conservan tus datos. Windows en ARM: usá Docker.
 
-**Dónde están los datos.** `~/Library/Application Support/message-summarize` en macOS, `~/.local/share/message-summarize` en Linux y `%APPDATA%\message-summarize` en Windows (o la carpeta de `MSUM_DATA_DIR`). Desinstalar nunca los borra; para quitar los datos de una cuenta usá `msum unlink`.
+**Código fuente.** Después de `npm install` y `npm run build`, `node dist/main/cli.js init` (o `msum init` después de `npm link`) crea el directorio de datos y `config.json`. Qué revisar en ese archivo, en la [guía del daemon](docs/guias/demonio-y-horarios.md#configuración-inicial-configjson).
+
+**Dónde están los datos.**
+
+| Sistema | Carpeta |
+|---|---|
+| macOS | `~/Library/Application Support/message-summarize` |
+| Linux | `~/.local/share/message-summarize` |
+| Windows | `%APPDATA%\message-summarize` |
+| Cualquiera | La carpeta de `MSUM_DATA_DIR`, si la definís. |
+
+Desinstalar nunca los borra; para quitar los datos de una cuenta usá `msum unlink`.
 
 **Verificación de las versiones.** Cada versión trae un `SHA256SUMS.txt`. El paquete todavía no está en npm: la publicación está bloqueada a propósito hasta resolver la licencia de una dependencia (ver [Licencia](#licencia)).
 
-## Probarlo (versión temprana)
+### 3. Abrir la web y recorrer el asistente
 
-**Leé primero el [aviso importante](#aviso-importante): esto usa un cliente no oficial de WhatsApp y tu número puede ser bloqueado.** El programa es de solo lectura: nunca te marca "en línea", nunca responde y nunca manda nada salvo el resumen, que va a tu propio chat ("Mensaje a mí mismo").
+`msum open` abre la página local con la sesión ya iniciada (con Docker, usá la dirección que imprime `msum open --print`). La dirección lleva un token de acceso: no la compartas.
 
-Requisitos: Node 22.16 o posterior, y un proveedor de LLM: [Claude Code](https://claude.com/claude-code) con la sesión iniciada en esta máquina (`claude`), un servidor local de [Ollama](https://ollama.com) con un modelo ya descargado, o una clave de API de OpenAI, Anthropic o Gemini (ver [Elegir el proveedor de LLM](#elegir-el-proveedor-de-llm)). No hay proveedor por defecto: lo elegís en la configuración.
+La primera vez, en una instalación sin ninguna cuenta vinculada, empieza un asistente de tres pasos.
 
-```sh
-npm install
-npm run build
-node dist/main/cli.js init      # o `msum init` después de `npm link`; crea el directorio de datos y config.json
-```
+**Vos.** Tu nombre y el nombre de la cuenta. El idioma sigue al del navegador y la zona horaria es la del navegador; los dos se cambian después en Ajustes.
 
-1. **Editá `config.json`** (en el directorio de datos que muestra `init`; con `MSUM_DATA_DIR` lo ponés en otro lado). No hay proveedor por defecto: `init` escribe `"primary": null` y **tenés que definir `provider.primary` explícitamente** (`"claude-cli"`, `"ollama"`, `"openai"`, `"anthropic"` o `"gemini"`; con todos menos `claude-cli` configurá también el modelo, `provider.<nombre>.model`; ver [Elegir el proveedor de LLM](#elegir-el-proveedor-de-llm)) antes de que funcionen `digest` o los horarios. Revisá también tu `timezone` (`init` imprime la que escribió, la del sistema; **en Docker, definí `TZ` o `timezone` en la configuración**), y tu `ownerName`. Las horas de los digests ya no están en este archivo: mirá `msum schedule` más abajo. Un `promptFile` relativo se lee desde el directorio del archivo que lo define (el directorio de datos para `config.json`, `accounts/<id>/` para el archivo propio de una cuenta). Los valores inválidos se rechazan con un mensaje que nombra la opción.
-2. **`msum link`** muestra un código QR en la terminal (también queda como `qr.png` mientras es válido). Escaneálo desde WhatsApp, Ajustes > Dispositivos vinculados. Espera el historial inicial y termina.
-3. **`msum daemon`** conecta todas las cuentas, captura los mensajes, ejecuta los horarios y entrega cada resumen al chat propio de esa cuenta. Dejalo corriendo (Ctrl+C lo detiene de forma ordenada). Corre un solo daemon por instalación, y corre TODAS las cuentas: cada una está aislada (su propia conexión, horarios, recuperación de ejecuciones perdidas y entrega), así que una cuenta bloqueada o que falla no detiene a las otras; una falla dentro de una cuenta reinicia solo esa cuenta, con una espera creciente. `msum daemon --account <id>` corre solo esa cuenta: sirve para depurar. Si WhatsApp cierra una sesión, rechaza la conexión (403) o la reemplaza, o la sesión es de otro número, el daemon deja de conectar ESA cuenta, escribe `accounts/<id>/blocked.json` y la deja inactiva (así un gestor de servicios que reinicia el daemon no reconecta en bucle, algo que podría hacer bloquear el número). Una cuenta sin nada vinculado también queda inactiva: no se abre ninguna conexión para ella. `msum status` muestra el motivo, y el estado de la conexión de cada cuenta mientras el daemon corre. Para arreglar un bloqueo: `msum retry --account <id>` si la conexión fue rechazada o reemplazada (el daemon en marcha vuelve a tomar la cuenta en pocos segundos), o vincular de nuevo si la sesión no sirve (`msum unlink --account <id>` y después `msum link --account <id>`). `msum daemon --retry` borra, antes de arrancar, exactamente los bloqueos que borra `msum retry` (una sesión muerta sigue bloqueada). Un bloqueo nunca se levanta solo: que falte `blocked.json` cuenta como "borrado" solo si el daemon sabe que estuvo en disco. Si la conexión de una cuenta sigue fallando (5 fallas seguidas, con esperas crecientes, y una unidad que se mantiene conectada 10 minutos reinicia la cuenta), el daemon deja de intentar y la bloquea (`socketFailed`) en vez de entrar en un bucle; `msum retry` la devuelve. Una cuenta con la configuración inválida, o con horarios y sin proveedor, se avisa y queda inactiva mientras las otras cuentas corren (el daemon se niega a arrancar solo si `--account` nombra una cuenta así, o si todas lo están).
+![Paso 1 del asistente: tu nombre y el nombre de la cuenta](docs/images/screenshots/wizard-you.png)
 
-El daemon sigue mirando la instalación mientras corre: una cuenta que vinculás después arranca sola, una que se borra se detiene, y un bloqueo borrado se reintenta. Podés correr `msum link --account <id-nuevo>` con el daemon corriendo: la cuenta queda bloqueada para el daemon mientras se vincula (`accounts/<id>/link.lock`), y el daemon la arranca recién cuando termina la vinculación. `msum link` y `msum unlink` rechazan una cuenta que el daemon está usando (vinculada y sin bloqueo), porque es dueño de su sesión: detené el daemon primero. Las cuentas que no usa (sin vincular, o bloqueadas) se pueden vincular o desvincular con el daemon corriendo.
+**Resumen.** Elegí el proveedor, mirá qué recibe y hacia quién, aceptá si sale de tu máquina y tocá **Probar conexión**.
 
-Una instalación puede tener varias cuentas: `msum link --account trabajo` crea y vincula una (los ids son letras minúsculas, dígitos y guiones), `msum accounts` las lista, y `link`, `unlink`, `digest`, `daemon`, `status` y `doctor` aceptan `--account <id>` (opcional mientras haya una sola cuenta; `status` y `doctor` recorren todas las cuentas sin él). Cada cuenta puede tener su propio `config.json` en `accounts/<id>/` que pisa al del directorio de datos: sus opciones de primer nivel reemplazan a las de la instalación, `provider` se combina clave por clave, y las listas de privacidad `localOnlyPatterns` y `excludePatterns` se suman a las de la instalación (nunca las reemplazan), así que una cuenta solo puede volverlas más estrictas. Un patrón es un pedazo de `<id> <nombre>` sin distinguir mayúsculas ("ana" también coincide con "Mariana"), salvo `id:<id de la conversación>`, que coincide exactamente con ese id (es lo que escribe la página web al marcar un chat, porque un id común como `5491112345678@s.whatsapp.net` también está contenido en `15491112345678@s.whatsapp.net`). `msum unlink --account trabajo` borra solo los datos de esa cuenta. Una instalación anterior a esta estructura (`account/`) se mueve sola a `accounts/default/`, sin ningún daemon corriendo.
-**Horarios.** Cada cuenta corre sus digests en días de la semana a una hora local, guardados en la base de datos y manejados con `msum schedule` (agregá `--account <id>` cuando hay más de una cuenta):
+![Paso 2 del asistente: la lista de proveedores antes de elegir uno](docs/images/screenshots/wizard-summary.png)
 
-- `msum schedule ls` los lista con su id, días, hora y próxima ejecución en la zona horaria de la cuenta.
-- `msum schedule add --time 09:00 [--days daily|weekdays|weekends|mon,wed,fri|mon-fri]` agrega uno (todos los días si no ponés `--days`). Los nombres de los días valen en inglés y en español (`lun`, `mar`, `mie`/`mié`, `jue`, `vie`, `sab`/`sáb`, `dom`).
-- `msum schedule rm <id>` borra uno de los horarios de esa cuenta. Para cambiar una hora, borrala y agregá la nueva.
+**Vincular.** Leé el aviso de riesgo y marcá la casilla; después escaneá el QR desde WhatsApp y esperá la sincronización del historial.
 
-Un daemon en marcha toma los cambios en unos cinco segundos, sin reiniciar. Estos comandos funcionan con el daemon corriendo. Las horas siguen la `timezone` de la cuenta y sus cambios de horario de verano: una hora que no existe el día del cambio corre en la primera hora válida posterior, y una hora que ocurre dos veces corre una sola vez. Una ejecución perdida (la máquina estaba apagada) se recupera una sola vez al arrancar el daemon. `msum init` no escribe horarios y una cuenta nueva empieza sin ninguno, así que no corre ningún digest por su cuenta hasta que agregues uno (`msum link` y `msum doctor` te lo recuerdan). Para las configuraciones escritas por versiones anteriores, la opción `schedules` de `config.json` (expresiones cron, en el archivo de la instalación o en el de una cuenta) se sigue importando una sola vez por cuenta, la primera vez que se usa la cuenta: las horas que se pueden expresar (una hora fija en cualquier día de la semana) pasan a ser horarios; las demás no se importan y `msum doctor` las lista como aviso. Después la opción se ignora (`doctor` avisa, y podés borrarla), así que un horario que borrás no vuelve, y `config.json` nunca se reescribe. La opción acepta cualquier lista de textos, así que un valor viejo nunca impide que la configuración cargue.
+![Paso 3 del asistente: el paso de vincular, con el aviso de riesgo y su casilla (todavía sin QR)](docs/images/screenshots/wizard-link.png)
 
-4. **`msum digest --dry-run`** genera un resumen ahora y lo muestra, sin guardar ni enviar nada. Sin `--dry-run` el resumen queda en cola y lo entrega el daemon que esté corriendo. No abre una conexión a WhatsApp (la sesión es del daemon). Opciones: `--hours N`, `--from "AAAA-MM-DD HH:MM"`, `--to "AAAA-MM-DD HH:MM"`.
+Al terminar crea los horarios por defecto, 09:00 y 18:00 todos los días. Se puede cerrar a mitad y retomar, o saltear. Todo el detalle del asistente, de la página y de las aceptaciones está en la [guía de la web](docs/guias/web-y-cuentas.md).
 
-Otros comandos: `msum status` (cuenta, último resumen, envíos pendientes, próximas ejecuciones), `msum doctor` (revisa Node, permisos, configuración, proveedor, vinculación y, si está activada, la transcripción), `msum whisper models|download <nombre>` (mirá [Transcribir notas de voz](#transcribir-notas-de-voz-opcional)), `msum service install|uninstall|status` (registra solo el daemon para que arranque con tu sesión y vuelva tras una caída: launchd en macOS, `systemd --user` en Linux, una entrada `Run` de tu usuario en Windows; sin permisos de administrador, y los horarios siguen dentro del daemon) y `msum unlink`, que **borra todos los datos de la cuenta** (sus mensajes, los audios que descargó, el historial de resúmenes, los envíos pendientes y la sesión de WhatsApp; la configuración queda) y pide confirmación. Después, quitá también el dispositivo en el celular (WhatsApp, Ajustes > Dispositivos vinculados).
+Sin la web: `msum link` muestra el QR en la terminal (también queda como `qr.png` mientras es válido) y `msum daemon` conecta las cuentas, ejecuta los horarios y entrega cada resumen. Mirá la [guía del daemon](docs/guias/demonio-y-horarios.md).
 
-**Página web.** Mientras corre, el daemon también sirve una página local, por defecto en `http://127.0.0.1:8787` (opción `web` del `config.json` de la instalación: `port`, `host`, `enabled`). `msum open` la abre con la sesión ya iniciada: la dirección lleva un token de acceso, generado una sola vez en el directorio de datos (`web-token`), así que no la compartas. Desde la página podés agregar una cuenta y vincularla escaneando el QR, seguir la sincronización del historial, ver el estado de cada cuenta y destrabar un bloqueo (vincular de nuevo o reintentar: después de una conexión rechazada o reemplazada, la página hace esperar 30 minutos), editar los horarios, usar "resumir ahora" y ver una vista previa que no envía nada ni mueve el puntero. También lista y busca las conversaciones de una cuenta y marca cada una como excluida o solo local. También podés editar el prompt de cada cuenta (la única variable es `{{name}}`; el formato de la respuesta es fijo y se agrega solo) y volver al original, que guarda tu texto en `prompt.previous.md`. **Excluir un chat borra los mensajes y la fila del chat guardados hasta ese momento**; no quita los resúmenes que ya están dentro de digests pasados (el historial de digests se conserva) ni las partes que ya esperan en la cola de envío. Quitar la exclusión no recupera nada. Una marca cubre los ids de esa persona que WhatsApp le contó a esta computadora (un número y un id interno); si la misma persona aparece como un segundo chat, marcá también ese. "Solo local" necesita un modelo de Ollama en la configuración. Escucha solo en esta máquina; otro `host` (por ejemplo `0.0.0.0` dentro de Docker, publicando el puerto solo en `127.0.0.1`) es una elección explícita. El botón "Logs" muestra las últimas líneas de log del daemon, filtrables por nivel y cuenta; nunca incluyen mensajes, nombres ni secretos. El daemon además las escribe en `logs/daemon.log` dentro del directorio de datos (rota a `daemon.log.1`), y los dos archivos juntos quedan por debajo de `logs.maxBytes` (solo en el `config.json` de la instalación, 50 MB por defecto, mínimo 1 MB). **Asistente de primer uso.** La primera vez que se abre la página en una instalación sin ninguna cuenta vinculada, empieza un asistente de tres pasos: vos (tu nombre y el nombre de la cuenta; la página empieza en español; en una instalación nueva sigue el idioma del navegador (español o inglés, el primero que pida), hay un selector Español | English en este primer paso, y el idioma que se ve al guardar el paso es el que se escribe; la zona horaria es la del navegador, sin consultar la red; los dos se cambian después en Ajustes), resumen (el proveedor, con su prueba y su aceptación) y vincular (el QR y la sincronización del historial). Al terminar crea los horarios por defecto, 09:00 y 18:00 todos los días, que se editan en la pestaña Horarios. La zona horaria en uso se muestra junto a los horarios (un daemon solo, como en Docker, usaría UTC salvo que pongas `TZ`). La transcripción de audios está apagada hasta que la configuración la active. Se puede cerrar a mitad y retomar (su estado se guarda en `app.db`), o saltear; una instalación que ya tiene una cuenta vinculada (hecha con la línea de comandos o con `msum import`) nunca lo ve. Al elegir el proveedor muestra cuánto cuesta cada uno, si los datos salen de tu computadora, hacia quién y qué hace el proveedor con ellos, y tiene un botón "Probar conexión" que hace una llamada real con un chat corto inventado (solo corre cuando hacés clic). Un proveedor que envía el texto de tus chats fuera de esta máquina (Claude Code, que lo manda a Anthropic bajo tu cuenta de Claude; OpenAI, Anthropic y Gemini por sus APIs; y cualquier servidor compatible con la API de OpenAI, incluso uno en tu propia computadora) necesita una aceptación explícita: hay que marcar la casilla y queda registrada (cuenta, proveedor, versión del texto y hora) en `app.db`. La configuración pide la misma aceptación la primera vez que elegís un proveedor así para una cuenta; Ollama en tu propia máquina no necesita ninguna, pero un servidor de Ollama cuya dirección no es de esta máquina (ni `localhost`, ni `127.0.0.0/8`, ni `::1`) también cuenta como destinatario externo: la página nombra el equipo, avisa que las conversaciones "solo locales" también van ahí y pide la misma aceptación. Una configuración escrita a mano o con la línea de comandos no se bloquea por esto: la aceptación se refiere a la elección hecha en la web. El asistente es además el único lugar donde la web escribe el `config.json` de la instalación, y solo su `language` y `timezone`, y solo en una instalación recién hecha (sin cuentas y con el idioma que escribe `msum init`). OpenAI, Anthropic y Gemini se eligen en el asistente y en la configuración con su modelo y su clave de API; para OpenAI además podés poner la dirección de cualquier servidor compatible (LM Studio, OpenRouter...), que se considera externo aunque sea `localhost` y usa su propia clave (`openai-compatible`), aparte de la de OpenAI. La página muestra si hay una clave y de dónde viene (variable de entorno, archivo de claves de la cuenta o de la instalación), pero nunca la clave: se guarda en el `secrets.json` de la instalación (modo 0600), no se escribe nunca en `config.json` ni en `app.db`, y el campo se vacía apenas la clave se guarda o se prueba. En el asistente, "Probar conexión" puede probar una clave que escribiste sin guardarla (la configuración no ofrece esa prueba). Cada uno de estos proveedores muestra su propio aviso antes de usarse (OpenAI, Anthropic, Google o el host del servidor), dice que los chats "solo locales" nunca van a un proveedor externo, y para Gemini suma la advertencia del plan gratuito; cambiar la dirección de un servidor compatible pide la aceptación de nuevo. Codex (deshabilitado por ahora) y la transcripción local de audios llegan en una próxima versión; cualquier otro comando se sigue eligiendo con `msum provider use generic-cli`. La configuración, las conversaciones, el prompt, el historial, los logs y la configuración inicial ya están en la web.
-
-Todo queda en tu máquina, en el directorio de datos (con permisos solo para tu usuario), salvo lo que recibe el proveedor de LLM que elegiste. Los textos de la línea de comandos están en español o inglés (`language` en `config.json`).
-
-## Transcribir notas de voz (opcional)
-
-Viene desactivada. Cuando está activada, las notas de voz y los audios que llegan **mientras el daemon está conectado**, y los de los **últimos 14 días del historial** que WhatsApp manda al vincular (`historyAudioDays`; los más viejos quedan como `🎤 (audio sin transcribir)`), se descargan de WhatsApp a `accounts/<id>/media/` (directorio 0700, archivos 0600), se transcriben **en tu máquina** con [whisper.cpp](https://github.com/ggml-org/whisper.cpp), y el resumen muestra el texto donde diría `🎤 (audio sin transcribir)`. El audio nunca se envía a ningún servicio. **Lo que se conserva es el texto:** el archivo de audio se borra apenas se transcribe, o falla definitivamente. `msum unlink` borra lo que quede, junto con el resto de la cuenta.
-
-Con la transcripción desactivada, o si falta whisper, ffmpeg o el modelo, **todo lo demás funciona igual** y los audios aparecen como `🎤 (audio sin transcribir)`; `msum doctor` dice qué falta. Un audio que no se puede transcribir queda registrado como fallido y no se reintenta.
-
-**Límites, porque el audio viene de otras personas:**
-
-- Las descargas solo vienen del servidor de medios de WhatsApp, y solo para un mensaje que trae una ruta de medios de WhatsApp común; cualquier otra cosa que el remitente escriba en el mensaje (una dirección, un servidor) se ignora y el audio queda registrado como fallido (`invalid-media-path`).
-- Un archivo de más de 25 MB no se descarga; una descarga se corta a los 60 segundos; y los audios que una cuenta guarda en disco no pueden pasar de `maxMediaMb` (500 por defecto; pasado ese límite los nuevos se rechazan, `media-cap`, y `msum doctor` avisa antes).
-- **Nada se pierde por un reinicio.** Los audios por descargar esperan en una cola guardada en la base de la cuenta (con lo necesario para descargar cada uno), y el daemon la recorre de a uno, del más viejo al más nuevo: una primera vinculación con cientos de audios solo tarda, y la memoria guarda un audio a la vez. Una descarga cortada por una parada, un reinicio o una conexión caída sigue en la cola y se retoma. Una falla de descarga pasajera se reintenta con espera creciente (30 segundos, luego 1, 2 y 4 minutos: 5 intentos), y después el audio queda registrado como fallido (`download-failed`); un audio pendiente de más de 30 días se abandona (`expired`), igual que un archivo que WhatsApp ya no tiene; uno demasiado grande o una carpeta llena fallan en el acto. La clave para descifrar cada archivo vive solo en esa base mientras espera, y se borra apenas el archivo se guarda o la descarga falla definitivamente; nunca se escribe en los logs.
-- Solo se convierten los formatos de audio de WhatsApp (notas de voz Ogg Opus, MP3, M4A/MP4, AAC, AMR). ffmpeg corre con el formato de entrada forzado, solo puede leer un archivo (`-protocol_whitelist file`), lee como máximo 30 minutos (`-t 1800`) y escribe como máximo unos 60 MB (`-fs`).
-
-Para activarla:
-
-1. **Instalá whisper.cpp**, que trae el programa `whisper-cli` (por ejemplo `brew install whisper-cpp` en macOS, o compilalo desde el código fuente siguiendo su README en Linux).
-2. **Instalá ffmpeg** (`brew install ffmpeg`, `apt install ffmpeg`...): convierte el audio al formato que lee whisper.
-3. **Descargá un modelo:** `msum whisper models` lista los modelos ggml conocidos con su tamaño, y `msum whisper download base` descarga uno en `<directorio de datos>/models/`, mostrando el progreso y verificando un checksum SHA-256 fijado en el programa. Un archivo que no coincide se descarta y no queda nada. `base` y `small` son un buen comienzo para notas de voz; los modelos más grandes son más precisos y más lentos.
-4. **Activala** en `config.json` (o en el archivo propio de una cuenta):
-
-   ```json
-   "transcription": { "enabled": true, "model": "base", "language": "auto" }
-   ```
-
-   | Opción | Por defecto | Qué significa |
-   |---|---|---|
-   | `enabled` | `false` | Activa la transcripción. |
-   | `model` | ninguno | El nombre de un modelo en `<directorio de datos>/models/` (`base`, `small.en`...), o la ruta de un archivo ggml. |
-   | `language` | `auto` | `auto` detecta el idioma de cada audio; o un código como `es` o `en`. Cada cuenta puede tener el suyo. |
-   | `whisperCommand` | `whisper-cli` | El programa de whisper.cpp (un nombre del `PATH`, o una ruta). |
-   | `ffmpegCommand` | `ffmpeg` | El programa ffmpeg. |
-   | `timeoutMs` | `300000` | Lo máximo que puede tardar un audio, ffmpeg incluido. Un programa que tarda más se mata. |
-   | `historyAudioDays` | `14` | También se descargan y transcriben los audios del historial de los últimos N días. |
-   | `maxMediaMb` | `500` | Lo máximo que pueden ocupar juntos los audios descargados de una cuenta, en MB. |
-
-**Un solo whisper a la vez en todo el programa,** sin importar cuántas cuentas haya: los audios se transcriben en segundo plano, en orden, a medida que llegan. Justo antes de cada resumen, los audios de su ventana que todavía esperan se transcriben primero, y el resumen los espera como máximo dos minutos: lo que no está listo sale como sin transcribir y se termina después.
-
-**`msum digest` y el daemon.** Mientras el daemon corre, es el dueño de la transcripción: `msum digest` no ejecuta whisper, solo espera (como máximo los mismos dos minutos) a que el daemon termine los audios de su ventana. Sin daemon, `msum digest` transcribe por su cuenta. Esto vale también para `--dry-run`: una transcripción es un dato capturado, como un mensaje, no un resultado del resumen, así que una vista previa puede guardarla, y aun así no mueve el puntero ni escribe nada en el historial ni en la cola de envío.
-
-Los programas corren sin shell, en un directorio temporal vacío, con un entorno mínimo, y se matan si pasan el tiempo límite. Si al daemon mismo lo matan con `SIGKILL` nadie puede matarlos por él (Node no puede pedirle eso al sistema), así que un audio en curso termina solo; una parada normal (Ctrl+C, `SIGTERM`) sí los mata.
-
-## Elegir el proveedor de LLM
-
-Se elige en `config.json` (o en el archivo propio de una cuenta): `provider.primary` y, opcionalmente, `provider.backup`, que se hace cargo de una conversación cuando falla el principal (un límite de uso que no se levanta a tiempo, una respuesta que no cumple el formato del resumen...). Ambos aceptan `claude-cli`, `gemini-cli`, `codex-cli`, `generic-cli` (ver [Usar una CLI como proveedor](#usar-una-cli-como-proveedor)), `ollama`, `openai`, `anthropic` y `gemini`. **Los proveedores por API no tienen modelo por defecto** (los nombres de los modelos cambian seguido, y uno por defecto desactualizado fallaría más tarde): `provider.<nombre>.model` es obligatorio cuando se usa uno, y la configuración se rechaza sin él.
-
-| Proveedor | Configuración | Se conecta a |
-|---|---|---|
-| `openai` | `"provider": { "primary": "openai", "openai": { "model": "<modelo>" } }`. También `baseUrl` (por defecto `https://api.openai.com/v1`), `timeoutMs` y `structuredOutput` (`json_schema` por defecto; `json_object` o `prompt` para servidores compatibles que no lo tienen). | `api.openai.com`, o tu `baseUrl` |
-| `anthropic` | `"anthropic": { "model": "claude-sonnet-5-5", "effort": "low" }` (o `claude-haiku-5-5`). También `timeoutMs`, `maxTokens` (16000 por defecto: los modelos actuales piensan por defecto y eso cuenta contra el límite) y `effort` (`low`, `medium`, `high`, `xhigh` o `max`; sin definir usa el valor del modelo). `low` conviene para resúmenes: menos costo y latencia. | `api.anthropic.com` |
-| `gemini` | `"gemini": { "model": "<modelo>" }`. También `timeoutMs`. | `generativelanguage.googleapis.com` |
-
-`openai` con un `baseUrl` sirve para cualquier servidor con la API Chat Completions (LM Studio, OpenRouter...); para esos la clave es opcional. Un proveedor por API es **externo aunque el servidor esté en `localhost`**: no se puede verificar que una URL se quede en la máquina, así que las conversaciones de `localOnlyPatterns` nunca se le envían. "Solo local" significa **tu servidor de Ollama**: las conversaciones de `localOnlyPatterns` van al Ollama configurado en `provider.ollama.baseUrl` y a nada más. Si esa dirección es de esta máquina (`localhost`, una dirección de loopback como `127.0.0.1`, o `host.docker.internal` para el host de Docker) nada sale de la máquina. Si es otra computadora, los chats sí salen hacia ese servidor, que es tuyo pero no es esta máquina: `msum provider ls` y `msum doctor` lo dicen, y `msum provider use ollama` muestra la información y pide consentimiento. Usá una URL de loopback si lo necesitás en esta máquina.
-
-**Las claves de API nunca van en `config.json`** (una clave escrita ahí se rechaza, con un mensaje que apunta a esta sección). Se guarda con:
-
-```sh
-msum secret set openai        # o anthropic, gemini; con --account <id> para una sola cuenta
-```
-
-La clave se lee de la entrada (oculta mientras la escribís, o por pipe: `msum secret set openai < clave.txt`), nunca de un argumento, que se vería en `ps` y en el historial de tu shell. Se guarda en `secrets.json` del directorio de datos (`accounts/<id>/secrets.json` con `--account`), con permisos 600, y nunca se imprime ni se escribe en los logs. `msum secret ls` muestra qué proveedores tienen clave y de dónde sale (nunca la clave) y `msum secret rm <proveedor>` quita una. La clave se busca en este orden: **variable de entorno** (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`), luego `accounts/<id>/secrets.json`, luego `secrets.json`. Hay dos claves de OpenAI, para que la verdadera nunca vaya a otro servidor: **`openai`** (`msum secret set openai`, o `OPENAI_API_KEY`) se usa solo cuando el origen de `baseUrl` es exactamente `https://api.openai.com`, y **`openai-compatible`** (`msum secret set openai-compatible`, o `MSUM_OPENAI_API_KEY`) se usa para cualquier otro `baseUrl`. La misma regla vale para los archivos de la cuenta y de la instalación y para el entorno: un servidor compatible nunca recibe la entrada `openai`, y si no necesita clave no se le envía ninguna. `msum secret ls` muestra todas las claves, y `msum doctor` dice cuál va a usar tu configuración, verifica que el modelo esté definido, que haya una clave y que `secrets.json` (el de la instalación y el de cada cuenta) solo lo pueda leer tu usuario, sin conectarse a nada.
-
-Si un proveedor responde "demasiados pedidos", el programa espera el tiempo que indica (`Retry-After`, o el tiempo de espera que Gemini pone en el error) y reintenta; un servidor sobrecargado (503, 529) o un error de red se reintenta con una espera creciente. Cada conversación tiene su propio presupuesto, por defecto 3 reintentos y 120 segundos de espera en total (`provider.retry.maxRetries` y `provider.retry.maxWaitMs`), y la llamada completa, intentos y esperas juntos, no puede pasar de 300 segundos (`provider.retry.maxTotalMs`). Un proveedor que redirige, o que responde con más de 2 MB, hace fallar la llamada: las redirecciones nunca se siguen, porque reenviarían tu chat y tu clave a un servidor que no elegiste. Si no alcanza, esa conversación pasa al proveedor de respaldo si hay uno, y si no el resumen sale con las conversaciones que se pudieron resumir y avisa cuáles quedaron afuera.
-
-**Privacidad: el texto de tus chats sale de tu máquina** hacia el proveedor que elijas, salvo las conversaciones de `localOnlyPatterns` (las resume Ollama). Qué hace cada uno con él, según sus propias páginas (revisalas, los términos cambian):
-
-- **OpenAI:** por defecto los datos de la API no se usan para entrenar sus modelos, y los registros de monitoreo de abuso se guardan hasta 30 días. [Data controls in the OpenAI platform](https://developers.openai.com/api/docs/guides/your-data).
-- **Anthropic:** por defecto no entrena con las entradas ni las salidas de sus productos comerciales, la API incluida. [Is my data used for model training?](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training)
-- **Gemini:** con una clave gratuita (sin facturación), Google puede usar lo que enviás para mejorar sus productos, y revisores humanos pueden leerlo; con facturación activada eso no es lo habitual. **No uses una clave gratuita para chats que no quisieras que alguien lea**, y marcá los chats sensibles como solo locales. [Gemini API data logging and sharing](https://aistudio.google.com/docs/logs-policy).
-- **Claude Code (`claude-cli`):** lo que hace Anthropic depende del tipo de cuenta: con un plan de consumo (Free, Pro, Max) tus datos pueden usarse para mejorar sus modelos si esa opción está activada, y se guardan 30 días o 5 años según eso; bajo términos comerciales (Team, Enterprise, API) no se usan para entrenar. [Uso de datos de Claude Code](https://code.claude.com/docs/en/data-usage).
-
-## Usar una CLI como proveedor
-
-Si ya pagás un plan, o no querés sacar una clave de API, un proveedor puede ser un programa de tu máquina que usa la sesión con la que ya iniciaste. Hay tres modos: `claude-cli`, `gemini-cli` y `codex-cli` (presets) y `generic-cli` (cualquier comando). Todas son **externas** igual que las APIs: las conversaciones de `localOnlyPatterns` nunca llegan a ellas.
-
-**La regla (RF-49).** Los chats los escriben otras personas, y una CLI es un agente que puede leer archivos y ejecutar comandos: un texto de un chat podría intentar que lo haga (prompt injection). Por eso un preset de CLI solo se usa cuando se puede **verificar** que corre sin herramientas. Antes de la primera llamada, y en `msum doctor`, el programa ejecuta `<cli> --help` y `<cli> --version` (nunca una llamada al modelo, en un directorio temporal vacío, con el entorno de más abajo) y tienen que figurar todos los flags en los que se apoya el endurecimiento. Si falta uno, el proveedor queda no disponible con el motivo "esta versión de X no se puede ejecutar sin herramientas", y la conversación pasa al proveedor de respaldo. El resultado se recuerda por ruta y fecha de modificación del programa, así que una actualización se vuelve a revisar.
-
-| Preset | Estado | Flags y para qué |
-|---|---|---|
-| `claude-cli` | habilitado | `claude -p --model <m> --system-prompt <s> --json-schema <schema> --output-format json --tools '' --strict-mcp-config --no-session-persistence --safe-mode --disable-slash-commands`. `-p` es el modo sin interfaz; `--json-schema` fuerza el formato del resumen de forma nativa; `--tools ''` apaga todas las herramientas; `--strict-mcp-config` no carga ningún servidor MCP; `--no-session-persistence` no guarda sesión; `--safe-mode` ignora tus personalizaciones (CLAUDE.md, skills, plugins, hooks, MCP), así que ningún hook recibe el chat; `--disable-slash-commands` apaga comandos y skills. El chat va por stdin, nunca como argumento. |
-| `gemini-cli` | **deshabilitado** | Gemini CLI (`-p`, `-o json`) no documenta ningún flag que apague sus herramientas: `--allowed-tools` está obsoleto, `--allowed-mcp-server-names` y `--extensions` solo seleccionan, `--approval-mode plan` es de solo lectura pero igual tiene herramientas (leer archivos, traer páginas web), y las sesiones no se pueden apagar. Existe una política que deniega todo, pero su flag (`--admin-policy`) se documenta sin decir si recibe un archivo o un directorio, y se ignora cuando hay archivos de política en la ubicación del sistema. |
-| `codex-cli` | **deshabilitado** | `codex exec --sandbox read-only --ephemeral --ignore-user-config --output-schema <archivo>` restringe lo que los comandos pueden escribir, no guarda sesión y fuerza un esquema, pero la herramienta de shell sigue disponible: la documentación dice que el sandbox limita los "comandos de shell generados por el modelo", no que los quite, y ningún interruptor documentado apaga juntos el shell, MCP y la búsqueda web. |
-
-Un preset deshabilitado hace fallar cada llamada en el acto con ese motivo y `msum doctor` lo dice; no se ejecuta nada. Se habilitarán cuando se pueda verificar en `--help` una forma documentada de apagar las herramientas. Mientras tanto la CLI genérica puede ejecutarlos, con el riesgo de más abajo. Fuentes: la documentación de [Claude Code](https://code.claude.com/docs/en/network-config), [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md) y [Codex CLI](https://learn.chatgpt.com/docs/developer-commands?surface=cli).
-
-**Qué recibe la CLI.** Solo estas variables, cuando están definidas, y nunca una de tus claves de API: `PATH` (para encontrar el programa y su runtime), `HOME`, `USER` y `LOGNAME` (para encontrar tu sesión existente), `CLAUDE_CONFIG_DIR` (una sesión guardada en otro lado; solo Claude), `LANG` y `TZ`. Las variables de proxy y certificados no se pasan: definilas donde la propia CLI las lee. Corre sin shell, en un directorio temporal nuevo y vacío que se borra después, con un tiempo límite que mata todo el grupo de procesos (nietos incluidos), y como máximo 2 MB de salida.
-
-**Iniciar sesión.** La CLI usa la sesión que ya iniciaste para ella. Dentro de un contenedor Docker o sandbox la sesión se inicia adentro, una vez, y se guarda en un volumen: para Claude, ejecutá `claude` en el contenedor (por ejemplo `docker exec -it <contenedor> claude`, o `sbx claude` si usás `sbx`), iniciá sesión y guardá su directorio de configuración (`~/.claude`, o el de `CLAUDE_CONFIG_DIR`) en un volumen para que el daemon lo vea.
-
-**El formato de la respuesta (RF-48).** `claude-cli` fuerza el esquema con `--json-schema`; si aun así la respuesta no sirve, se le pide una vez más que la corrija. A una CLI sin flag de esquema nativo (la genérica) se le pone el esquema en el prompt, la respuesta se valida y, si es inválida, se le pide UNA vez más con un mensaje que dice qué estaba mal; si falla otra vez, la conversación pasa al proveedor de respaldo (RF-42).
-
-**La CLI genérica** (`generic-cli`) ejecuta cualquier comando que reciba el prompt e imprima texto con la respuesta:
-
-```json
-"provider": {
-  "primary": "generic-cli",
-  "genericCli": { "command": ["mi-llm", "--json", "{{prompt}}"], "timeoutMs": 180000, "acknowledgeRisk": true }
-}
-```
-
-`command` es una lista de argumentos, sin shell y sin interpolación dentro de un elemento. **Por defecto el prompt va por stdin, que es privado.** Un elemento que es exactamente `{{prompt}}` recibe en cambio el prompt completo: usalo solo para una herramienta que no puede leer stdin, porque **los argumentos los ven otros usuarios de la máquina** (`ps`) y un chat largo puede pasar el límite de tamaño de los argumentos; `msum doctor` avisa cuando el comando lo usa. `{{prompt}}` nunca es el programa ni parte de un elemento más largo. No hay comando por defecto. **No se puede endurecer:** el comando puede ejecutar herramientas sobre texto escrito por terceros, así que se rechaza salvo que pongas `acknowledgeRisk` en `true`; `msum doctor`, `msum digest` y el daemon imprimen este aviso cada vez que está por usarse. Preferí un proveedor que corre sin herramientas.
-
-## Elegir y probar tu proveedor
+### 4. Elegir y probar el proveedor
 
 Cuatro comandos, en este orden (agregá `--account <id>` cuando hay más de una cuenta):
 
-1. **`msum provider ls`** lista cada proveedor con cuánto cuesta (una API cobra por uso, una CLI usa tu plan, Ollama es gratis), si tus chats salen de la máquina y hacia qué servidores, un enlace a su política de datos, si está configurado acá (principal o respaldo), si su clave está presente (de dónde sale, nunca la clave) y si es usable ahora (las CLIs se verifican, los presets deshabilitados lo dicen). No hace ninguna llamada de red.
-2. **`msum provider use <nombre> [--model <m>] [--backup] [--yes]`** elige el proveedor y su modelo. Escribe `provider.primary` (o `provider.backup`) en el `config.json` de la cuenta, que crea si hace falta, y **dice qué archivo escribió**. Nunca escribe el `config.json` de la instalación, ni siquiera con una sola cuenta: el consentimiento de más abajo es por cuenta, así que el proveedor que cubre también tiene que serlo (una cuenta vinculada después heredaría, si no, un proveedor externo que nunca vio explicado). Conserva todas las demás claves, escribe de forma atómica y valida el resultado antes: un resultado inválido no escribe nada. **Antes de activar un proveedor que envía tus chats afuera te dice qué recibe** (el texto de las conversaciones que no son solo locales, los nombres de los chats y contactos como aparecen en ellos, los números de teléfono de los contactos que no guardaste, las transcripciones de las notas de voz, y tu nombre como dueño), hacia qué servidores y dónde está su política, y te pide confirmar; `--yes` salta la pregunta, no la información. **Tu respuesta queda registrada** (RNF-02) para esa cuenta, con la fecha y los servidores que se mostraron: un servidor distinto, por ejemplo otro `--base-url` u otra dirección de Ollama, necesita un consentimiento nuevo, y para `generic-cli` el consentimiento se asocia al comando que se mostró, así que cambiar el comando pide uno nuevo. `msum provider ls` muestra la fecha (o "ninguno registrado"), y `msum doctor` avisa, sin bloquear nada, cuando un proveedor elegido que envía tus chats afuera no tiene consentimiento registrado. El consentimiento es un registro y un recordatorio, no un candado: editar `config.json` a mano es el camino experto y sigue funcionando (una instalación configurada así, por ejemplo con `claude-cli`, anda como antes); el camino guiado es el que lo registra, y `doctor` hace visible la falta. Borrar la cuenta (`msum unlink`) borra sus consentimientos. Rechaza `gemini-cli` y `codex-cli` (deshabilitados), y para `generic-cli` explica `acknowledgeRisk`, que ponés vos y él nunca pone. `openai-compatible` necesita `--base-url <url>`.
-3. **`msum secret set <nombre>`** guarda la clave de API cuando el proveedor la necesita (ver [Elegir el proveedor de LLM](#elegir-el-proveedor-de-llm)). `provider use` nunca toca las claves; te avisa cuando falta una.
-4. **`msum provider test [--backup] [--kind <nombre>]`** es el "probar conexión": UNA llamada real al proveedor, con una **conversación inventada** incluida en el programa (nombres inventados), nunca tus mensajes. Antes de la llamada dice adónde va. Muestra la latencia y un resumen de la respuesta validada, o el error (sin ninguna clave) y una pista: falta la clave, la clave fue rechazada, el modelo no existe, un límite de uso, un tiempo agotado, un preset deshabilitado, una CLI que no se puede verificar, o un servidor al que no se llega. Código de salida 0 si anda, 1 si no. `msum doctor` nunca llama a un proveedor; te manda acá.
+| Comando | Qué hace |
+|---|---|
+| `msum provider ls` | Lista cada proveedor: costo, si tus chats salen de la máquina, si está configurado y si es usable. Sin llamadas de red. |
+| `msum provider use <nombre> --model <m>` | Elige el proveedor y su modelo, y dice qué archivo escribió. Antes de activar uno que envía tus chats afuera, te dice qué recibe y te pide confirmar. |
+| `msum secret set <nombre>` | Guarda la clave de API (la lee de la entrada, nunca de un argumento). |
+| `msum provider test` | UNA llamada real con una conversación inventada, nunca tus mensajes. Código de salida 0 si anda, 1 si no. |
 
 Las configuraciones habituales:
 
-- **Claude Code con tu plan (sin clave):** `msum provider use claude-cli`, iniciá sesión una vez con `claude` (dentro de un contenedor, ver [Usar una CLI como proveedor](#usar-una-cli-como-proveedor)), y después `msum provider test`.
-- **API de Anthropic:** `msum provider use anthropic --model claude-sonnet-5-5`, `msum secret set anthropic`, `msum provider test`.
-- **OpenAI:** `msum provider use openai --model <modelo>`, `msum secret set openai`, `msum provider test`. Para LM Studio, OpenRouter y parecidos: `msum provider use openai-compatible --base-url <url> --model <modelo>`, y `msum secret set openai-compatible` si necesita clave.
-- **Gemini, plan gratuito:** `msum provider use gemini --model <modelo>`, `msum secret set gemini`, `msum provider test`. Google puede usar una clave gratuita para mejorar sus productos: mirá la nota de privacidad de arriba, y marcá los chats sensibles como solo locales.
-- **Ollama, todo en tu máquina:** `ollama pull <modelo>`, `msum provider use ollama --model <modelo>`, `msum provider test`. Con Ollama en esta máquina nada sale de ella, así que no pregunta nada; con `provider.ollama.baseUrl` en otra computadora muestra la información y pregunta, como cualquier proveedor que recibe tus chats.
+| Quiero usar | Comandos |
+|---|---|
+| Claude Code con tu plan | `msum provider use claude-cli`, iniciar sesión con `claude`, `msum provider test` |
+| API de Anthropic | `msum provider use anthropic --model claude-sonnet-5-5`, `msum secret set anthropic`, `msum provider test` |
+| OpenAI | `msum provider use openai --model <modelo>`, `msum secret set openai`, `msum provider test` |
+| Gemini | `msum provider use gemini --model <modelo>`, `msum secret set gemini`, `msum provider test` |
+| Ollama, todo en tu máquina | `ollama pull <modelo>`, `msum provider use ollama --model <modelo>`, `msum provider test` |
 
-Agregá un segundo como respaldo con `--backup`, por ejemplo `msum provider use ollama --backup --model <modelo>`.
+Las claves de API nunca van en `config.json`. Un segundo proveedor de respaldo se agrega con `--backup`. Más en la [guía de proveedores](docs/guias/proveedores.md), [usar una CLI como proveedor](docs/guias/cli-como-proveedor.md), [elegir un modelo local](docs/guias/modelo-local-ollama.md) y las guías paso a paso de [Gemini](docs/guias/sacar-clave-api-google.md) y de [Claude Code](docs/guias/instalar-claude-y-login.md).
 
-## Elegir un modelo local (Ollama)
+### 5. Horarios y vista previa
 
-Un modelo chico, de 3 a 8 mil millones de parámetros, puede resumir en tu propia máquina. Cuál conviene depende de la RAM y de qué tan bien hace el trabajo, así que el programa tiene una tabla de candidatos y una forma de medirlos (RF-45).
+Cada cuenta corre sus digests en días de la semana a una hora local, manejados con `msum schedule`:
 
-**El modelo lo elegís vos; el programa no elige uno por vos.** Lista los candidatos que entran en tu RAM, muestra qué se midió de cada uno y te deja la decisión. Cuatro candidatos fueron evaluados hasta ahora (81 conversaciones, 2026-11-18, en un Ollama local); los otros seis no:
+| Comando | Qué hace |
+|---|---|
+| `msum schedule ls` | Los lista con su id, días, hora y próxima ejecución. |
+| `msum schedule add --time 09:00 [--days daily\|weekdays\|weekends\|mon,wed,fri\|mon-fri]` | Agrega uno (todos los días si no ponés `--days`). |
+| `msum schedule rm <id>` | Borra uno. Para cambiar una hora, borrala y agregá la nueva. |
 
-| Modelo | JSON válido | Coincidencia, casos claros | Casos dudosos | Promedio por resumen | RF-45 |
-|---|---|---|---|---|---|
-| `qwen3.5:4b` | 100% | 92,1% | 66,7% | 3,6 s | cumple |
-| `qwen3:8b` | 100% | 90,5% | 41,7% | 4,3 s | cumple |
-| `qwen2.5:3b` | 100% | 87,3% | 58,3% | 2,1 s | no cumple |
-| `qwen3:4b` | 100% | 63,5% | 41,7% | 3,1 s | no cumple |
+Un daemon en marcha toma los cambios en unos cinco segundos. Una cuenta nueva empieza sin horarios (el asistente de la web crea 09:00 y 18:00).
 
-Hasta ahora `qwen3.5:4b` es la mejor opción evaluada: cumplió con la coincidencia más alta y es más chico y más rápido que `qwen3:8b`. Es información, no un valor por defecto: no se configura nada hasta que corras los comandos de abajo. Los números salen de una corrida por modelo en una máquina, con el conjunto de evaluación que se describe más abajo; un modelo que no está en la tabla no fue medido, lo que no es lo mismo que ser malo.
+`msum digest --dry-run` genera un resumen ahora y lo muestra, sin guardar ni enviar nada. Sin `--dry-run` el resumen queda en cola y lo entrega el daemon que esté corriendo. Opciones: `--hours N`, `--from "AAAA-MM-DD HH:MM"`, `--to "AAAA-MM-DD HH:MM"`. Reglas de zona horaria, ejecuciones perdidas y configuraciones viejas en la [guía del daemon](docs/guias/demonio-y-horarios.md#horarios).
 
-- **`msum ollama recommend [--all]`** lee la RAM de esta máquina y lista los candidatos que entran, en este orden: los que pasaron la evaluación (mejor coincidencia primero), después los sin evaluar y después los que no cumplieron. De cada uno muestra el tamaño de descarga, la RAM mínima y su evaluación, con los números. Los candidatos que necesitan más RAM de la que tenés quedan ocultos (dice cuántos); `--all` los muestra marcados. No hace ninguna llamada de red, no elige nada y no escribe nada: termina con los comandos para correr una vez que elegiste (`msum ollama pull <tag>`, y después `msum provider use ollama --model <tag>`, o `provider.ollama.model` en `config.json`). La tabla está en `src/infrastructure/llm/ollama-candidates.ts`: los tags, parámetros y tamaños salen de las páginas de la biblioteca de Ollama (leídas el 2026-11-17, listadas en ese archivo). La **RAM mínima es una estimación** (tamaño de descarga por 1,25 más 3 GB), no un número que publique Ollama. Los candidatos son `qwen3.5:4b`, `qwen3:4b`, `qwen3:8b`, `qwen2.5:3b`, `qwen2.5:7b`, `gemma3:4b`, `gemma4:e4b`, `llama3.2:3b`, `llama3.1:8b` y `phi4-mini:3.8b`; en la biblioteca aparecen tags nuevos todo el tiempo, así que revisala y editá la tabla.
-- **`msum ollama pull <tag> [--account <id>]`** le pide al Ollama configurado en `provider.ollama.baseUrl` que descargue el modelo (su `/api/pull`), con una línea de progreso y la verificación de que Ollama termine con `success`. Envía solo el tag, nunca texto de chats, y **solo funciona contra un Ollama en esta máquina** salvo que agregues `--allow-remote` (el modelo se descarga en el servidor que recibe el pedido, así que hacerlo en otra computadora tiene que ser una decisión). Los errores del servidor se muestran sin texto con forma de clave. Después elegilo con `msum provider use ollama --model <tag>` y probalo con `msum provider test`.
-- **`msum doctor`** también le pide a tu Ollama su lista de modelos (`/api/tags`, 3 segundos, sin texto de chats) cuando Ollama es el principal, el respaldo o atiende tus chats "solo locales", y falla si el modelo configurado no está instalado, con el comando `msum ollama pull` para arreglarlo. `msum doctor --skip-model-check` se salta esa llamada (la revisión de que Ollama responda es aparte y se mantiene).
+### 6. Uso diario
 
-### Evaluar un modelo
+El daemon sirve la página local en `http://127.0.0.1:8787`; `msum open` la abre.
 
-`npm run eval:ollama -- --models qwen3.5:4b,gemma3:4b [--base-url URL] [--runs N] [--allow-remote]`
+![Inicio de la web: el estado de cada cuenta](docs/images/screenshots/dashboard.png)
 
-El conjunto de evaluación está en `test/eval/ollama/`: **81 conversaciones tomadas de los golden files** (todas inventadas), cada una con el texto exacto que recibe el resumidor (`transcripts.json`, generado por `test/eval/extract-cases.mjs`) y una **etiqueta escrita a mano** de si el dueño tiene que responder, con el motivo en una línea (`labels.json`; `doubtful` marca las que un lector podría discutir). Las respuestas de la herramienta anterior se usaron solo para contrastar, nunca como verdad. Para cada modelo y caso el script llama al `OllamaSummarizer` real con el prompt y el esquema de producción y registra si el JSON fue válido, si "necesita respuesta" coincide con la etiqueta (una respuesta inválida cuenta como diferencia), la latencia y el error. Imprime una tabla y escribe `test/eval/ollama/results/<fecha>-<modelo>.json` (ids y números, sin texto de chats).
+- **Horarios:** editarlos, "resumir ahora" y una vista previa que no envía nada.
 
-La regla de etiquetado está escrita en `test/eval/ollama/README.md` (en inglés). **El JSON válido se juzga en todos los casos; la coincidencia se juzga solo en los casos claros** (los que no están marcados `doubtful` ni son los seis casos de relleno marcados `jsonOnly`, que cuentan para el JSON válido y no para la coincidencia). La coincidencia en los casos dudosos y la general se imprimen y guardan como columnas aparte, a modo informativo. Los archivos de resultados subidos a `test/eval/ollama/results/` no se ignoran: son los que promueven a un candidato a evaluado.
+  ![Pestaña Horarios](docs/images/screenshots/schedules.png)
 
-**Un modelo cumple RF-45 con 100% de JSON válido y al menos 90% de coincidencia en "necesita respuesta" (casos claros).** El script termina con 1 si un modelo no cumple. Rechaza un `--base-url` que no esté en esta máquina salvo que pases `--allow-remote`. Necesita tu propio Ollama corriendo con los modelos ya descargados; nunca arranca uno.
+- **Conversaciones:** listar, buscar y marcar cada chat como excluido o "solo local". Excluir un chat borra los mensajes guardados hasta ese momento.
 
-Para registrar una evaluación, que cumpla o no, poné `evaluated: true` y `result: { date, validJsonRate, needsReplyAgreement, meanLatencyMs, passed }` en su entrada de `ollama-candidates.ts` (el script imprime la línea) y subilo junto con el archivo de resultados; un test falla si un archivo de resultados subido y la tabla no coinciden. Los modelos sin archivo de resultados quedan "sin evaluar".
+  ![Pestaña Conversaciones](docs/images/screenshots/conversations.png)
+
+- **Ajustes:** proveedor, modelo, claves, nombre, idioma y zona horaria.
+
+  ![Pestaña Ajustes](docs/images/screenshots/settings.png)
+
+Otros comandos:
+
+| Comando | Qué hace |
+|---|---|
+| `msum status` | Cuenta, último resumen, envíos pendientes, próximas ejecuciones y motivo de un bloqueo. |
+| `msum doctor` | Revisa Node, permisos, configuración, proveedor, vinculación y, si está activada, la transcripción. |
+| `msum accounts` | Lista las cuentas (`msum link --account trabajo` crea y vincula otra). |
+| `msum retry --account <id>` | Levanta un bloqueo por conexión rechazada o reemplazada. |
+| `msum service install\|uninstall\|status` | Registra solo el daemon para que arranque con tu sesión (launchd, `systemd --user` o una entrada `Run`), sin permisos de administrador. |
+| `msum whisper models\|download <nombre>` | Modelos para la [transcripción de audios](docs/guias/transcripcion.md). |
+| `msum import --from <ruta>` | [Importa desde la herramienta anterior](docs/guias/importar-herramienta-anterior.md) sin volver a escanear el QR. |
+| `msum unlink` | **Borra todos los datos de la cuenta** (mensajes, audios, historial, envíos pendientes y la sesión de WhatsApp; la configuración queda) y pide confirmación. Después, quitá también el dispositivo en el celular. |
+
+Todo queda en tu máquina, en el directorio de datos (con permisos solo para tu usuario), salvo lo que recibe el proveedor de LLM que elegiste. Los textos de la línea de comandos están en español o inglés (`language` en `config.json`).
 
 ## A qué se conecta el programa
 
-No se envía nada a ningún lado salvo:
+No se envía nada a ningún lado salvo lo que sigue. No hay telemetría, y la transcripción nunca abre una conexión de red.
 
-- **WhatsApp**, por la conexión de tu propia cuenta (incluida la descarga de los audios que recibís, cuando la transcripción está activada).
-- **El proveedor de LLM que elegiste**, y nada más: con Ollama, la URL que configuraste; con un proveedor por API, exactamente uno entre `api.openai.com` (o tu `provider.openai.baseUrl`), `api.anthropic.com` o `generativelanguage.googleapis.com`. **El texto de las conversaciones que no son solo locales se envía ahí**, junto con tu prompt de resumen. Las claves viajan solo en los encabezados del pedido.
-- **Con `claude-cli`, lo que contacta el propio Claude Code**, que son los servidores de su fabricante, según [su documentación de red](https://code.claude.com/docs/en/network-config): `api.anthropic.com` (los pedidos al modelo, que llevan el texto de las conversaciones que no son solo locales, y su propia telemetría operativa), `claude.ai`, `claude.com`, `platform.claude.com` y `sso.claude.com` (inicio de sesión), y `http-intake.logs.us5.datadoghq.com` y `browser-intake-us5-datadoghq.com` (telemetría opcional de la CLI, que su configuración puede apagar: `DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`). Ese tráfico es de la CLI, no de este programa, y el programa no le pasa esas variables: definilas en el archivo de configuración de Claude Code. `gemini-cli` y `codex-cli` están deshabilitados y no contactan nada. Un comando de `generic-cli` contacta lo que haga.
-- **La lista de modelos, cuando abrís el asistente o los ajustes para elegir uno:** con un proveedor por API, un `GET` a su lista de modelos (`/v1/models` en `api.openai.com` o en tu `provider.openai.baseUrl`, en `api.anthropic.com`; `/v1beta/models` en `generativelanguage.googleapis.com`), hecho por el daemon con la clave que ya guardaste, al host ya declarado para ese proveedor y a ninguno más; sin texto de chats, con tiempo máximo, sin redirecciones ni reintentos, y la respuesta se guarda en memoria diez minutos. La clave nunca llega a la página. Con Ollama, un pedido de los modelos instalados en la dirección que configuraste, o en la que escribiste en pantalla antes de guardarla (`/api/tags`; una dirección que no es de esta máquina se consulta solo después de que aceptes su aviso), también desde el selector de modelos de la página. Los modelos de Claude Code (`sonnet`, `opus`, `haiku`) son una lista fija y no consultan nada. El pedido es un `POST` de la página al daemon, con la misma verificación de origen que cualquier otra escritura. Si no se puede leer la lista, solo Anthropic tiene una lista corta de modelos conocidos (marcada como tal); para OpenAI y Gemini la página muestra el error y un botón "Volver a buscar". Un modelo nunca se escribe, salvo en un servidor compatible que no puede listar sus modelos.
-- **Tu propio servidor Ollama, cuando corrés `msum ollama pull <tag>` o `msum doctor`:** el tag a descargar, o un pedido de su lista de modelos, a la URL de `provider.ollama.baseUrl` y a ningún otro lado; sin texto de chats. La descarga la hace Ollama, no este programa.
-- **Hugging Face, solo cuando corrés `msum whisper download <nombre>`:** el modelo se baja del repositorio oficial de whisper.cpp, `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-<nombre>.bin` Hugging Face responde con una redirección a su red de contenido: un pedido a esa URL termina en **`us.aws.cdn.hf.co`** (verificado con un pedido `HEAD` al escribir esto). El programa sigue las redirecciones por su cuenta, de a una, y solo hacia direcciones `https` de `huggingface.co` o `*.hf.co`; cualquier otro servidor se rechaza. Solo se envía el pedido de ese archivo, y el **checksum (SHA-256) y el tamaño de cada modelo están fijados en el programa**: un archivo que no coincide se descarta.
+| Destino | Cuándo | Qué se envía |
+|---|---|---|
+| WhatsApp | Con una cuenta conectada | Tu propia conexión y la descarga de los audios que recibís, si la transcripción está activa. |
+| El proveedor de LLM que elegiste | Al resumir | El texto de las conversaciones que no son solo locales, con tu prompt. Con Ollama, la URL que configuraste; con una API, `api.openai.com` (o tu `baseUrl`), `api.anthropic.com` o `generativelanguage.googleapis.com`. |
+| Servidores de Claude Code | Con `claude-cli` | El texto de los chats va a `api.anthropic.com`; el resto lo decide la propia CLI, no este programa (ver la guía). |
+| Lista de modelos del proveedor | Al elegir un modelo en el asistente o en Ajustes | Un pedido sin texto de chats. |
+| Tu servidor de Ollama | `msum ollama pull`, `msum doctor`, el selector de modelos de la web | El tag o un pedido de la lista de modelos, sin texto de chats. |
+| Hugging Face | Solo con `msum whisper download` | El pedido del archivo del modelo, con checksum fijado. |
 
-No hay telemetría, y la transcripción nunca abre una conexión de red.
+![Qué datos salen de tu máquina y hacia dónde, según el proveedor](docs/images/diagrams/privacy.svg)
 
-## Importar desde la herramienta anterior
+El detalle, host por host, en [A qué se conecta el programa](docs/guias/red-y-privacidad.md); qué hace cada proveedor con tus datos, en la [guía de proveedores](docs/guias/proveedores.md#privacidad-qué-hace-cada-proveedor-con-tus-datos).
 
-Si usabas la instalación anterior de esta idea (la herramienta summaryzing-whatsapp), `msum import --from <ruta>` la trae sin volver a escanear el QR. Solo **copia**: la instalación anterior nunca se modifica, así que queda como camino de vuelta.
+## Estructura del repositorio
 
-- **Qué toma:** la sesión de WhatsApp (byte por byte, privada: directorio 0700, archivos 0600), los mensajes con sus ediciones, transcripciones y marcas de leído, el estado de no leídos de cada chat, los contactos y sus nombres, el puntero del último digest (para que el primer digest no vuelva a resumir el pasado), la configuración (traducida a las opciones de este programa, escribiendo solo lo que difiere de tu `config.json`) y el prompt (`{{nombre}}` pasa a `{{name}}`). La cuenta queda atada al número de la sesión, así que los digests solo van al chat propio de ese número.
-- **Qué no toma, y lo dice:** los archivos de audio e imagen (solo sus textos y transcripciones), el texto leído de las imágenes, los errores de transcripción, los digests que esperaban en la cola de envío, los archivos de digests guardados, las opciones sin equivalente acá (lectura de imágenes, Whisper, la web) y su estado interno. Se cuentan en el resumen.
-- **Horarios:** la herramienta anterior los guardaba fuera de sus datos (el cron de su sandbox, o launchd), así que no se pueden leer de la carpeta. Pasá las horas con `--schedule 07:00,19:00`, o agregalas después con `msum schedule add`.
-- **Qué cuenta:** `--account <id>` (por defecto `default`) nombra la cuenta de la instalación principal. `--instance <nombre>` importa una de sus instancias (`instancias/<nombre>/`, otro celular) con ese nombre, y `--all` importa la instalación principal y todas las instancias, cada una como su propia cuenta.
-- **Antes de correrlo, detené la herramienta anterior.** La misma sesión de WhatsApp no puede correr en dos lugares a la vez, o WhatsApp desconecta a una. El comando te avisa y pide confirmación (o `--yes`), y se niega mientras la herramienta anterior parezca estar corriendo (no guarda ningún archivo de bloqueo, así que se deduce, solo de los metadatos de los archivos): un `whatsapp.db-wal` o `-shm` junto a su base (SQLite los borra cuando se cierra la última conexión), su base escrita en el último minuto, o sus archivos de sesión escritos en los últimos diez minutos. El mensaje dice qué señal saltó; detener la herramienta anterior las hace desaparecer, y `--force` se salta la comprobación (el aviso y la pregunta quedan). Si corren las dos, el daemon bloquea la cuenta como `replaced` (mirá `msum retry`) en vez de pelear por ella.
-- **Seguro de correr:** se niega con una cuenta que ya está vinculada o tiene datos (desvinculala antes) o que el daemon en marcha está usando, y es todo o nada por cuenta: arma todo aparte y lo mueve a su lugar con un solo rename, así que una falla no deja cuenta ni archivos. Al terminar abre lo que armó, sin conexión, e imprime un resumen con el número enmascarado.
+Arquitectura de puertos y adaptadores: las dependencias solo apuntan hacia adentro.
 
-- **Dónde están sus datos:** si la herramienta anterior guardaba sus datos en otro lugar (`WA_DATA_DIR`), la importación se niega y lo dice; indicalo con `--data <dir>` (solo se lee). `--session-only` trae solo la sesión, la configuración y el prompt, sin mensajes.
-- **Las listas de privacidad nunca se descartan en silencio:** tus chats de `excluir` no se guardan acá (RF-14; el resumen cuenta lo que quedó afuera), y si `soloLocal` (chats que nunca deben salir de tu computadora) no se puede importar, por ejemplo porque no hay modelo de Ollama, se rechaza toda la importación y dice qué arreglar.
-- **Caídas:** la importación trabaja en un directorio oculto `accounts/.import-*` con un archivo de pid; el que deja una caída lo borra la próxima importación o el arranque del daemon, y `msum doctor` lo informa (tiene una copia de una sesión). Mientras la importación corre, el bloqueo de la cuenta viaja con ella, así que un daemon en marcha nunca arranca la cuenta a medias.
+```
+src/
+  domain/            entidades y reglas (Conversation, Participant, Message, políticas del resumen)
+  application/       casos de uso; ports/ tiene las interfaces (MessageSource, DeliveryChannel, Summarizer, ...)
+  infrastructure/    adaptadores: whatsapp, llm/api, llm/cli, persistence/sqlite, transcription, scheduling, rendering
+  interfaces/        cli, http, web
+  main/              raíz de composición
+test/
+  unit/  contract/  golden/  fixtures/
+```
 
-Después comprobalo con `msum digest --dry-run --account <id>` y arrancá el daemon.
+`domain/` y `application/` nunca importan de `infrastructure/` ni de `interfaces/`. Una plataforma o un proveedor de LLM nuevo es un adaptador nuevo que pasa los tests de contrato de su puerto. Las reglas del proyecto están en [AGENTS.md](AGENTS.md).
 
-## Qué va a hacer
+## Solución de problemas
 
-- **Vincular tu cuenta** escaneando un QR desde una página web local, y mantenerla conectada sin marcarte "en línea", para que el celular siga recibiendo notificaciones.
-- **Guardar tus mensajes solo en tu máquina** (texto, y una representación en texto de imágenes, audios, documentos, encuestas, etc.). Sin telemetría.
-- **Transcribir los audios localmente** con whisper.cpp (opcional). El audio nunca sale de tu máquina.
-- **Resumir cada conversación** con el LLM que elijas:
-  - por **API**: OpenAI (y cualquier API compatible), Anthropic, Gemini u Ollama;
-  - por la **CLI** del proveedor (Claude Code, Gemini CLI, Codex o un comando genérico), aprovechando el plan que ya pagás. Las CLIs corren sin herramientas, en un directorio vacío y con tiempo máximo.
-- **Marcar conversaciones como "solo local"**, para que únicamente las resuma un modelo que corre en tu máquina.
-- **Mandarte el resumen a tu propio chat** ("Mensaje a mí mismo"), ordenado en secciones: necesitan respuesta, tienen pendientes, el resto. Nunca se envía a nadie más, ni siquiera a otra cuenta de la misma instalación.
-- **Correr en los horarios** que definas desde la web (por ejemplo, 9:00 y 18:00 todos los días), además de "resumir ahora" y una vista previa que no envía nada.
-- **Manejar varias cuentas** en una misma instalación, cada una con sus datos, configuración y horarios.
-- **Instalarse con Docker o de forma nativa en macOS, Linux y Windows** (ver [Instalación](#instalación)).
+| Síntoma | Causa | Qué hacer |
+|---|---|---|
+| Una cuenta queda inactiva y `msum status` muestra un motivo | WhatsApp cerró la sesión, rechazó la conexión (403) o la reemplazó, o la sesión es de otro número. El daemon la bloquea (`accounts/<id>/blocked.json`) para no reconectar en bucle. | Si la conexión fue rechazada o reemplazada: `msum retry --account <id>` (la web ofrece reintentar). Después de un rechazo, la web hace esperar 30 minutos. |
+| La sesión no sirve | Sesión muerta o cerrada desde el celular. | `msum unlink --account <id>` y después `msum link --account <id>`. Después, quitá el dispositivo viejo en el celular. |
+| `msum link` o `msum unlink` rechaza la cuenta | El daemon la está usando (vinculada y sin bloqueo). | Detené el daemon primero. |
+| `digest` o los horarios no funcionan | No hay proveedor: `init` escribe `"primary": null`. | `msum provider use <nombre> --model <modelo>` y `msum provider test`. |
+| Falta la clave de API | El proveedor por API no tiene clave guardada. | `msum secret set <proveedor>` (o la variable de entorno). `msum doctor` dice cuál va a usar tu configuración. |
+| El modelo de Ollama no está instalado | Con Ollama, el modelo configurado no se descargó. | `msum ollama pull <tag>`; `msum ollama recommend` lista los que entran en tu RAM. |
+| "esta versión de X no se puede ejecutar sin herramientas" | Una CLI cuyo `--help` no muestra todos los flags de endurecimiento no se usa (regla RF-49). | Actualizá la CLI (se vuelve a revisar), usá otro proveedor, o definí un proveedor de respaldo. Ver [usar una CLI como proveedor](docs/guias/cli-como-proveedor.md). |
+| Los horarios corren a una hora equivocada en Docker | Sin `TZ`, el contenedor usa UTC. | Definí `TZ` o `timezone` en la configuración. La web muestra la zona horaria en uso junto a los horarios. |
+| La web no abre, o el puerto está ocupado | Otro programa usa el puerto 8787. | Nativo: cambiá `web.port` en `config.json` de la instalación. Docker: liberá el puerto 8787 del host y no cambies el puerto publicado (`127.0.0.1:8787:8787`): otro puerto responde 403. |
+| Dos daemons sobre la misma sesión (WhatsApp desconecta uno) | Se usó `docker compose run` en vez de `exec`. | Usá siempre `docker compose -f docker/compose.yaml exec`. |
+| Los audios aparecen como "audio sin transcribir" | La transcripción viene desactivada, o falta whisper, ffmpeg o el modelo. Un audio que falló no se reintenta. | `msum doctor` dice qué falta. Ver la [guía de transcripción](docs/guias/transcripcion.md). |
 
-## Aviso importante
+## Limitaciones conocidas
 
-Leé esto antes de usar message-summarize con tu cuenta.
+- Todavía no hay una versión publicada: falta la primera (v0.1.0).
+- El instalador de Windows nunca corrió en una máquina Windows real, y todavía no está firmado. En Windows ARM, usá Docker.
+- Una dependencia, `libsignal` (que trae Baileys), tiene licencia GPL-3.0 y falta resolver cómo se concilia con la licencia MIT (ver [Licencia](#licencia)).
+- La publicación en npm está bloqueada a propósito hasta resolverlo.
+- Gemini CLI y Codex están deshabilitados: no documentan una forma verificable de apagar sus herramientas (ver [usar una CLI como proveedor](docs/guias/cli-como-proveedor.md)). La CLI genérica puede ejecutarlos, bajo tu propio riesgo.
+- Solo hay textos en español y en inglés.
+- Por defecto la web escucha solo en esta máquina; `web.host` puede cambiarlo, y es una elección explícita.
 
-- **WhatsApp puede bloquear tu número.** message-summarize se conecta a WhatsApp a través de [Baileys](https://github.com/WhiskeySockets/Baileys), un cliente **no oficial**. WhatsApp no permite clientes no oficiales y puede bloquear el número que los usa, de forma temporal o permanente. El proyecto intenta reducir ese riesgo (solo lectura, sin mensajes a terceros, sin marcarse en línea), pero no lo puede eliminar.
-- **El programa es de solo lectura.** Lee los mensajes que llegan, nunca responde, nunca te marca en línea y nunca manda nada a terceros. El único mensaje que envía es el resumen, a tu propio chat ("Mensaje a mí mismo").
-- **Modificar el programa o usarlo mal aumenta la probabilidad de un bloqueo.** Cambios que manden mensajes a otras personas, manden muchos mensajes, automaticen respuestas o cambien la forma en que el cliente se conecta pueden hacer que WhatsApp bloquee tu número. Si modificás el código, el riesgo es tuyo.
-- **Tus datos se quedan en tu máquina, salvo lo que va al LLM que elijas.** Salvo que uses un modelo local (Ollama) o marques una conversación como "solo local", el texto de tus conversaciones se envía al proveedor que configures, bajo sus términos. Algunos planes gratuitos pueden usar ese contenido para mejorar sus productos, incluida la revisión humana.
-- **La responsabilidad es tuya** de cumplir los términos de WhatsApp, los de tu proveedor de LLM y la ley de privacidad que se aplique a las conversaciones de terceros (las personas que te escriben) que leés y resumís.
-- **No hay garantía.** El software se entrega "tal cual", como dice la [licencia](LICENSE). Los autores no responden por un número bloqueado, una conversación filtrada ni ningún otro daño.
+## Guías
 
-Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por Meta.
+El detalle de referencia está en [docs/guias](docs/guias/README.md) (español) y [docs/guides](docs/guides/README.md) (inglés):
+
+| Guía | Qué explica |
+|---|---|
+| [Proveedores](docs/guias/proveedores.md) | Elegir y probar el proveedor de LLM, claves de API y privacidad de cada uno. |
+| [Una CLI como proveedor](docs/guias/cli-como-proveedor.md) | La regla de "sin herramientas" y la CLI genérica. |
+| [Transcripción](docs/guias/transcripcion.md) | whisper.cpp, opciones y límites. |
+| [Modelo local (Ollama)](docs/guias/modelo-local-ollama.md) | Candidatos, evaluación y comandos `msum ollama`. |
+| [Importar la herramienta anterior](docs/guias/importar-herramienta-anterior.md) | `msum import`. |
+| [Red y privacidad](docs/guias/red-y-privacidad.md) | Todos los destinos de red. |
+| [La web y las cuentas](docs/guias/web-y-cuentas.md) | La página, el asistente, exclusiones y aceptaciones. |
+| [El daemon y los horarios](docs/guias/demonio-y-horarios.md) | `config.json`, bloqueos, varias cuentas y `msum schedule`. |
+| [Clave de API de Google (Gemini)](docs/guias/sacar-clave-api-google.md) | Paso a paso. |
+| [Instalar Claude Code e iniciar sesión](docs/guias/instalar-claude-y-login.md) | Paso a paso. |
 
 ## Hoja de ruta
 

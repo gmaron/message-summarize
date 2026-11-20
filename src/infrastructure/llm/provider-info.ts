@@ -1,8 +1,8 @@
 /**
  * What a person needs to know before choosing a provider (RF-41, RNF-02): whether it charges, whether the chats leave
  * the machine, which hosts it connects to and where its data policy is. One entry per kind, and ONE source of truth: the
- * hosts here are the ones the README lists under "What the program connects to" (RNF-01), and a test checks that the two
- * agree. The words are in the i18n catalogs (`cli.provider`), not here.
+ * hosts here are the ones docs/guides/network-and-privacy.md (and its Spanish twin) lists (RNF-01), and a test checks that
+ * they agree. The words are in the i18n catalogs (`cli.provider`), not here.
  */
 
 /** `openai-compatible` is the `openai` provider pointed at another server with `provider.openai.baseUrl`. */
