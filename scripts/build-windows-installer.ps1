@@ -94,7 +94,7 @@ $installerName = "message-summarize-$version-win-x64-setup"
 
 if ($WorkDir -eq '') { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) ('msum-installer-' + [guid]::NewGuid().ToString('N')) }
 $work = $WorkDir
-$stage = Join-Path $work 'stage'
+$stageDir = Join-Path $work 'stage'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 $certFile = $null
 
@@ -103,7 +103,7 @@ try {
     # Third-party code runs in this phase (npm and the scripts of the dev dependencies): no signing secrets here.
     Remove-Item Env:WINDOWS_SIGN_PFX_BASE64, Env:WINDOWS_SIGN_PFX_PASSWORD, Env:WINDOWS_SIGN_TIMESTAMP_URL -ErrorAction SilentlyContinue
     Write-Host "Staging $installerName with Node.js $nodeVersion"
-    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    if (Test-Path -LiteralPath $stageDir) { Remove-Item -LiteralPath $stageDir -Recurse -Force }
 
     # ---- the package ----------------------------------------------------------------------------------------------------
     Push-Location $repo
@@ -136,13 +136,13 @@ try {
     if (-not (Test-Path -LiteralPath $nodeExe)) { throw "node.exe not found in $nodeName.zip" }
 
     # ---- the payload -------------------------------------------------------------------------------------------------------
-    $app = Join-Path $stage 'app'
-    New-Item -ItemType Directory -Path (Join-Path $stage 'node'), (Join-Path $stage 'bin'), $app | Out-Null
+    $app = Join-Path $stageDir 'app'
+    New-Item -ItemType Directory -Path (Join-Path $stageDir 'node'), (Join-Path $stageDir 'bin'), $app | Out-Null
     # Only node.exe and its license: the program never needs npm at run time.
-    Copy-Item -LiteralPath $nodeExe -Destination (Join-Path $stage 'node\node.exe')
-    Copy-Item -LiteralPath (Join-Path $extract "$nodeName\LICENSE") -Destination (Join-Path $stage 'node\LICENSE')
-    Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $stage 'LICENSE')
-    New-Item -ItemType File -Path (Join-Path $stage '.message-summarize-prefix') | Out-Null
+    Copy-Item -LiteralPath $nodeExe -Destination (Join-Path $stageDir 'node\node.exe')
+    Copy-Item -LiteralPath (Join-Path $extract "$nodeName\LICENSE") -Destination (Join-Path $stageDir 'node\LICENSE')
+    Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $stageDir 'LICENSE')
+    New-Item -ItemType File -Path (Join-Path $stageDir '.message-summarize-prefix') | Out-Null
 
     # The app: package.json, the lockfile, the vendored sharp stub and the built dist/, then `npm ci` there, so the
     # exact versions of package-lock.json are installed (production only, no scripts). --install-links asks npm for
@@ -186,13 +186,13 @@ try {
       'rem message-summarize shim (managed by the installer)',
       '"%~dp0..\node\node.exe" "%~dp0..\app\dist\main\cli.js" %*'
     ) -join "`r`n"
-    Write-TextFile (Join-Path $stage 'bin\msum.cmd') ($shim + "`r`n")
-    Write-TextFile (Join-Path $stage 'bin\message-summarize.cmd') ($shim + "`r`n")
-    Write-Host "Staged the payload in $stage"
+    Write-TextFile (Join-Path $stageDir 'bin\msum.cmd') ($shim + "`r`n")
+    Write-TextFile (Join-Path $stageDir 'bin\message-summarize.cmd') ($shim + "`r`n")
+    Write-Host "Staged the payload in $stageDir"
   }
 
   if ($Compile) {
-    if (-not (Test-Path -LiteralPath (Join-Path $stage 'bin\msum.cmd'))) { throw "Nothing is staged in ${stage}: run with -Stage first" }
+    if (-not (Test-Path -LiteralPath (Join-Path $stageDir 'bin\msum.cmd'))) { throw "Nothing is staged in ${stageDir}: run with -Stage first" }
     Write-Host "Compiling $installerName"
 
     # ISCC.exe from the fixed Program Files folders only, never from PATH (nothing earlier in the job may redirect it).
@@ -212,7 +212,7 @@ try {
 
     $isccArgs = @(
       "/DAppName=$appName", "/DAppVersion=$version", "/DAppPublisher=$publisher",
-      "/DStageDir=$stage", "/DOutputDir=$OutDir", "/DOutputName=$installerName", '/Q'
+      "/DStageDir=$stageDir", "/DOutputDir=$OutDir", "/DOutputName=$installerName", '/Q'
     )
 
     # Optional signing: only when both secrets are present. The password is passed to signtool, never printed.
