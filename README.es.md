@@ -17,22 +17,22 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella, 
 **Docker (cualquier sistema, lo recomendado en Windows).** Con Docker o Docker Desktop instalado, desde una copia del repositorio:
 
 ```sh
-docker compose up -d
-docker compose exec message-summarize msum open --print   # la dirección de la página web, con su token de acceso
+docker compose -f docker/compose.yaml up -d
+docker compose -f docker/compose.yaml exec message-summarize msum open --print   # la dirección de la página web, con su token de acceso
 ```
 
-Los datos viven en el volumen `msum-data` y el contenedor se reinicia solo. La página web se publica solo en `127.0.0.1:8787`: no la cambies a otra dirección, y usá `docker compose exec` (nunca `docker compose run`) para los comandos. El perfil `cli` (`docker compose --profile cli up -d`) usa una imagen que además trae Claude Code, Gemini CLI y Codex, para quien quiera usar una CLI como proveedor (la sesión se inicia adentro del contenedor; Gemini CLI y Codex están deshabilitadas por ahora, ver [Usar una CLI como proveedor](#usar-una-cli-como-proveedor)).
+Los datos viven en el volumen `msum-data` y el contenedor se reinicia solo. La página web se publica solo en `127.0.0.1:8787`: no la cambies a otra dirección, y usá `docker compose -f docker/compose.yaml exec` (nunca `docker compose run`) para los comandos. El perfil `cli` (`docker compose -f docker/compose.yaml --profile cli up -d`) usa una imagen que además trae Claude Code, Gemini CLI y Codex, para quien quiera usar una CLI como proveedor (la sesión se inicia adentro del contenedor; Gemini CLI y Codex están deshabilitadas por ahora, ver [Usar una CLI como proveedor](#usar-una-cli-como-proveedor)).
 
 **macOS y Linux.** `install.sh` no necesita permisos de administrador y no toca nada fuera de tu carpeta personal. Instala el programa (con su propia copia de Node.js, verificada contra el checksum oficial, si el tuyo es anterior a 22.16), registra el daemon como servicio de usuario y abre la página web:
 
 ```sh
-sh install.sh              # desde una copia; --help lista las opciones
-sh install.sh --uninstall  # quita el programa, nunca tus datos
+sh packaging/install.sh              # desde una copia; --help lista las opciones
+sh packaging/install.sh --uninstall  # quita el programa, nunca tus datos
 ```
 
 Opciones: `--no-service`, `--no-open`, `--modify-path`, `--prefix <carpeta>`, `--tarball <archivo|url>`, `--dry-run`. Rechaza una carpeta que contenga o esté dentro del directorio de datos.
 
-**Windows.** Dos caminos, ambos sin permisos de administrador: el instalador `message-summarize-<versión>-win-x64-setup.exe` que acompañará cada versión (todavía no está firmado, así que Windows SmartScreen va a avisar), o `install.ps1`, que hace lo mismo que `install.sh` (`.\install.ps1 -Help`). Al desinstalar se conservan tus datos. Windows en ARM: usá Docker.
+**Windows.** Dos caminos, ambos sin permisos de administrador: el instalador `message-summarize-<versión>-win-x64-setup.exe` que acompañará cada versión (todavía no está firmado, así que Windows SmartScreen va a avisar), o `install.ps1`, que hace lo mismo que `install.sh` (`.\packaging\install.ps1 -Help`). Al desinstalar se conservan tus datos. Windows en ARM: usá Docker.
 
 **Dónde están los datos.** `~/Library/Application Support/message-summarize` en macOS, `~/.local/share/message-summarize` en Linux y `%APPDATA%\message-summarize` en Windows (o la carpeta de `MSUM_DATA_DIR`). Desinstalar nunca los borra; para quitar los datos de una cuenta usá `msum unlink`.
 
@@ -299,6 +299,6 @@ Este proyecto no está afiliado, respaldado ni patrocinado por WhatsApp ni por M
 
 ## Contribuir y seguridad
 
-- [CONTRIBUTING.md](CONTRIBUTING.md): cómo preparar el repositorio, los chequeos y las reglas para los cambios (en inglés).
-- [SECURITY.md](SECURITY.md): cómo reportar una vulnerabilidad de forma privada (en inglés).
+- [CONTRIBUTING.md](.github/CONTRIBUTING.md): cómo preparar el repositorio, los chequeos y las reglas para los cambios (en inglés).
+- [SECURITY.md](.github/SECURITY.md): cómo reportar una vulnerabilidad de forma privada (en inglés).
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): las dependencias y sus licencias.

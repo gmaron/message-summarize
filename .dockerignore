@@ -38,6 +38,6 @@ docs
 test
 *.md
 CLAUDE.local.md
-compose.yaml
-Dockerfile
+docker/compose.yaml
+docker/Dockerfile
 .dockerignore

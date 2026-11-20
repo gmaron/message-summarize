@@ -13,7 +13,7 @@ const buildBytes = read('scripts', 'build-windows-installer.ps1')
 // .gitattributes checks the .ps1 out with CRLF: the checks below work on LF text.
 const build = buildBytes.toString('utf8').replace(/\r\n/g, '\n')
 const workflow = text('.github', 'workflows', 'release.yml')
-const installSh = text('install.sh')
+const installSh = text('packaging/install.sh')
 
 /** The lines of one [Section] of the .iss (comments and blanks removed). */
 function section(name: string): string[] {
@@ -233,7 +233,7 @@ describe('build-windows-installer.ps1', () => {
   it('reads the Node.js version from install.sh and repeats the literal nowhere', () => {
     const pinned = /^NODE_VERSION="(\d+\.\d+\.\d+)"/m.exec(installSh)?.[1]
     expect(pinned).toBeDefined()
-    expect(build).toContain("'install.sh'")
+    expect(build).toContain("'packaging/install.sh'")
     expect(build).toContain('NODE_VERSION=')
     expect(build).not.toContain(pinned ?? '?')
     expect(build).not.toMatch(/\bv?\d{2}\.\d+\.\d+\b/)

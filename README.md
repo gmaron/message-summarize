@@ -17,22 +17,22 @@ The first supported platform is **WhatsApp**. The core does not depend on it, so
 **Docker (any system, recommended on Windows).** With Docker or Docker Desktop installed, from a clone of the repository:
 
 ```sh
-docker compose up -d
-docker compose exec message-summarize msum open --print   # the address of the web page, with its access token
+docker compose -f docker/compose.yaml up -d
+docker compose -f docker/compose.yaml exec message-summarize msum open --print   # the address of the web page, with its access token
 ```
 
-The data lives in the `msum-data` volume and the container restarts by itself. The web page is published only on `127.0.0.1:8787`: do not change it to another address, and use `docker compose exec` (never `docker compose run`) for commands. The `cli` profile (`docker compose --profile cli up -d`) uses an image that also carries Claude Code, Gemini CLI and Codex, for those who want to use a CLI as the provider (you sign in inside the container; Gemini CLI and Codex are disabled for now, see [Use a CLI as the provider](#use-a-cli-as-the-provider)).
+The data lives in the `msum-data` volume and the container restarts by itself. The web page is published only on `127.0.0.1:8787`: do not change it to another address, and use `docker compose -f docker/compose.yaml exec` (never `docker compose run`) for commands. The `cli` profile (`docker compose -f docker/compose.yaml --profile cli up -d`) uses an image that also carries Claude Code, Gemini CLI and Codex, for those who want to use a CLI as the provider (you sign in inside the container; Gemini CLI and Codex are disabled for now, see [Use a CLI as the provider](#use-a-cli-as-the-provider)).
 
 **macOS and Linux.** `install.sh` needs no administrator rights and touches nothing outside your home folder. It installs the program (with its own copy of Node.js, checked against the official checksum, if yours is older than 22.16), registers the daemon as a user service, and opens the web page:
 
 ```sh
-sh install.sh              # from a clone; --help lists the options
-sh install.sh --uninstall  # removes the program, never your data
+sh packaging/install.sh              # from a clone; --help lists the options
+sh packaging/install.sh --uninstall  # removes the program, never your data
 ```
 
 Options: `--no-service`, `--no-open`, `--modify-path`, `--prefix <dir>`, `--tarball <file|url>`, `--dry-run`. It refuses a folder that holds or sits inside the data directory.
 
-**Windows.** Two ways, both without administrator rights: the installer `message-summarize-<version>-win-x64-setup.exe` that will come with each release (it is not signed yet, so Windows SmartScreen will warn you), or `install.ps1`, which does the same as `install.sh` (`.\install.ps1 -Help`). Uninstalling keeps your data. Windows on ARM: use Docker.
+**Windows.** Two ways, both without administrator rights: the installer `message-summarize-<version>-win-x64-setup.exe` that will come with each release (it is not signed yet, so Windows SmartScreen will warn you), or `install.ps1`, which does the same as `install.sh` (`.\packaging\install.ps1 -Help`). Uninstalling keeps your data. Windows on ARM: use Docker.
 
 **Where the data is.** `~/Library/Application Support/message-summarize` on macOS, `~/.local/share/message-summarize` on Linux and `%APPDATA%\message-summarize` on Windows (or the folder in `MSUM_DATA_DIR`). Uninstalling never deletes it; to remove an account's data use `msum unlink`.
 
@@ -299,6 +299,6 @@ This project is not affiliated with, endorsed by or sponsored by WhatsApp or Met
 
 ## Contributing and security
 
-- [CONTRIBUTING.md](CONTRIBUTING.md): how to set up the repository, the checks and the rules for changes.
-- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [CONTRIBUTING.md](.github/CONTRIBUTING.md): how to set up the repository, the checks and the rules for changes.
+- [SECURITY.md](.github/SECURITY.md): how to report a vulnerability privately.
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): the dependencies and their licenses.

@@ -31,9 +31,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # compose.yaml names an image on ghcr.io and builds it when it is not there: build it locally and never pull.
+      # docker/compose.yaml names an image on ghcr.io and builds it when it is not there: build it locally and never pull.
       - name: Build the image (linux/amd64)
-        run: docker compose -f compose.yaml build message-summarize
+        run: docker compose -f docker/compose.yaml build message-summarize
 
       # The override keeps the web on the loopback of the runner only (RNF-03) and gives the container its own name.
       # No account is linked, no provider is configured (the default), so nothing goes out to the network.
@@ -49,7 +49,7 @@ jobs:
               ports: !override
                 - "127.0.0.1:8787:8787"
           YAML
-          docker compose -f compose.yaml -f "$RUNNER_TEMP/compose.smoke.yaml" up -d --no-build --pull never message-summarize
+          docker compose -f docker/compose.yaml -f "$RUNNER_TEMP/compose.smoke.yaml" up -d --no-build --pull never message-summarize
           status=""
           for i in $(seq 1 40); do
             status="$(docker inspect --format '{{.State.Health.Status}}' msum-smoke)"
@@ -58,7 +58,7 @@ jobs:
             [ "$(docker inspect --format '{{.State.Running}}' msum-smoke)" = true ] || break
             sleep 5
           done
-          docker compose -f compose.yaml -f "$RUNNER_TEMP/compose.smoke.yaml" ps
+          docker compose -f docker/compose.yaml -f "$RUNNER_TEMP/compose.smoke.yaml" ps
           [ "$status" = healthy ]
 
       # GET / serves the static web bundle without a token (only /api needs it), so anything but 200 is a regression.
@@ -78,7 +78,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose -f compose.yaml down -v --remove-orphans || true
+        run: docker compose -f docker/compose.yaml down -v --remove-orphans || true
 
   # Pushes to main and manual runs only: arm64 runs under QEMU, which is slow. Both architectures, nothing is exported
   # (cacheonly) or pushed. The cli variant follows the base one in the same builder, so it only adds its own layer.
@@ -100,7 +100,7 @@ jobs:
         run: docker buildx create --name msum-multiarch --driver docker-container --use
 
       - name: Build the image (linux/amd64 and linux/arm64, no push)
-        run: docker buildx build --builder msum-multiarch --platform linux/amd64,linux/arm64 --output type=cacheonly .
+        run: docker buildx build --builder msum-multiarch -f docker/Dockerfile --platform linux/amd64,linux/arm64 --output type=cacheonly .
 
       - name: Build the cli image (linux/amd64 and linux/arm64, no push)
-        run: docker buildx build --builder msum-multiarch --platform linux/amd64,linux/arm64 --target cli --output type=cacheonly .
+        run: docker buildx build --builder msum-multiarch -f docker/Dockerfile --platform linux/amd64,linux/arm64 --target cli --output type=cacheonly .

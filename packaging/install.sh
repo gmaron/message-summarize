@@ -1,7 +1,7 @@
 #!/bin/sh
 # message-summarize installer for macOS and Linux (OBJ-1, RNF-05, RNF-06, RNF-07).
 #
-#   curl -fsSL https://raw.githubusercontent.com/gmaron/message-summarize/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/gmaron/message-summarize/main/packaging/install.sh | sh
 #   curl -fsSL <url>/install.sh | sh -s -- --no-service      (arguments after --)
 #
 # No sudo, nothing outside your home directory. It installs the package with its own copy of Node.js (or the one

@@ -2,13 +2,14 @@
 #
 # message-summarize: the daemon and its web. Works for linux/amd64 and linux/arm64 (no architecture-specific commands).
 #
-#   docker build -t message-summarize .                 # the daemon, for the API and Ollama providers
-#   docker build --target cli -t message-summarize-cli .  # plus Claude Code, Gemini CLI and Codex
+# Build from the root of the repository (the context is the root, the Dockerfile is in docker/):
+#   docker build -f docker/Dockerfile -t message-summarize .                 # the daemon, for the API and Ollama providers
+#   docker build -f docker/Dockerfile --target cli -t message-summarize-cli .  # plus Claude Code, Gemini CLI and Codex
 #
 # Run it with the port published on the loopback of the host ONLY (RNF-03), and always as 8787 inside:
 #   docker run -d --hostname message-summarize -p 127.0.0.1:8787:8787 -v msum-data:/data message-summarize
 # Never use -P or -p 8787:8787 (that is every interface of the host). The web listens on 0.0.0.0 INSIDE the container
-# (MSUM_WEB_HOST) and still requires its token. Prefer compose.yaml, which sets all of this.
+# (MSUM_WEB_HOST) and still requires its token. Prefer docker/compose.yaml, which sets all of this.
 #
 # All state (config, token, WhatsApp session, databases, models, the CLIs' logins) lives in the /data volume.
 
@@ -73,7 +74,7 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker/entrypoint.sh"]
 CMD ["msum", "daemon"]
 
 # ---- cli: base + the LLM command line programs, for the providers that use a subscription --------------------------------
-# Log in once inside the container (for example `docker compose exec message-summarize claude`): the sessions are kept
+# Log in once inside the container (for example `docker compose -f docker/compose.yaml exec message-summarize claude`): the sessions are kept
 # in HOME=/data/home, on the volume.
 FROM base AS cli
 ARG CLAUDE_CODE_VERSION=2.1.328

@@ -86,7 +86,7 @@ $publisher = ([string]$package.author -replace '\s*[<(].*$', '').Trim()
 if ($appName -eq '' -or $publisher -eq '') { throw 'package.json needs a name and an author' }
 
 # The Node.js version is pinned in install.sh (NODE_VERSION="x.y.z"): the single place of the literal.
-$nodeLine = Select-String -LiteralPath (Join-Path $repo 'install.sh') -Pattern '^NODE_VERSION="(\d+\.\d+\.\d+)"' | Select-Object -First 1
+$nodeLine = Select-String -LiteralPath (Join-Path $repo 'packaging/install.sh') -Pattern '^NODE_VERSION="(\d+\.\d+\.\d+)"' | Select-Object -First 1
 if ($null -eq $nodeLine) { throw 'Could not read NODE_VERSION from install.sh' }
 $nodeVersion = $nodeLine.Matches[0].Groups[1].Value
 
