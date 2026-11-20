@@ -777,7 +777,7 @@ export const webEs: WebTexts = {
         heading: 'Proveedor',
         intro: 'Elegí qué escribe los resúmenes. No hay uno por defecto: leé qué hace cada uno con tus conversaciones.',
         laterNote:
-          'OpenAI, Anthropic y Gemini se eligen acá. Codex y cualquier otro comando llegan en una próxima versión.',
+          'OpenAI, Anthropic y Gemini se eligen acá. Codex está deshabilitado por ahora, y cualquier otro comando se configura desde la línea de comandos con msum provider use generic-cli.',
         apiModelLabel: 'Modelo',
         apiModelHint: 'Los modelos salen de la lista del proveedor: no hace falta escribir nada.',
         openaiBaseUrlInvalid:

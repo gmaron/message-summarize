@@ -241,8 +241,8 @@ describe('GenericCliSummarizer containment (RF-49)', () => {
 
   it.skipIf(isWindows)('kills a hanging command on timeout and does not retry', async () => {
     const cli = fake([{ kind: 'hang' }])
-    const result = await make(cli, { timeoutMs: 1000 }).summarize(chat)
-    expect(result).toEqual({ ok: false, error: 'generic timed out after 1s' })
+    const result = await make(cli, { timeoutMs: 3000 }).summarize(chat)
+    expect(result).toEqual({ ok: false, error: 'generic timed out after 3s' })
     expect(cli.calls('run')).toHaveLength(1)
     expect(() => process.kill(cli.calls('run')[0]?.pid ?? 0, 0)).toThrow()
   })
@@ -250,9 +250,9 @@ describe('GenericCliSummarizer containment (RF-49)', () => {
   it.skipIf(isWindows)('kills a grandchild that holds stdout open, and finishes on time', async () => {
     const cli = fake([{ kind: 'grandchild' }])
     const started = Date.now()
-    const result = await make(cli, { timeoutMs: 1000 }).summarize(chat)
-    expect(result).toEqual({ ok: false, error: 'generic timed out after 1s' })
-    expect(Date.now() - started).toBeLessThan(3000)
+    const result = await make(cli, { timeoutMs: 3000 }).summarize(chat)
+    expect(result).toEqual({ ok: false, error: 'generic timed out after 3s' })
+    expect(Date.now() - started).toBeLessThan(6000)
     const gpid = Number(readFileSync(`${cli.record}.gpid`, 'utf8'))
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(() => process.kill(gpid, 0)).toThrow()

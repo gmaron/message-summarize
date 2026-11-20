@@ -3,9 +3,9 @@
   message-summarize installer for Windows 11 (x64). OBJ-1, RNF-05, RNF-06, RNF-07.
 
 .DESCRIPTION
-  irm https://raw.githubusercontent.com/gmaron/message-summarize/main/install.ps1 | iex
-  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/gmaron/message-summarize/main/install.ps1))) -NoService
-  .\install.ps1 -Tarball .\message-summarize-0.1.0.tgz -DryRun
+  irm https://raw.githubusercontent.com/gmaron/message-summarize/main/packaging/install.ps1 | iex
+  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/gmaron/message-summarize/main/packaging/install.ps1))) -NoService
+  .\packaging\install.ps1 -Tarball .\message-summarize-0.1.0.tgz -DryRun
 
   No administrator rights, nothing outside your user profile and HKCU. It installs the package with its own copy of
   Node.js (or the one you already have, when it is recent enough), puts msum.cmd and message-summarize.cmd in

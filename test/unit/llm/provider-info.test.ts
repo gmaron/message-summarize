@@ -12,52 +12,56 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 
-/** What the README says under "What the program connects to" (RNF-01), in each language. */
-const READMES = [
+/** What the network guide says about each destination (RNF-01), in each language: the README links to it. */
+const GUIDES = [
   {
-    file: 'README.md',
-    heading: '## What the program connects to',
-    bullets: ['- **The LLM provider', '- **With `claude-cli`'],
+    file: 'docs/guides/network-and-privacy.md',
+    policyFile: 'docs/guides/providers.md',
+    headings: ['### The LLM provider you chose', '### With `claude-cli`'],
   },
   {
-    file: 'README.es.md',
-    heading: '## A qué se conecta el programa',
-    bullets: ['- **El proveedor de LLM', '- **Con `claude-cli`'],
+    file: 'docs/guias/red-y-privacidad.md',
+    policyFile: 'docs/guias/proveedores.md',
+    headings: ['### El proveedor de LLM que elegiste', '### Con `claude-cli`'],
   },
 ] as const
 
-function connectsSection(file: string, heading: string): string {
-  const text = readFileSync(join(root, file), 'utf8')
-  const start = text.indexOf(`${heading}\n`)
+function readText(file: string): string {
+  return readFileSync(join(root, file), 'utf8')
+}
+
+/** The text from a heading to the next heading of the same level. */
+function sectionOf(file: string, heading: string): string {
+  const text = readText(file)
+  const start = text.indexOf(heading)
   expect(start, `${file} has "${heading}"`).toBeGreaterThanOrEqual(0)
-  const end = text.indexOf('\n## ', start + heading.length)
+  const end = text.indexOf('\n### ', start + heading.length)
   return text.slice(start, end === -1 ? undefined : end)
 }
 
 const tableHosts = [...new Set(PROVIDER_INFO_KINDS.flatMap((kind) => PROVIDER_INFO[kind].hosts))]
 
-describe('the provider table and the README (one source of truth for RNF-01)', () => {
-  it.each(READMES)('$file lists every host of the table under "What the program connects to"', ({ file, heading }) => {
-    const section = connectsSection(file, heading)
-    for (const host of tableHosts) expect(section, `${host} in ${file}`).toContain(`\`${host}\``)
+describe('the provider table and the guides (one source of truth for RNF-01)', () => {
+  it.each(GUIDES)('$file lists every host of the table', ({ file }) => {
+    const text = readText(file)
+    for (const host of tableHosts) expect(text, `${host} in ${file}`).toContain(`\`${host}\``)
   })
 
-  it.each(READMES)('$file names no host for a provider that the table does not know', ({ file, heading, bullets }) => {
-    const section = connectsSection(file, heading)
-    const lines = section.split('\n').filter((line) => bullets.some((bullet) => line.startsWith(bullet)))
-    expect(lines).toHaveLength(bullets.length)
-    const mentioned = lines.flatMap((line) =>
-      [...line.matchAll(/`([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ai|net|org|io))`/g)].map((m) => m[1] as string),
+  it.each(GUIDES)('$file names no host for a provider that the table does not know', ({ file, headings }) => {
+    const mentioned = headings.flatMap((heading) =>
+      [...sectionOf(file, heading).matchAll(/`([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ai|net|org|io))`/g)].map(
+        (m) => m[1] as string,
+      ),
     )
     expect(mentioned.length).toBeGreaterThan(0)
     for (const host of mentioned) expect(tableHosts, `${host} of ${file} is in the table`).toContain(host)
   })
 
-  it.each(['README.md', 'README.es.md'])('%s links the data policy of every provider that has one', (file) => {
-    const text = readFileSync(join(root, file), 'utf8')
+  it.each(GUIDES)('$policyFile links the data policy of every provider that has one', ({ policyFile }) => {
+    const text = readText(policyFile)
     for (const kind of PROVIDER_INFO_KINDS) {
       const { policyUrl } = PROVIDER_INFO[kind]
-      if (policyUrl !== null) expect(text, `${kind} policy in ${file}`).toContain(policyUrl)
+      if (policyUrl !== null) expect(text, `${kind} policy in ${policyFile}`).toContain(policyUrl)
     }
   })
 })

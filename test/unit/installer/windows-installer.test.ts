@@ -13,7 +13,7 @@ const buildBytes = read('scripts', 'build-windows-installer.ps1')
 // .gitattributes checks the .ps1 out with CRLF: the checks below work on LF text.
 const build = buildBytes.toString('utf8').replace(/\r\n/g, '\n')
 const workflow = text('.github', 'workflows', 'release.yml')
-const installSh = text('install.sh')
+const installSh = text('packaging/install.sh')
 
 /** The lines of one [Section] of the .iss (comments and blanks removed). */
 function section(name: string): string[] {
@@ -233,7 +233,7 @@ describe('build-windows-installer.ps1', () => {
   it('reads the Node.js version from install.sh and repeats the literal nowhere', () => {
     const pinned = /^NODE_VERSION="(\d+\.\d+\.\d+)"/m.exec(installSh)?.[1]
     expect(pinned).toBeDefined()
-    expect(build).toContain("'install.sh'")
+    expect(build).toContain("'packaging/install.sh'")
     expect(build).toContain('NODE_VERSION=')
     expect(build).not.toContain(pinned ?? '?')
     expect(build).not.toMatch(/\bv?\d{2}\.\d+\.\d+\b/)
@@ -333,11 +333,12 @@ describe('release.yml', () => {
     expect(workflow).not.toMatch(/pull_request_target|pull_request:|workflow_run/)
   })
 
-  it('is read-only by default and only the release job can write', () => {
+  it('is read-only by default and only the release and docker-publish jobs can write', () => {
     expect(workflow).toMatch(/^permissions:\n {2}contents: read\n/m)
     const writes = [...workflow.matchAll(/^\s*([\w-]+): write\s*$/gm)].map((m) => m[1])
-    expect(writes).toEqual(['contents'])
+    expect(writes).toEqual(['packages', 'contents'])
     expect(job('release')).toMatch(/permissions:\n {6}contents: write/)
+    expect(job('docker-publish')).toMatch(/permissions:\n {6}contents: read\n {6}packages: write/)
     for (const name of ['windows-stage', 'windows-sign', 'windows-smoke']) expect(job(name)).not.toMatch(/: write/)
     expect(job('source-tarball')).not.toMatch(/: write/)
   })

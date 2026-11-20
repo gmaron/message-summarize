@@ -22,7 +22,7 @@ There is no stable release yet (the project is before 1.0). Only the latest vers
 
 ## What does not count
 
-- **The risk that WhatsApp blocks a number** for using an unofficial client. It is inherent to the project, and it is explained in the [README](README.md#important-warning).
+- **The risk that WhatsApp blocks a number** for using an unofficial client. It is inherent to the project, and it is explained in the [README](../README.md#important-warning).
 - Behavior of a third-party provider or CLI that you configured yourself, including a generic CLI you accepted with `acknowledgeRisk`, which the program warns about.
-- Vulnerabilities in a dependency with no way to reach them from this program (report those upstream). The dependencies are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- Vulnerabilities in a dependency with no way to reach them from this program (report those upstream). The dependencies are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 - Problems that need an attacker who already controls the user's account on the machine.

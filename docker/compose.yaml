@@ -1,8 +1,8 @@
 # message-summarize: the daemon and its web.
 #
-#   docker compose up -d
-#   docker compose exec message-summarize msum link             # link a WhatsApp account (QR in the terminal)
-#   docker compose exec message-summarize cat /data/web-token   # the token the web asks for
+#   docker compose -f docker/compose.yaml up -d      (from the root of the repository)
+#   docker compose -f docker/compose.yaml exec message-summarize msum link             # link a WhatsApp account (QR in the terminal)
+#   docker compose -f docker/compose.yaml exec message-summarize cat /data/web-token   # the token the web asks for
 #
 # Then open http://127.0.0.1:8787 and paste the token.
 #
@@ -13,11 +13,17 @@
 #   127.0.0.1:8787 and make it send `Host: 127.0.0.1:8787` (a proxy_set_header or equivalent); the token is still needed.
 # - The web listens on 0.0.0.0 inside the container (MSUM_WEB_HOST in the image) unless config.json sets web.host.
 # - A host directory instead of the named volume must be owned by uid 1000 (chown 1000:1000).
+# A fixed project name: the file lives in docker/, so the default (the directory name) would be "docker" and the data
+# volume would be called docker_msum-data instead of message-summarize_msum-data.
+name: message-summarize
+
 services:
   message-summarize:
     image: ghcr.io/gmaron/message-summarize:latest
     # Used when the image cannot be pulled (or with `docker compose build`).
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: message-summarize
     # A fixed host name: the daemon's lock file carries it, so a lock left by a killed container is recognised as stale
     # when the container is recreated (the default host name is a new random id every time).
@@ -35,13 +41,14 @@ services:
       - "127.0.0.1:8787:8787"
 
   # Opt-in variant with Claude Code, Gemini CLI and Codex installed, for providers that use a subscription login.
-  #   docker compose --profile cli up -d message-summarize-cli    (stop the service above first: same port and volume)
-  #   docker compose exec message-summarize-cli claude            # log in once; it is kept in the volume
+  #   docker compose -f docker/compose.yaml --profile cli up -d message-summarize-cli    (stop the service above first: same port and volume)
+  #   docker compose -f docker/compose.yaml exec message-summarize-cli claude            # log in once; it is kept in the volume
   message-summarize-cli:
     profiles: ["cli"]
     image: ghcr.io/gmaron/message-summarize-cli:latest
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       target: cli
     container_name: message-summarize-cli
     hostname: message-summarize-cli

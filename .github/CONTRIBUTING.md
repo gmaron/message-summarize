@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in message-summarize. Read [AGENTS.md](AGENTS.md) first: it is the reference for the architecture and the rules, and it applies to humans and AI agents alike. The approved requirements are in [docs/requirements.md](docs/requirements.md) (in Spanish); every feature has an ID (RF-xx, RNF-xx) and an acceptance criterion. Read them before changing behavior.
+Thanks for your interest in message-summarize. Read [AGENTS.md](../AGENTS.md) first: it is the reference for the architecture and the rules, and it applies to humans and AI agents alike. The approved requirements are in [docs/requirements.md](../docs/requirements.md) (in Spanish); every feature has an ID (RF-xx, RNF-xx) and an acceptance criterion. Read them before changing behavior.
 
 ## Set up
 
@@ -30,6 +30,16 @@ npm ci
 
 When you change a dependency, run `npm ci` and then `npm run notices`, and commit the updated file.
 
+## Pre-push check
+
+`.githooks/pre-push` runs what the quality job of CI runs (`lint`, `typecheck` and `test:coverage`, about a minute) and stops the push when one fails. It skips them when everything you push is documentation (Markdown at the root, `docs/`, `.github/*.md`, `LICENSE`) or a branch deletion. Enable it once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+To skip it for one push, use `MSUM_SKIP_CHECKS=1 git push`. CI still runs everything, plus the build, the installers and the other operating systems.
+
 ## Architecture in one screen
 
 Ports and adapters. Dependencies only point inward.
@@ -49,11 +59,11 @@ test/
 - Platform-specific concepts stay in the adapter. A new platform or LLM provider is a new adapter that passes the contract tests of its port, with no change in `domain/` or `application/`.
 - No user-facing text outside the translation files (Spanish and English).
 
-See [AGENTS.md](AGENTS.md) for the details.
+See [AGENTS.md](../AGENTS.md) for the details.
 
 ## Rules that protect users
 
-These are not style preferences: breaking them can get someone's number banned or leak private conversations. [AGENTS.md](AGENTS.md) has the full text. In short:
+These are not style preferences: breaking them can get someone's number banned or leak private conversations. [AGENTS.md](../AGENTS.md) has the full text. In short:
 
 - Never send anything to third parties: the digest goes only to the account's own chat.
 - Never mark the client as online, and never add behavior that sends messages or automates replies.

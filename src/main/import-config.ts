@@ -27,7 +27,7 @@ export interface PrivacyBlock {
   readonly reason: 'invalid' | 'needsOllamaModel'
 }
 
-/** Options of the previous tool that have no equivalent here, and why they do not matter (see the README). */
+/** Options of the previous tool that have no equivalent here, and why they do not matter (see docs/guides/import-previous-tool.md). */
 const KNOWN_UNMAPPED = ['leerImagenes', 'web']
 
 const isStringList = (value: unknown): value is string[] =>

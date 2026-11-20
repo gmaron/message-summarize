@@ -12,8 +12,8 @@ const code = (text: string): string[] =>
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('#'))
 
-const dockerfile = read('Dockerfile')
-const compose = read('compose.yaml')
+const dockerfile = read('docker/Dockerfile')
+const compose = read('docker/compose.yaml')
 const dockerignore = code(read('.dockerignore'))
 const [baseStage = '', afterBase = ''] = dockerfile.split('FROM base AS cli')
 const [cliStage = ''] = afterBase.split('FROM base AS runtime')
@@ -59,7 +59,7 @@ describe('Dockerfile vendored sharp stub', () => {
   })
 })
 
-describe('compose.yaml', () => {
+describe('docker/compose.yaml', () => {
   it('publishes ports on 127.0.0.1 only (RNF-03)', () => {
     expect(portEntries(compose).length).toBeGreaterThan(0)
     expect(exposedPorts(compose)).toEqual([])
@@ -97,7 +97,7 @@ describe('compose.yaml', () => {
   })
 })
 
-describe('Dockerfile', () => {
+describe('docker/Dockerfile', () => {
   const lines = code(dockerfile)
 
   it('ends with the runtime stage, so `docker build` without a target does not install the CLIs', () => {

@@ -20,10 +20,10 @@ import { allowSubprocess } from '../../support/network-guard.js'
 // needs a real Windows machine (download, unzip, the Run key, the PATH in the registry, the .cmd shims) is checked by
 // hand, see the list in the report of the commit.
 const root = join(import.meta.dirname, '..', '..', '..')
-const script = join(root, 'install.ps1')
+const script = join(root, 'packaging', 'install.ps1')
 // .gitattributes checks install.ps1 out with CRLF, so the line-based checks below work on LF text.
 const text = readFileSync(script, 'utf8').replace(/\r\n/g, '\n')
-const shText = readFileSync(join(root, 'install.sh'), 'utf8')
+const shText = readFileSync(join(root, 'packaging', 'install.sh'), 'utf8')
 
 /** The script without comments (line comments and the comment-based help block): what is left is what runs. */
 const code = text
