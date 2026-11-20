@@ -407,13 +407,35 @@ runtime('install.ps1 (PowerShell, nothing is changed)', { timeout: PWSH_TIMEOUT_
         ...env,
       },
     })
-    return Object.assign(result, { elapsedMs: Date.now() - started })
+    return Object.assign(result, { elapsedMs: Date.now() - started, processes: processesLeft(result.error) })
   }
-  const out = (result: { stdout: string; stderr: string; error?: Error; elapsedMs?: number }): string =>
+  // When a run is cut, the node.exe and pwsh.exe still alive tell where it was stuck: a `node -v` of the script that
+  // never returned shows up as a child of a pwsh. Only on Windows, only after a timeout, with a limit of its own.
+  function processesLeft(error: Error | undefined): string {
+    if (error === undefined || process.platform !== 'win32') return ''
+    const listing = spawnSync(
+      pwsh ?? 'pwsh',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        "Get-CimInstance Win32_Process | Where-Object { $_.Name -in 'node.exe','pwsh.exe' } | Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | Format-List | Out-String -Width 300",
+      ],
+      { encoding: 'utf8', timeout: 30_000, killSignal: 'SIGKILL' },
+    )
+    return `\n[processes still alive]\n${listing.stdout}${listing.stderr}${listing.error === undefined ? '' : `(${listing.error.message})`}`
+  }
+  const out = (result: {
+    stdout: string
+    stderr: string
+    error?: Error
+    elapsedMs?: number
+    processes?: string
+  }): string =>
     `${result.stdout}${result.stderr}` +
     (result.error === undefined
       ? ''
-      : `\n[pwsh did not finish: ${result.error.message}, after ${result.elapsedMs ?? '?'} ms]`)
+      : `\n[pwsh did not finish: ${result.error.message}, after ${result.elapsedMs ?? '?'} ms]${result.processes ?? ''}`)
   // On Windows pwsh itself writes its module-analysis and startup caches under %LOCALAPPDATA% (the temporary profile),
   // whatever the script does; those two folders are not the script's doing and are left out of "nothing changed".
   const pwshOwn = /^AppData(\\Local(\\Microsoft(\\(PowerShell|Windows)(\\.*)?)?)?)?$/
