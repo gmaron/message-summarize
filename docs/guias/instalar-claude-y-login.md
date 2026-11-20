@@ -8,7 +8,7 @@ msum puede pedirle los resúmenes al programa `claude` (Claude Code), usando el 
 - Anthropic trata el texto según los términos de tu cuenta de Claude (plan y privacidad): revisalos ahí.
 - Las conversaciones marcadas como "solo local" nunca se envían a un proveedor externo, y este lo es.
 - Claude corre sin herramientas: no puede leer archivos ni ejecutar comandos.
-- Costos: necesitás una cuenta de Claude (Pro, Max, Ultra, Team o Enterprise) o una cuenta de la Consola de Claude, según la documentación oficial. Mirá los planes y precios vigentes en <https://claude.com/pricing>.
+- Costos: necesitás una cuenta de Claude (Pro, Max, Team o Enterprise) o una cuenta de la Consola de Claude, según la documentación oficial. Mirá los planes y precios vigentes en <https://claude.com/pricing>.
 
 ## Paso a paso
 
