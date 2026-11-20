@@ -24,6 +24,7 @@ import { createLogger } from '../../src/main/logger.js'
 import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/paths.js'
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
 import type { ConnectionHooks, ManagedConnection } from '../../src/main/whatsapp.js'
+import { isWindows } from './platform.js'
 
 export const ME = '5491100000009@s.whatsapp.net'
 export const OTHER = '5491100000077@s.whatsapp.net'
@@ -392,8 +393,12 @@ export async function seedMessages(runtime: Runtime, messages: readonly SeedMess
 /** Lets pending promises and zero-delay timers run. */
 export const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
-/** How long a test waits for something that really happens in another task or on disk. Generous: a slow machine is not a failure. */
-export const WAIT_DEADLINE_MS = 5_000
+/**
+ * How long a test waits for something that really happens in another task or on disk. Generous: a slow machine is not a
+ * failure. A condition that holds returns at once, so a longer deadline only slows a real failure down; the Windows
+ * runners are several times slower than the others at spawning and at file operations.
+ */
+export const WAIT_DEADLINE_MS = isWindows ? 20_000 : 5_000
 
 /**
  * Waits until `predicate` holds, polling, and fails with a clear message after the deadline. Use it instead of a fixed

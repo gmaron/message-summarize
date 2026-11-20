@@ -1106,7 +1106,13 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
       writes.push({ id, dbOpen: open })
       await writeBlocked(file, reason, at)
     }
-    const w = await world(['alpha'], { linked: ['alpha'], writeMarker: writer })
+    // The release is bounded by the shutdown grace (`Daemon.stop` gives up on a socket that does not close): a grace as
+    // long as the test keeps it from ending the release on a slow runner before the looks are done.
+    const w = await world(['alpha'], {
+      linked: ['alpha'],
+      writeMarker: writer,
+      timing: { shutdownGraceMs: 60_000 },
+    })
     current = w
     await w.host.start()
     await started(w, 'alpha')
