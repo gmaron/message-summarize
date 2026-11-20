@@ -1053,7 +1053,8 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     await started(w, 'alpha')
     // alpha is logged out from the phone: a terminal state
     w.connection('alpha').emit({ state: 'loggedOut' })
-    await until(() => observed.length === 2, 'both markers to be written')
+    // By id, not by count: a slow disk must not let one account's marker stand for both.
+    await until(() => ['alpha', 'beta'].every((id) => observed.some((o) => o.id === id)), 'both markers to be written')
     expect(observed.map((o) => o.id).sort()).toEqual(['alpha', 'beta'])
     for (const seen of observed) {
       expect(seen, seen.id).toMatchObject({ stopped: true, closed: true, hasUnit: false })
@@ -1061,6 +1062,65 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     expect(observed.find((o) => o.id === 'alpha')?.reason).toBe('loggedOut')
     expect(observed.find((o) => o.id === 'beta')?.reason).toBe('socketFailed')
     expect(existsSync(w.h.accountOf('alpha').blockedFile)).toBe(true)
+  })
+
+  it('a look at a block whose marker is still being written joins that write instead of starting another', async () => {
+    const writes: string[] = []
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const slow = async (file: string, reason: BlockedReason, at: number): Promise<void> => {
+      writes.push(file)
+      await gate // a slow disk: the write is in flight while the host looks at the installation again
+      await writeBlocked(file, reason, at)
+    }
+    const w = await world(['alpha'], { linked: ['alpha'], writeMarker: slow })
+    await w.host.start()
+    await started(w, 'alpha')
+    w.connection('alpha').emit({ state: 'error', reason: 'forbidden' })
+    await until(() => writes.length === 1, 'the marker write to start')
+    // A look at every account, alpha included, while its marker is being written. It is not awaited before `release`:
+    // the look joins the write, so it finishes only when the write does. The pause is a few polls of the host; if a
+    // look did not get there the test would pass without exercising the join, never fail by chance.
+    const looking = manyLooks(w, 'gamma')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    release()
+    await looking
+    await waitFor(() =>
+      expect(JSON.parse(readFileSync(w.h.accountOf('alpha').blockedFile, 'utf8')).reason).toBe('forbidden'),
+    )
+    expect(writes).toHaveLength(1)
+  })
+
+  it('a look while a unit is still being stopped writes no marker and starts nothing: its database is open', async () => {
+    const writes: { id: string; dbOpen: boolean }[] = []
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let current: World | null = null
+    const writer = async (file: string, reason: BlockedReason, at: number): Promise<void> => {
+      const id = file.split(/[\\/]/).slice(-2)[0] as string
+      const open = (current as World).runtimes.filter((r) => r.id === id).some((r) => r.db.isOpen)
+      writes.push({ id, dbOpen: open })
+      await writeBlocked(file, reason, at)
+    }
+    const w = await world(['alpha'], { linked: ['alpha'], writeMarker: writer })
+    current = w
+    await w.host.start()
+    await started(w, 'alpha')
+    w.connection('alpha').onStop = () => gate // the socket closes slowly
+    w.connection('alpha').emit({ state: 'loggedOut' })
+    await until(() => w.connection('alpha').calls.includes('stop'), 'the stop to begin')
+    // two full looks at the installation happen while alpha is still being released
+    await manyLooks(w, 'gamma')
+    await manyLooks(w, 'delta')
+    expect(writes).toEqual([])
+    expect(startsOf(w.connection('alpha'))).toBe(1)
+    release()
+    await until(() => writes.length > 0, 'the marker to be written once the unit is released')
+    expect(writes).toEqual([{ id: 'alpha', dbOpen: false }])
   })
 
   it('a block whose marker was on disk and is gone starts the account again (the user cleared it)', async () => {

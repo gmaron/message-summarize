@@ -273,6 +273,13 @@ export class DaemonHost {
   private readonly blocks = new Map<string, { reason: BlockedReason; persisted: boolean; warned: boolean }>()
   /** Blocks being released (socket and database closed, marker not yet written), so a shutdown waits for them. */
   private readonly releases = new Set<Promise<void>>()
+  /**
+   * The accounts whose unit is being stopped: it is out of `units` already, but its socket and database are not closed
+   * yet. A look at the installation leaves them alone (no marker written, no unit started) until the close is done.
+   */
+  private readonly releasing = new Set<string>()
+  /** The marker write of each account that is in flight: a second call joins it instead of writing again. */
+  private readonly persisting = new Map<string, Promise<void>>()
   /** Accounts being linked by this host (from the web). The host holds each one's link lock, so it is not "foreign". */
   private readonly links = new Map<string, ActiveLink>()
   /** The last link of each account (also after it ended) as `GET /api/accounts/:id/link` says it. In memory only. */
@@ -821,6 +828,9 @@ export class DaemonHost {
     // A running unit is left alone. One that is blocking itself is being released by `blockUnit` (its entry in `blocks`
     // is already there), so a blocked account never has a unit for long.
     if (unit !== undefined) return false
+    // A unit that is being stopped has nothing in `units` and may have no block or failure recorded yet: the look must
+    // not read that as "free to start" (a reconnect after a crash loop) nor write a marker while its database is open.
+    if (this.releasing.has(id)) return false
     if (!isDirectory(account.dir)) {
       this.setIdle(id, 'missingDir', 'idle')
       return false
@@ -1109,6 +1119,8 @@ export class DaemonHost {
         // cannot be used, and `msum retry` brings it back when the user decides to.
         this.failures.delete(id)
         logger.error('account.crashLoop', { code: errorCode(error), count: attempts })
+        // Recorded before the unit is stopped, as `blockUnit` does: no look sees the account as free in between.
+        this.blocks.set(id, { reason: 'socketFailed', persisted: false, warned: false })
         if (this.units.has(id)) await this.stopUnit(id, 'crashLoop')
         else runtime?.close()
         await this.blockAccount(id, 'socketFailed')
@@ -1161,7 +1173,17 @@ export class DaemonHost {
    * database handle): a marker on disk means exactly that. When the write fails the block stays in memory, and is tried
    * again on the next looks; the failure is logged once. Nothing is written into an account a `link` or `unlink` holds.
    */
-  private async persistBlock(id: string): Promise<void> {
+  private persistBlock(id: string): Promise<void> {
+    // One write at a time per account: the release of a unit and the looks at a blocked account both get here, and on a
+    // slow disk the second would otherwise start while the first is still writing.
+    const running = this.persisting.get(id)
+    if (running !== undefined) return running
+    const write = this.writeBlockMarker(id).finally(() => this.persisting.delete(id))
+    this.persisting.set(id, write)
+    return write
+  }
+
+  private async writeBlockMarker(id: string): Promise<void> {
     const entry = this.blocks.get(id)
     if (entry === undefined || entry.persisted) return
     const account = accountLayoutOf(this.ctx.layout, id)
@@ -1553,6 +1575,7 @@ export class DaemonHost {
     if (reasonBlocked !== null && !this.blocks.has(id)) {
       this.blocks.set(id, { reason: reasonBlocked, persisted: false, warned: false })
     }
+    this.releasing.add(id)
     this.units.delete(id)
     this.pendingMarks.delete(id)
     this.deferredPurges.delete(id)
@@ -1562,14 +1585,18 @@ export class DaemonHost {
     this.reloadFailures.delete(id)
     scopedLogger(this.ctx.logger, { account: id }).info('account.unitStopped', { reason })
     try {
-      await unit.daemon.stop()
-    } catch (error) {
-      scopedLogger(this.ctx.logger, { account: id }).error('account.stopFailed', { code: errorCode(error) })
-    }
-    try {
-      unit.runtime.close()
-    } catch {
-      // already closed
+      try {
+        await unit.daemon.stop()
+      } catch (error) {
+        scopedLogger(this.ctx.logger, { account: id }).error('account.stopFailed', { code: errorCode(error) })
+      }
+      try {
+        unit.runtime.close()
+      } catch {
+        // already closed
+      }
+    } finally {
+      this.releasing.delete(id)
     }
   }
 

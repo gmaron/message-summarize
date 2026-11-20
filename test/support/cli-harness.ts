@@ -41,6 +41,8 @@ export class FakeConnection implements ManagedConnection {
   hooks: ConnectionHooks | null = null
   /** What happens when `start()` is called (the test decides: show a QR, connect...). */
   onStart: () => void | Promise<void> = () => {}
+  /** What happens when `stop()` is called, before it finishes (the test can hold it: a socket that closes slowly). */
+  onStop: () => void | Promise<void> = () => {}
   private readonly listeners = new Set<WhatsAppStatusListener>()
   private readonly historyListeners = new Set<HistorySyncListener>()
 
@@ -94,6 +96,7 @@ export class FakeConnection implements ManagedConnection {
 
   async stop(): Promise<void> {
     this.calls.push('stop')
+    await this.onStop()
     if (this.status.state !== 'stopped') this.emit({ state: 'stopped' })
   }
 
