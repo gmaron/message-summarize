@@ -1,6 +1,6 @@
-# Docker (RNF-05, RNF-07): the image builds, starts under compose and becomes healthy. Nothing is published: no
-# login to a registry, no push, no secrets. No third-party cache. The only network access is what the build itself
-# needs (the base image, the Dockerfile frontend, the BuildKit image, apt, npm, the whisper.cpp sources). The QEMU
+# Docker (RNF-05, RNF-07): the image builds, starts under compose and becomes healthy. Nothing is published here: no
+# login to a registry, no push, no secrets (release.yml pushes the image, on tags). No third-party cache. The only
+# network access is what the build itself needs (the base image, the Dockerfile frontend, the BuildKit image, apt, npm, the whisper.cpp sources). The QEMU
 # (binfmt) and BuildKit images are pulled by tag, not by digest: a known gap, harmless here (read-only token, no secrets).
 # Third-party actions are pinned by full commit SHA.
 name: docker

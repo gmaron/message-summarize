@@ -1,6 +1,6 @@
 {
   "name": "message-summarize",
-  "version": "0.0.0",
+  "version": "0.1.0-rc1",
   "description": "Summarizes the conversations of a messaging account with an LLM and delivers a periodic digest to your own chat.",
   "repository": {
     "type": "git",

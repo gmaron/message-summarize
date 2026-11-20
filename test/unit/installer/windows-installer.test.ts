@@ -333,11 +333,12 @@ describe('release.yml', () => {
     expect(workflow).not.toMatch(/pull_request_target|pull_request:|workflow_run/)
   })
 
-  it('is read-only by default and only the release job can write', () => {
+  it('is read-only by default and only the release and docker-publish jobs can write', () => {
     expect(workflow).toMatch(/^permissions:\n {2}contents: read\n/m)
     const writes = [...workflow.matchAll(/^\s*([\w-]+): write\s*$/gm)].map((m) => m[1])
-    expect(writes).toEqual(['contents'])
+    expect(writes).toEqual(['packages', 'contents'])
     expect(job('release')).toMatch(/permissions:\n {6}contents: write/)
+    expect(job('docker-publish')).toMatch(/permissions:\n {6}contents: read\n {6}packages: write/)
     for (const name of ['windows-stage', 'windows-sign', 'windows-smoke']) expect(job(name)).not.toMatch(/: write/)
     expect(job('source-tarball')).not.toMatch(/: write/)
   })

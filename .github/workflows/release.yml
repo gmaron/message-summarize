@@ -10,6 +10,8 @@
 # the installer is built unsigned (Windows SmartScreen will warn). Dry runs use the secret-less "release-dryrun"
 # environment. Both are created automatically on first use if missing.
 #
+# The docker-publish job pushes the image to ghcr.io only when the variable PUBLISH_DOCKER is true (see the job).
+#
 # It does NOT publish to npm: `prepublishOnly` runs the strict license check, which blocks publishing by design
 # until the libsignal (GPL) decision is made. Third-party actions are pinned by full commit SHA.
 name: release
@@ -304,6 +306,64 @@ jobs:
           path: out
           if-no-files-found: error
           retention-days: 14
+
+  # Publishes the image (linux/amd64 and linux/arm64) to ghcr.io/gmaron/message-summarize, the one docker/compose.yaml names.
+  # OFF until the owner sets the repository variable PUBLISH_DOCKER=true (Settings > Secrets and variables > Actions >
+  # Variables): the image carries libsignal (GPL), so it waits for the same licence decision as publishing the package to npm.
+  # Only the base image: the "cli" image bundles third-party CLIs whose licences may forbid redistributing them.
+  # Tags: the version, major.minor and latest; a prerelease (v1.2.3-rc1) gets only its own version tag.
+  # Needs no secret: it logs in with the job token (packages: write, this job only). The first time, make the package
+  # public by hand (GitHub > Packages > message-summarize > Package settings > Change visibility), or pulls get "denied".
+  docker-publish:
+    needs: [windows-smoke, source-tarball]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && vars.PUBLISH_DOCKER == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/gmaron/message-summarize
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check that the tag matches package.json and compute the tags
+        id: tags
+        run: |
+          set -eu
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match the version $version in package.json" >&2
+            exit 1
+          fi
+          tags="-t ${IMAGE}:${version}"
+          case "$version" in
+            *-*) ;;
+            *) tags="$tags -t ${IMAGE}:${version%.*} -t ${IMAGE}:latest" ;;
+          esac
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      - name: Create a multi-platform builder
+        run: docker buildx create --name msum-multiarch --driver docker-container --use
+
+      - name: Log in to ghcr.io
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          # shellcheck disable=SC2086
+          docker buildx build --builder msum-multiarch -f docker/Dockerfile --platform linux/amd64,linux/arm64 \
+            $TAGS --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --push .
 
   release:
     needs: [windows-smoke, windows-sign, source-tarball]
