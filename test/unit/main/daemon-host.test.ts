@@ -1063,6 +1063,44 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     expect(existsSync(w.h.accountOf('alpha').blockedFile)).toBe(true)
   })
 
+  it('writes the marker of a block once, however slow the write is and however often the host looks meanwhile', async () => {
+    const writes: string[] = []
+    const w = await world(['alpha'], {
+      linked: ['alpha'],
+      // a slow disk (as on Windows): many looks of the host fit inside one write
+      writeMarker: async (file, reason, at) => {
+        writes.push(reason)
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        await writeBlocked(file, reason, at)
+      },
+    })
+    await w.host.start()
+    await started(w, 'alpha')
+    w.connection('alpha').emit({ state: 'loggedOut' })
+    await until(() => existsSync(w.h.accountOf('alpha').blockedFile), 'the marker to be written')
+    // several more looks (every 40 ms) after it landed
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(writes).toEqual(['loggedOut'])
+  })
+
+  it('a marker the user removed is not put back by a write that was still going', async () => {
+    const w = await world(['alpha'], {
+      linked: ['alpha'],
+      writeMarker: async (file, reason, at) => {
+        await writeBlocked(file, reason, at)
+        // the file is there, the host has not been told yet
+        await new Promise((resolve) => setTimeout(resolve, 300))
+      },
+    })
+    await w.host.start()
+    await started(w, 'alpha')
+    w.connection('alpha').emit({ state: 'error', reason: 'forbidden' })
+    await until(() => existsSync(w.h.accountOf('alpha').blockedFile), 'the marker to be there')
+    rmSync(w.h.accountOf('alpha').blockedFile)
+    await until(() => named(w.h, 'account.started', 'alpha').length === 2, 'the account to start again')
+    expect(existsSync(w.h.accountOf('alpha').blockedFile)).toBe(false)
+  })
+
   it('a block whose marker was on disk and is gone starts the account again (the user cleared it)', async () => {
     const w = await world(['alpha'], { linked: ['alpha'] })
     await w.host.start()

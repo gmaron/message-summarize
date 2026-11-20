@@ -271,6 +271,8 @@ export class DaemonHost {
    * started for the account.
    */
   private readonly blocks = new Map<string, { reason: BlockedReason; persisted: boolean; warned: boolean }>()
+  /** The marker write of each account that is going, so a second look at a block waits for it instead of writing again. */
+  private readonly markerWrites = new Map<string, Promise<void>>()
   /** Blocks being released (socket and database closed, marker not yet written), so a shutdown waits for them. */
   private readonly releases = new Set<Promise<void>>()
   /** Accounts being linked by this host (from the web). The host holds each one's link lock, so it is not "foreign". */
@@ -1162,6 +1164,20 @@ export class DaemonHost {
    * again on the next looks; the failure is logged once. Nothing is written into an account a `link` or `unlink` holds.
    */
   private async persistBlock(id: string): Promise<void> {
+    // One write at a time per account. A look that comes while a write is going (a slow disk, as on Windows) waits for it
+    // and finds the block persisted; writing again would put the marker back after the user cleared it.
+    for (let going = this.markerWrites.get(id); going !== undefined; going = this.markerWrites.get(id)) await going
+    const write = this.writeBlockMarker(id)
+    // Registered before anything else can run: `writeBlockMarker` has only started, and no one else got a turn.
+    this.markerWrites.set(id, write)
+    try {
+      await write
+    } finally {
+      if (this.markerWrites.get(id) === write) this.markerWrites.delete(id)
+    }
+  }
+
+  private async writeBlockMarker(id: string): Promise<void> {
     const entry = this.blocks.get(id)
     if (entry === undefined || entry.persisted) return
     const account = accountLayoutOf(this.ctx.layout, id)
