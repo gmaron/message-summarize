@@ -32,7 +32,7 @@ When you change a dependency, run `npm ci` and then `npm run notices`, and commi
 
 ## Pre-push check
 
-`.githooks/pre-push` runs what the quality job of CI runs (`lint`, `typecheck` and `test:coverage`, about a minute) and stops the push when one fails. Enable it once per clone:
+`.githooks/pre-push` runs what the quality job of CI runs (`lint`, `typecheck` and `test:coverage`, about a minute) and stops the push when one fails. It skips them when everything you push is documentation (Markdown at the root, `docs/`, `.github/*.md`, `LICENSE`) or a branch deletion. Enable it once per clone:
 
 ```sh
 git config core.hooksPath .githooks
