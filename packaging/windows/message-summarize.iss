@@ -272,7 +272,7 @@ begin
   end;
 end;
 
-{ Stops the node.exe processes that run from THIS install ({app}\node\node.exe), and only those, so their files can be
+{ Stops the node.exe processes that run from THIS install (node\node.exe under the app folder), and only those, so their files can be
   replaced or deleted. It is a hard stop (the daemon keeps its data in SQLite, which survives it). Call it after
   `service uninstall`, or the launcher would start the daemon again. The path goes in as a parameter of a small
   ASCII script, so no quoting of the path is needed inside the script. }
