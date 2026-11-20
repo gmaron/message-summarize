@@ -627,19 +627,15 @@ describe('a link that is cancelled or stopped before its flow exists', () => {
   it('a shutdown during a slow connection factory opens no socket, waits for the link and releases the lock', async () => {
     const w = await world({ accounts: ['alpha'] })
     w.factory.delayMs = 250
-    const order: string[] = []
-    const starting = w.host.startLink('alpha').then((result) => {
-      order.push('link')
-      return result
-    })
+    const starting = w.host.startLink('alpha')
     await until(() => w.factory.calls === 1, 'the factory to be called')
     await w.host.stop()
-    order.push('stopped')
-    expect(await starting).toEqual({ ok: false, reason: 'unavailable' })
-    expect(order).toEqual(['link', 'stopped']) // the shutdown waited for it
-    expect(w.h.connection.calls).toEqual([])
+    // The shutdown waited for the link: when it returns, the link is over and its lock is gone. Checked on the state, not
+    // on the order of two promise callbacks, which depends on microtask scheduling.
     expect(existsSync(lockOf(w, 'alpha'))).toBe(false)
     expect(w.host.isLinking('alpha')).toBe(false)
+    expect(await starting).toEqual({ ok: false, reason: 'unavailable' })
+    expect(w.h.connection.calls).toEqual([])
   })
 
   it('a cancel during a slow connection factory waits for it and opens no socket', async () => {

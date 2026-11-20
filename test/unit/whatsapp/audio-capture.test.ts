@@ -18,6 +18,7 @@ import type { WaMessage } from '../../../src/infrastructure/whatsapp/wa-types.js
 import { FixedClock } from '../../support/application-fakes.js'
 import { until } from '../../support/cli-harness.js'
 import { TempDatabase } from '../../support/persistence-backends.js'
+import { isWindows } from '../../support/platform.js'
 import { fakeSocketFactory, recordingCapture } from '../../support/whatsapp-fakes.js'
 
 const ANA = '9911963367943@s.whatsapp.net'
@@ -54,6 +55,9 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const temp of temps.splice(0)) temp.dispose()
 })
+
+/** How long the 300-audio test tolerates no download at all before it calls the queue stuck. */
+const STALL_MS = isWindows ? 120_000 : 30_000
 
 describe('the translator hands the capture the download descriptor (RF-15, RNF-08)', () => {
   /** A capture that says "download it" for every audio, and records what the translator reports back. */
@@ -449,7 +453,9 @@ describe('the WhatsApp connection, the capture and SQLite together (RF-15, RNF-0
       )
       socket.ev.emit('messaging-history.set', history(...messages))
       // Legitimately slow on a loaded runner (300 downloads, each with its own writes). So the wait is not a fixed total
-      // time but a stall check: it fails only when no download completes for 30 s. Progress is read from a counter, not
+      // time but a stall check: it fails only when no download completes for `STALL_MS`. The 300 messages are written to
+      // SQLite before the first download starts, and on a Windows runner that alone can take tens of seconds, hence the
+      // longer limit there. Progress is read from a counter, not
       // by scanning the 300 rows every few milliseconds, which would itself slow the work down.
       let seen = -1
       let lastProgress = Date.now()
@@ -459,7 +465,9 @@ describe('the WhatsApp connection, the capture and SQLite together (RF-15, RNF-0
             seen = served
             lastProgress = Date.now()
           }
-          if (Date.now() - lastProgress > 30_000) throw new Error(`no audio was downloaded for 30 s (${served} of 300)`)
+          if (Date.now() - lastProgress > STALL_MS) {
+            throw new Error(`no audio was downloaded for ${STALL_MS / 1000} s (${served} of 300)`)
+          }
           return served === 300
         },
         'all 300 audios to be downloaded',
@@ -475,7 +483,7 @@ describe('the WhatsApp connection, the capture and SQLite together (RF-15, RNF-0
       expect(await w.queue.countDownloads()).toBe(0)
       expect(w.rows().every((r) => r.has_descriptor === 0)).toBe(true)
       await c.connection.stop()
-    }, 660_000) // only the ceiling: the stall check above fails a stuck queue after 30 s
+    }, 660_000) // only the ceiling: the stall check above fails a stuck queue after STALL_MS
 
     it('a restart in the middle of the queue resumes where it stopped: all are downloaded, none twice', async () => {
       const w = world()

@@ -69,7 +69,9 @@ jobs:
       - run: npm run build
       # The Windows runners are several times slower on process spawns and file operations: the same tests that take a
       # few seconds elsewhere have hit the 30 s limit there. Only Windows gets the longer one.
-      - run: npm test -- --maxWorkers=4 --testTimeout=${{ runner.os == 'Windows' && '90000' || '30000' }}
+      # `--hookTimeout` is separate from `--testTimeout` (default 10 s): the afterAll of the golden tests closes the SQLite
+      # files of 14 scenarios, which has passed 10 s on a Windows runner.
+      - run: npm test -- --maxWorkers=4 --testTimeout=${{ runner.os == 'Windows' && '90000' || '30000' }} --hookTimeout=${{ runner.os == 'Windows' && '90000' || '30000' }}
 
   # RNF-05/06/07: the installers work from the packed tarball on each OS. Everything goes to a temporary home: no
   # OS service is registered (--no-service / -NoService) and the PATH is not touched. The only network access is
