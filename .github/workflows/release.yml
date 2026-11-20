@@ -311,12 +311,13 @@ jobs:
   # Publishes the image (linux/amd64 and linux/arm64) to ghcr.io/gmaron/message-summarize, the one docker/compose.yaml names.
   # OFF until the owner sets the repository variable PUBLISH_DOCKER=true (Settings > Secrets and variables > Actions >
   # Variables): the image carries libsignal (GPL), so it waits for the same licence decision as publishing the package to npm.
+  # It does not wait for the Windows jobs: the image has nothing to do with the installer.
   # Only the base image: the "cli" image bundles third-party CLIs whose licences may forbid redistributing them.
   # Tags: the version, major.minor and latest; a prerelease (v1.2.3-rc1) gets only its own version tag.
   # Needs no secret: it logs in with the job token (packages: write, this job only). The first time, make the package
   # public by hand (GitHub > Packages > message-summarize > Package settings > Change visibility), or pulls get "denied".
   docker-publish:
-    needs: [windows-smoke, source-tarball]
+    needs: [source-tarball]
     if: github.event_name == 'push' && github.ref_type == 'tag' && vars.PUBLISH_DOCKER == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
