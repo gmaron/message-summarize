@@ -46,3 +46,7 @@ Una clave de API es una contraseña que le permite a msum pedirle a Gemini (el m
 
 - Clave de API: <https://aistudio.google.com/docs/api-key> (antes <https://ai.google.dev/gemini-api/docs/api-key>)
 - Precios: <https://aistudio.google.com/docs/pricing>
+
+---
+
+Volver al [README](../../README.es.md) · [Índice de guías](README.md)

@@ -952,7 +952,7 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
       claudeCli: { command: 'claude', model: 'sonnet', timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS },
     },
     // Local transcription of audios (off). To turn it on: `msum whisper download base`, then set "enabled": true and
-    // "model": "base" (see the README).
+    // "model": "base" (see docs/guides/transcription.md).
     transcription: { enabled: false, whisperCommand: 'whisper-cli', ffmpegCommand: 'ffmpeg', language: 'auto' },
   }
   return `${JSON.stringify(config, null, 2)}\n`

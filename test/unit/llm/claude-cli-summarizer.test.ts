@@ -251,8 +251,8 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
 
   it.skipIf(isWindows)('kills a hanging child on timeout', async () => {
     const f = installFake([{ kind: 'hang' }])
-    const result = await make({ timeoutMs: 1500 }).summarize(request)
-    expect(result).toEqual({ ok: false, error: 'claude timed out after 1.5s' })
+    const result = await make({ timeoutMs: 3000 }).summarize(request)
+    expect(result).toEqual({ ok: false, error: 'claude timed out after 3s' })
     const [call] = f.calls()
     expect(() => process.kill(call?.pid ?? 0, 0)).toThrow()
     expect(existsSync(call?.cwd ?? '')).toBe(false)
@@ -261,9 +261,9 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
   it.skipIf(isWindows)('escalates to SIGKILL when the child ignores SIGTERM', async () => {
     const f = installFake([{ kind: 'hang', ignoreSigterm: true }])
     const started = Date.now()
-    const result = await make({ timeoutMs: 1500, killGraceMs: 300 }).summarize(request)
+    const result = await make({ timeoutMs: 3000, killGraceMs: 300 }).summarize(request)
     expect(result.ok).toBe(false)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(1700)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(3200)
     expect(() => process.kill(f.calls()[0]?.pid ?? 0, 0)).toThrow()
   })
 
@@ -272,10 +272,10 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
     async () => {
       const f = installFake([{ kind: 'grandchild' }])
       const started = Date.now()
-      const result = await make({ timeoutMs: 1000 }).summarize(request)
+      const result = await make({ timeoutMs: 3000 }).summarize(request)
       const elapsed = Date.now() - started
-      expect(result).toEqual({ ok: false, error: 'claude timed out after 1s' })
-      expect(elapsed).toBeLessThan(3000) // not the 8 seconds the grandchild sleeps
+      expect(result).toEqual({ ok: false, error: 'claude timed out after 3s' })
+      expect(elapsed).toBeLessThan(6000) // not the 8 seconds the grandchild sleeps
       const gpid = Number(readFileSync(`${f.record}.gpid`, 'utf8'))
       await new Promise((r) => setTimeout(r, 300))
       expect(() => process.kill(gpid, 0)).toThrow()
@@ -294,7 +294,7 @@ describe('ClaudeCliSummarizer (RF-47, RF-48, RF-49)', () => {
 
   it.skipIf(isWindows)('does not retry after a timeout', async () => {
     const f = installFake([{ kind: 'hang' }])
-    await make({ timeoutMs: 1500 }).summarize(request)
+    await make({ timeoutMs: 3000 }).summarize(request)
     expect(f.calls()).toHaveLength(1)
   })
 

@@ -11,8 +11,7 @@
  * 16K-token context the product asks for) plus 3 GB for the system and the rest of the programs, rounded up to 8 or
  * 16. Where a page gives a range of sizes (the same tag with different quantizations), `downloadGb` is the lowest.
  *
- * `evaluated` and `result` record the evaluation of test/eval/ollama (`npm run eval:ollama`, see README, "Choosing a
- * local model"), passing or failing. A candidate with no committed results file stays `evaluated: false`.
+ * `evaluated` and `result` record the evaluation of test/eval/ollama (`npm run eval:ollama`, see docs/guides/local-model-ollama.md), passing or failing. A candidate with no committed results file stays `evaluated: false`.
  *
  * To record an evaluation: copy the numbers of test/eval/ollama/results/<date>-<tag>.json (date, validJsonRate,
  * needsReplyAgreement rounded to 4 decimals, meanLatencyMs, passed) into the candidate and commit both. A test fails

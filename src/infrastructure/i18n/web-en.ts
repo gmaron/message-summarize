@@ -771,7 +771,8 @@ export const webEn: WebTexts = {
         heading: 'Provider',
         intro:
           'Choose what writes the summaries. There is no default: read what each one does with your conversations.',
-        laterNote: 'OpenAI, Anthropic and Gemini are chosen here. Codex and any other command come in a next version.',
+        laterNote:
+          'OpenAI, Anthropic and Gemini are chosen here. Codex is disabled for now, and any other command is set from the command line with msum provider use generic-cli.',
         apiModelLabel: 'Model',
         apiModelHint: 'The models come from the provider list: there is nothing to type.',
         openaiBaseUrlInvalid:

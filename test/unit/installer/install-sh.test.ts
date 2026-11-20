@@ -22,7 +22,7 @@ import { isWindows } from '../../support/platform.js'
 // of uname, curl, node, npm and ldd. Nothing reaches the network (the fake curl serves local files), and everything
 // is installed under a temporary HOME. The real end-to-end install (npm registry) is done by hand, not here.
 const root = join(import.meta.dirname, '..', '..', '..')
-const script = join(root, 'install.sh')
+const script = join(root, 'packaging', 'install.sh')
 const NODE_VERSION = /^NODE_VERSION="([^"]+)"/m.exec(readFileSync(script, 'utf8'))?.[1] ?? ''
 
 const SYSTEM_TOOLS = [

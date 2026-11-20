@@ -1,0 +1,72 @@
+#!/bin/sh
+# Runs the quality checks of CI (lint, typecheck, tests with the coverage thresholds) before anything is pushed,
+# unless everything being pushed is documentation (Markdown at the root, docs/, .github/*.md, LICENSE) or deleting branches.
+# Enable it once per clone:  git config core.hooksPath .githooks
+# Skip it for one push:      MSUM_SKIP_CHECKS=1 git push     (git push --no-verify skips every hook)
+set -eu
+
+if [ "${MSUM_SKIP_CHECKS:-}" = 1 ]; then
+  echo "pre-push: checks skipped (MSUM_SKIP_CHECKS=1)." >&2
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+zero=0000000000000000000000000000000000000000
+
+# Whether a path is documentation only: no code, test, script, workflow or config depends on it.
+is_doc() {
+  case "$1" in
+    docs/* | LICENSE | .github/*.md) return 0 ;;
+    */*) return 1 ;;
+    *.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Reads the refs git hands to a pre-push hook on stdin. Returns 0 when something that is not documentation changes,
+# and also when it cannot tell (no input, or a commit that is not in this clone): then the checks run.
+code_changed() {
+  lines=0
+  while read -r _ local_sha _ remote_sha; do
+    lines=1
+    [ "$local_sha" = "$zero" ] && continue # deleting a branch pushes no code
+    if [ "$remote_sha" = "$zero" ]; then
+      # A new branch: compare with where it forks from the main branch.
+      base=$(git merge-base "$local_sha" origin/main 2>/dev/null || git merge-base "$local_sha" main 2>/dev/null) || return 0
+    else
+      base=$remote_sha
+    fi
+    files=$(git diff --name-only "$base" "$local_sha" 2>/dev/null) || return 0
+    for f in $files; do
+      is_doc "$f" || return 0
+    done
+  done
+  # No input at all (the hook run by hand): cannot tell, so check. Otherwise nothing but documentation or deletions.
+  [ "$lines" = 1 ] || return 0
+  return 1
+}
+
+if ! code_changed; then
+  echo "pre-push: only documentation changes, checks skipped." >&2
+  exit 0
+fi
+
+if [ ! -d node_modules ]; then
+  echo "pre-push: node_modules is missing. Run 'npm ci' first." >&2
+  exit 1
+fi
+
+run() {
+  echo "pre-push: $*" >&2
+  "$@" || {
+    echo "pre-push: '$*' failed, nothing was pushed. Fix it, or skip with MSUM_SKIP_CHECKS=1." >&2
+    exit 1
+  }
+}
+
+run npm run --silent lint
+run npm run --silent typecheck
+# Same flags as the quality job of CI.
+run npm run --silent test:coverage -- --maxWorkers=4 --testTimeout=30000
+echo "pre-push: all checks passed." >&2
