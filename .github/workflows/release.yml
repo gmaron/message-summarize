@@ -131,8 +131,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'choco install innosetup failed' }
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path -LiteralPath $iscc)) { throw 'ISCC.exe not found after the install' }
-          $banner = (& $iscc 2>&1 | Out-String)
-          if ($banner -notmatch '6\.7\.1') { throw "Unexpected Inno Setup version: $banner" }
+          # ISCC prints no version when run without arguments: ask choco, which verified the package checksum.
+          $installed = (& 'C:\ProgramData\chocolatey\bin\choco.exe' list --local-only --exact innosetup --limit-output | Out-String).Trim()
+          if ($installed -ne 'innosetup|6.7.1') { throw "Unexpected Inno Setup version: $installed" }
 
       # Only this step sees the signing secrets (optional). The script runs no npm and no PATH lookup.
       - name: Compile and sign the installer
