@@ -203,7 +203,7 @@ describe('upgrading app.db from schema version 1', () => {
     db.exec('DELETE FROM schedules; UPDATE accounts SET schedules_imported = 0')
     db.close()
     const runtime = h.runtime()
-    runtime.identity.bind('5491100000009@s.whatsapp.net')
+    runtime.identity.bind('9913174261432@s.whatsapp.net')
     runtime.close()
     writeFileSync(join(h.account.authDir, 'creds.json'), JSON.stringify({ me: { id: 'x' } }))
     h.connection.onStart = () => h.connection.emit({ state: 'connected' })

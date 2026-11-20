@@ -42,7 +42,7 @@
     },
     {
       "id": "c08",
-      "chat": "Tienda Luz ( +5491155550113 )",
+      "chat": "Tienda Luz ( +9926862581772 )",
       "needsReply": false,
       "reason": "Order ready for pickup, only information."
     },
@@ -61,20 +61,20 @@
     },
     {
       "id": "c11",
-      "chat": "Mati ( +5491155550115 )",
+      "chat": "Mati ( +9928263724153 )",
       "needsReply": false,
       "reason": "Tenant informs a deposit was made; no question."
     },
     {
       "id": "c12",
-      "chat": "+5491155550114",
+      "chat": "+9928136413513",
       "needsReply": true,
       "doubtful": true,
       "reason": "Asks the owner to send a photo of the ID in this chat by Friday: a reply is awaited."
     },
     {
       "id": "c13",
-      "chat": "Nico ( +5491155550112 )",
+      "chat": "Nico ( +9926775125784 )",
       "needsReply": true,
       "reason": "Asks for the electrician's contact, urgent."
     },
@@ -239,7 +239,7 @@
     },
     {
       "id": "c41",
-      "chat": "Nuevo Vecino ( +5491155550205 )",
+      "chat": "Nuevo Vecino ( +9962744354761 )",
       "needsReply": true,
       "reason": "Asks if the owner has the bike room key."
     },
@@ -266,7 +266,7 @@
     { "id": "c47", "chat": "Club de Lectura", "needsReply": false, "reason": "Announcement of the monthly book." },
     {
       "id": "c48",
-      "chat": "Marcos ( +5491155550213 )",
+      "chat": "Marcos ( +9966713624961 )",
       "needsReply": false,
       "doubtful": true,
       "reason": "Introduction by an unknown contact; no explicit question."

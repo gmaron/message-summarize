@@ -23,14 +23,14 @@
 // flag-on output is compared to the flag-off one in the sibling scenario. All message times are unique.
 // All names, numbers and texts are invented.
 
-const ana = '5491155550111@s.whatsapp.net' // saved as "Ana Gómez" and also has a push name
-const nico = '5491155550112@s.whatsapp.net' // push name only, and a different chats.name
-const tienda = '5491155550113@s.whatsapp.net' // no contact row, only chats.name
-const anon = '5491155550114@s.whatsapp.net' // nothing at all
-const mati = '5491155550115@s.whatsapp.net' // masked agenda name plus a push name
-const lucho = '5491155550116@s.whatsapp.net' // group sender with only sender_name
-const otro = '5491155550117@s.whatsapp.net' // group sender with nothing: shown as a phone number
-const grupo = '120363000000000011@g.us' // chats.name is null
+const ana = '9926536244561@s.whatsapp.net' // saved as "Ana Gómez" and also has a push name
+const nico = '9926775125784@s.whatsapp.net' // push name only, and a different chats.name
+const tienda = '9926862581772@s.whatsapp.net' // no contact row, only chats.name
+const anon = '9928136413513@s.whatsapp.net' // nothing at all
+const mati = '9928263724153@s.whatsapp.net' // masked agenda name plus a push name
+const lucho = '9928267674646@s.whatsapp.net' // group sender with only sender_name
+const otro = '9928774988971@s.whatsapp.net' // group sender with nothing: shown as a phone number
+const grupo = '120363386725358959@g.us' // chats.name is null
 
 export default {
   description: 'Unsaved contacts: naming rules, group sender labels and sinAgendarEnRojo ON.',

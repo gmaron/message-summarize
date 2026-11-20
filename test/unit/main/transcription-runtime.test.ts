@@ -33,7 +33,7 @@ describe.skipIf(process.platform === 'win32')(
       disposeHarnesses()
     })
 
-    const ANA = '5491100000001@s.whatsapp.net'
+    const ANA = '9911963367943@s.whatsapp.net'
 
     interface Options {
       /** Settings of `transcription`; undefined: not in the configuration at all (off). */
@@ -68,7 +68,7 @@ describe.skipIf(process.platform === 'win32')(
       const voiceNote = async (id: string, saying: string, minutesAgo = 60): Promise<void> => {
         await runtime.capture.participantInfo({ participant: { id: ANA, savedName: 'Ana Test', publicName: null } })
         await runtime.capture.conversationMetadata({
-          conversation: { id: ANA, isGroup: false, name: null, participantId: ANA, address: '+5491100000001' },
+          conversation: { id: ANA, isGroup: false, name: null, participantId: ANA, address: '+9911963367943' },
         })
         await runtime.capture.receiveMessage({
           origin: 'history',
@@ -78,7 +78,7 @@ describe.skipIf(process.platform === 'win32')(
             conversationId: ANA,
             senderId: ANA,
             senderName: null,
-            senderAddress: '+5491100000001',
+            senderAddress: '+9911963367943',
             fromMe: false,
             timestamp: NOW - minutesAgo * 60_000,
             kind: 'audio',
@@ -101,7 +101,7 @@ describe.skipIf(process.platform === 'win32')(
             conversationId: ANA,
             senderId: ANA,
             senderName: null,
-            senderAddress: '+5491100000001',
+            senderAddress: '+9911963367943',
             fromMe: false,
             timestamp: NOW - 30 * 60_000,
             kind: 'text',

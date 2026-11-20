@@ -23,16 +23,16 @@
 // window each, so the pointer and the outbox show them as separate digests. All message times are unique.
 // All names, numbers and texts are invented.
 
-const ofelia = '5491155550251@s.whatsapp.net'
-const pedro = '5491155550252@s.whatsapp.net'
-const ruben = '5491155550253@s.whatsapp.net'
-const tomas = '5491155550255@s.whatsapp.net'
-const ursula = '5491155550256@s.whatsapp.net'
-const victor = '5491155550257@s.whatsapp.net'
-const pena = '120363000000000131@g.us'
-const wanda = '5491155550258@s.whatsapp.net'
-const ximena = '5491155550259@s.whatsapp.net'
-const vecinos = '120363000000000132@g.us'
+const ofelia = '9984632219649@s.whatsapp.net'
+const pedro = '9985217196177@s.whatsapp.net'
+const ruben = '9985615286396@s.whatsapp.net'
+const tomas = '9986645199636@s.whatsapp.net'
+const ursula = '9987473348736@s.whatsapp.net'
+const victor = '9988386782256@s.whatsapp.net'
+const pena = '120363868135483324@g.us'
+const wanda = '9988987229756@s.whatsapp.net'
+const ximena = '9989595392334@s.whatsapp.net'
+const vecinos = '120363986389438451@g.us'
 
 export default {
   description: 'LLM errors: mixed with successes (N=1 and N>1), and runs where every chat fails (N=1 and N>1).',

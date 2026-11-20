@@ -150,7 +150,7 @@ describe('createHistoryList', () => {
       since: 1,
       until: 2,
       digest: { text: '<img src=x onerror=alert(1)>\nfull text', since: 1, until: 2 },
-      failedConversations: [{ id: '5491100000001@s.whatsapp.net', name: '<b>Ana</b>', reason: 'timeout' }],
+      failedConversations: [{ id: '9911963367943@s.whatsapp.net', name: '<b>Ana</b>', reason: 'timeout' }],
     }
     const { list } = setup({
       'GET /api/accounts/alpha/history?limit=2&offset=0': { body: view([7]) },

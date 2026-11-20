@@ -28,12 +28,12 @@
 // leaves out a different chat. Run 3 goes BACKWARDS in time after run 2, which is the only way to see the
 // pointer rule. All message times are unique. All names, numbers and texts are invented.
 
-const ana = '5491155550241@s.whatsapp.net'
-const xavier = '5491155550242@s.whatsapp.net'
-const bea = '5491155550243@s.whatsapp.net'
-const yago = '5491155550244@s.whatsapp.net'
-const carlos = '5491155550245@s.whatsapp.net'
-const dina = '5491155550246@s.whatsapp.net'
+const ana = '9982426778779@s.whatsapp.net'
+const xavier = '9983169618858@s.whatsapp.net'
+const bea = '9983571415483@s.whatsapp.net'
+const yago = '9983953599686@s.whatsapp.net'
+const carlos = '9984231156593@s.whatsapp.net'
+const dina = '9984564687392@s.whatsapp.net'
 
 export default {
   description: 'Window (inclusive start, exclusive end), pointer rules, --dry-run and an empty window, over several runs.',

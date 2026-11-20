@@ -9,8 +9,8 @@ afterEach(async () => {
   disposeHarnesses()
 })
 
-const ANA = '5491100000001@s.whatsapp.net'
-const BETO = '5491100000002@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
+const BETO = '9912465397241@s.whatsapp.net'
 const SECRET_TEXT = 'PRIVATE-CHAT-TEXT: the plan for friday'
 /** A chat with nothing to answer and nothing pending: the digest files it under "the rest". */
 const QUIET = { resumen: 'Beto only shared a photo', pendientes: [], necesita_respuesta: false, prioridad: 'baja' }

@@ -76,7 +76,7 @@ describe('LocalOnlyRouter with a function for its patterns (RF-43)', () => {
 })
 
 describe('LocalOnlyRouter (RF-43)', () => {
-  const patterns = ['familia', '5491100000001']
+  const patterns = ['familia', '9911963367943']
 
   it('sends ordinary conversations to the external summarizer', async () => {
     const external = new Fake(ok(VALID))
@@ -96,7 +96,7 @@ describe('LocalOnlyRouter (RF-43)', () => {
   it('sends a conversation matching by id to the local one', async () => {
     const external = new Fake(ok(VALID))
     const local = new Fake(ok({ local: true }))
-    await new LocalOnlyRouter(external, local, patterns).summarize(req('5491100000001@s.whatsapp.net', 'X'))
+    await new LocalOnlyRouter(external, local, patterns).summarize(req('9911963367943@s.whatsapp.net', 'X'))
     expect(local.requests).toHaveLength(1)
     expect(external.requests).toHaveLength(0)
   })

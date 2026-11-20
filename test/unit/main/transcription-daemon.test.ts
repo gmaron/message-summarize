@@ -8,7 +8,7 @@ import { createRuntime, type Runtime } from '../../../src/main/runtime.js'
 import { BA, disposeHarnesses, type Harness, makeHarness, NOW, until } from '../../support/cli-harness.js'
 import { FakeTranscriber } from '../../support/transcription-fakes.js'
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 
 let current: { runtime: Runtime; daemon: Daemon } | null = null
 afterEach(async () => {
@@ -38,7 +38,7 @@ async function setup(transcriber: FakeTranscriber | null) {
     transcriber,
     onTranscription: (outcome) => outcomes.push(outcome),
   })
-  runtime.identity.bind('5491100000009@s.whatsapp.net')
+  runtime.identity.bind('9913174261432@s.whatsapp.net')
   const daemon = new Daemon({ runtime, connection: h.connection, logger: h.ctx.logger, sweepMs: 40 })
   current = { runtime, daemon }
   /** A voice note whose file was downloaded: stored and queued (through the repository: no wake-up). */
@@ -52,7 +52,7 @@ async function setup(transcriber: FakeTranscriber | null) {
         conversationId: ANA,
         senderId: ANA,
         senderName: null,
-        senderAddress: '+5491100000001',
+        senderAddress: '+9911963367943',
         fromMe: false,
         timestamp,
         kind: 'audio',
@@ -112,7 +112,7 @@ describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
           conversationId: ANA,
           senderId: ANA,
           senderName: null,
-          senderAddress: '+5491100000001',
+          senderAddress: '+9911963367943',
           fromMe: false,
           timestamp,
           kind: 'audio',

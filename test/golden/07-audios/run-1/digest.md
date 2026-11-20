@@ -3,7 +3,7 @@
 
 *🔴 Necesitan respuesta*
 • *Mateo Rinaldi*: Mateo mandó dos audios que no se pudieron transcribir.
-• *Nuevo Vecino ( +5491155550205 )*: Un vecino nuevo del 4B pregunta por la llave del bicicletero.
+• *Nuevo Vecino ( +9962744354761 )*: Un vecino nuevo del 4B pregunta por la llave del bicicletero.
 
 *🟡 Con pendientes*
 • *Cumple de Tía Marta*: Lucía lleva la torta y las velitas, Sofía las bebidas y faltan diez sillas.

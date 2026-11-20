@@ -39,7 +39,7 @@ describe('createLogger', () => {
       count: 1,
       text: 'the secret message',
       name: 'Ana',
-      phone: '+5491100000001',
+      phone: '+9911963367943',
       code: { nested: 'object' },
       reason: ['array'],
     } as unknown as LogFields

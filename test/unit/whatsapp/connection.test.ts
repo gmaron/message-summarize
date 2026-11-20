@@ -16,9 +16,9 @@ import {
   recordingCapture,
 } from '../../support/whatsapp-fakes.js'
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const ANA_LID = '99900000001@lid'
-const ME = '5491100000009@s.whatsapp.net'
+const ME = '9913174261432@s.whatsapp.net'
 const ME_LID = '99900000009@lid'
 
 const boom = (statusCode: number) => ({ error: { output: { statusCode } } })
@@ -654,10 +654,10 @@ describe('the ids of one person (aliases)', () => {
     socket.user = { id: ME }
     socket.ev.emit('connection.update', { connection: 'open' })
     socket.lidToPhone[ANA_LID] = ANA
-    socket.phoneToLid['5491100000002@s.whatsapp.net'] = '99900000002@lid'
+    socket.phoneToLid['9912465397241@s.whatsapp.net'] = '99900000002@lid'
     expect(await t.connection.aliasesOf(ANA_LID)).toEqual([ANA])
-    expect(await t.connection.aliasesOf('5491100000002@s.whatsapp.net')).toEqual(['99900000002@lid'])
-    expect(await t.connection.aliasesOf('5491100000003@s.whatsapp.net')).toEqual([])
+    expect(await t.connection.aliasesOf('9912465397241@s.whatsapp.net')).toEqual(['99900000002@lid'])
+    expect(await t.connection.aliasesOf('9912752183123@s.whatsapp.net')).toEqual([])
     expect(await t.connection.aliasesOf('99900000077@lid')).toEqual([])
     // no sender and no query was reached for, and only the members of the narrow interface were read
     expect(socket.forbiddenCalls).toEqual([])

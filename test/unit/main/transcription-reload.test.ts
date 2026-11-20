@@ -20,7 +20,7 @@ const started = (w: World, id: string) => until(() => w.host.daemonOf(id) !== un
 const named = (w: World, event: string) =>
   w.h.logs.map((l) => JSON.parse(l) as { event: string; reason?: string }).filter((e) => e.event === event)
 const calls = (w: World) => w.h.connection.calls.filter((call) => call === 'start' || call === 'stop')
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 
 describe('a live change of the transcription settings restarts the unit of the account', () => {
   it('turning it off stops the unit (connection, downloads and whisper) and it comes back without transcription', async () => {
@@ -87,7 +87,7 @@ describe('a live change of the transcription settings restarts the unit of the a
         conversationId: ANA,
         senderId: ANA,
         senderName: null,
-        senderAddress: '+5491100000001',
+        senderAddress: '+9911963367943',
         fromMe: false,
         timestamp: Date.now() - 1_000,
         kind: 'audio',

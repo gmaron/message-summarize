@@ -9,12 +9,12 @@
 //   - 'Gimnasio'                  by name (group "Gimnasio Fuerza").
 //   - 'LAVADERO'                  case-different: matches the contact "Lavadero Express".
 //   - 'CERÁMICA'                  case-different with an accent: matches the group "Taller de Cerámica".
-//   - '55550203'                  jid fragment of an individual chat ("Proveedor Lima", whose name does not match).
-//   - '000000000104@g.us'         jid fragment of a group ("Consorcio Norte").
-//   - '+5491155550205'            unsaved contact through the number shown in its resolved name: the jid has no
-//                                 "+", so this only matches the name "Nico ( +5491155550205 )".
-//   - '( +5491155550207 )'        the exact format of the number inside the resolved name ("Roberto ( +... )").
-//   - '+5491155550206'            unsaved contact without alias, whose whole resolved name is the number.
+//   - '43136842'                  jid fragment of an individual chat ("Proveedor Lima", whose name does not match).
+//   - '752293942621@g.us'         jid fragment of a group ("Consorcio Norte").
+//   - '+9962744354761'            unsaved contact through the number shown in its resolved name: the jid has no
+//                                 "+", so this only matches the name "Nico ( +9962744354761 )".
+//   - '( +9965244915383 )'        the exact format of the number inside the resolved name ("Roberto ( +... )").
+//   - '+9963342211548'            unsaved contact without alias, whose whole resolved name is the number.
 //   - 'ana'                       ACCIDENTAL PARTIAL MATCH, frozen legacy behavior: it excludes "Ana Ruiz", as
 //                                 intended, and also "Mariana Paz" because "ana" is inside "mariana".
 //   - 'sin nombre'                matches the fallback name of a group that has no row in the chats table.
@@ -31,23 +31,23 @@
 // (same unsaved format, other number), Familia Rey, Club de Lectura, and the traps Camila (push name) and
 // Diego (chats.name). All message times are unique. All names, numbers and texts are invented.
 
-const gimnasio = '120363000000000101@g.us'
-const ceramica = '120363000000000102@g.us'
-const consorcio = '120363000000000104@g.us'
-const sinNombre = '120363000000000105@g.us' // no row in the chats table
-const familia = '120363000000000111@g.us'
-const lectura = '120363000000000112@g.us'
-const lavadero = '5491155550201@s.whatsapp.net'
-const proveedor = '5491155550203@s.whatsapp.net'
-const nico = '5491155550205@s.whatsapp.net'
-const sinAlias = '5491155550206@s.whatsapp.net'
-const roberto = '5491155550207@s.whatsapp.net'
-const anaRuiz = '5491155550208@s.whatsapp.net'
-const mariana = '5491155550209@s.whatsapp.net'
-const bruno = '5491155550211@s.whatsapp.net'
-const camila = '5491155550212@s.whatsapp.net'
-const marcos = '5491155550213@s.whatsapp.net'
-const diego = '5491155550214@s.whatsapp.net'
+const gimnasio = '120363611635657528@g.us'
+const ceramica = '120363643426751743@g.us'
+const consorcio = '120363752293942621@g.us'
+const sinNombre = '120363812983521325@g.us' // no row in the chats table
+const familia = '120363816734622135@g.us'
+const lectura = '120363833782816723@g.us'
+const lavadero = '9961674862244@s.whatsapp.net'
+const proveedor = '9962543136842@s.whatsapp.net'
+const nico = '9962744354761@s.whatsapp.net'
+const sinAlias = '9963342211548@s.whatsapp.net'
+const roberto = '9965244915383@s.whatsapp.net'
+const anaRuiz = '9965274136698@s.whatsapp.net'
+const mariana = '9965356336931@s.whatsapp.net'
+const bruno = '9965651964237@s.whatsapp.net'
+const camila = '9965982812417@s.whatsapp.net'
+const marcos = '9966713624961@s.whatsapp.net'
+const diego = '9968562793138@s.whatsapp.net'
 
 export default {
   description: 'Exclusion by name, jid fragment, case, number in the resolved name, and an accidental partial match.',
@@ -56,7 +56,7 @@ export default {
     horasPorDefecto: 24,
     soloNoLeidos: false,
     maxCaracteresPorChat: 6000,
-    excluir: ['Gimnasio', 'LAVADERO', 'CERÁMICA', '55550203', '000000000104@g.us', '+5491155550205', '( +5491155550207 )', '+5491155550206', 'ana', 'sin nombre', 'ofertas', 'promo'],
+    excluir: ['Gimnasio', 'LAVADERO', 'CERÁMICA', '43136842', '752293942621@g.us', '+9962744354761', '( +9965244915383 )', '+9963342211548', 'ana', 'sin nombre', 'ofertas', 'promo'],
     sinAgendarEnRojo: false,
     ocultarResto: false,
     proveedor: 'ollama',

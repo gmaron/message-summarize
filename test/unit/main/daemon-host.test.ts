@@ -25,14 +25,21 @@ import {
 import { isWindows } from '../../support/platform.js'
 
 const JID: Record<string, string> = {
-  alpha: '5491100000011@s.whatsapp.net',
-  beta: '5491100000022@s.whatsapp.net',
-  gamma: '5491100000033@s.whatsapp.net',
-  delta: '5491100000044@s.whatsapp.net',
-  idle: '5491100000055@s.whatsapp.net',
-  blocked: '5491100000066@s.whatsapp.net',
-  stranger: '5491100000099@s.whatsapp.net',
+  alpha: '9915434879818@s.whatsapp.net',
+  beta: '9915544595846@s.whatsapp.net',
+  gamma: '9915842349337@s.whatsapp.net',
+  delta: '9915896895892@s.whatsapp.net',
+  idle: '9915981279634@s.whatsapp.net',
+  blocked: '9915983169349@s.whatsapp.net',
+  stranger: '9916572487867@s.whatsapp.net',
 }
+
+/** None of the account numbers may reach the state file or the logs. */
+const NUMBERS = new RegExp(
+  Object.values(JID)
+    .map((jid) => jid.split('@')[0])
+    .join('|'),
+)
 const BASE = { language: 'en', timezone: 'UTC', provider: { primary: 'claude-cli' } }
 const TIMING: DaemonHostTiming = {
   scheduleReloadMs: 20,
@@ -172,7 +179,7 @@ const incoming = (id: string, conversation: string, text: string) => ({
     conversationId: `${conversation}@s.whatsapp.net`,
     senderId: `${conversation}@s.whatsapp.net`,
     senderName: null,
-    senderAddress: '+5491100000001',
+    senderAddress: '+9911963367943',
     fromMe: false,
     timestamp: Date.now() - 1_000,
     kind: 'text' as const,
@@ -222,7 +229,7 @@ describe('one daemon, several accounts (RF-03)', () => {
     const unitLines = logs(w.h).filter((e) => e.event.startsWith('account.') || e.event === 'connection.status')
     expect(unitLines.length).toBeGreaterThan(4)
     for (const line of unitLines) expect(['alpha', 'beta']).toContain(line.account)
-    expect(w.h.logs.join('')).not.toContain('5491100000011')
+    expect(w.h.logs.join('')).not.toContain('9915434879818')
   })
 
   it('--account runs only that account, ignoring the others', async () => {
@@ -838,7 +845,7 @@ describe('what the daemon says about each account (RF-04)', () => {
       const content = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
       expect(Object.keys(content).sort()).toEqual(['since', 'state'])
       expect(typeof content.since).toBe('number')
-      expect(readFileSync(file, 'utf8')).not.toMatch(/5491100/)
+      expect(readFileSync(file, 'utf8')).not.toMatch(NUMBERS)
       expect(existsSync(`${file}.tmp`)).toBe(false)
     }
   })
@@ -863,7 +870,7 @@ describe('what the daemon says about each account (RF-04)', () => {
     expect(flake.calls.length).toBeGreaterThan(3)
     // the failures of one run are said once, not on every try
     expect(named(w.h, 'state.writeFailed', 'alpha')).toHaveLength(1)
-    expect(JSON.stringify(named(w.h, 'state.writeFailed', 'alpha'))).not.toMatch(/5491100/)
+    expect(JSON.stringify(named(w.h, 'state.writeFailed', 'alpha'))).not.toMatch(NUMBERS)
   })
 
   it('gives up after a few tries: a failure that never passes is not tried in a tight loop', async () => {
@@ -919,7 +926,7 @@ describe('what the daemon says about each account (RF-04)', () => {
     const lock = await acquireDaemonLock(w.h.layout.lockFile, process.pid)
     expect(await run(w.h, 'status')).toBe(0)
     expect(w.h.out.join('\n')).toMatch(/^Connection: +connected \(since /m)
-    expect(w.h.out.join('\n')).not.toContain('5491100000011')
+    expect(w.h.out.join('\n')).not.toContain('9915434879818')
     if (lock.ok) await lock.release()
   })
 })

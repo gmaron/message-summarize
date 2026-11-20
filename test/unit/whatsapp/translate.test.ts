@@ -19,11 +19,11 @@ import { TempDatabase } from '../../support/persistence-backends.js'
 import { type RecordedCall, recordingCapture } from '../../support/whatsapp-fakes.js'
 import { BA, ba } from '../rendering/support.js'
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const ANA_LID = '99900000001@lid'
-const BETO = '5491100000002@s.whatsapp.net'
-const GROUP = '120363000000000001@g.us'
-const ME = '5491100000009@s.whatsapp.net'
+const BETO = '9912465397241@s.whatsapp.net'
+const GROUP = '120363146125332922@g.us'
+const ME = '9913174261432@s.whatsapp.net'
 const ME_LID = '99900000009@lid'
 const NOW = 1_800_000_000_000
 
@@ -59,7 +59,7 @@ describe('messages.upsert (RF-10)', () => {
     await translator.messagesUpsert({ type: 'notify', messages: [text('M1', ANA, 'hola', { pushName: 'Ana' })] })
     expect(methods(calls)).toEqual(['conversationMetadata', 'receiveMessage'])
     expect(calls[0]?.event).toEqual({
-      conversation: { id: ANA, isGroup: false, name: null, participantId: ANA, address: '+5491100000001' },
+      conversation: { id: ANA, isGroup: false, name: null, participantId: ANA, address: '+9911963367943' },
     })
     expect(calls[1]?.event).toEqual({
       isGroup: false,
@@ -71,7 +71,7 @@ describe('messages.upsert (RF-10)', () => {
         conversationId: ANA,
         senderId: ANA,
         senderName: 'Ana',
-        senderAddress: '+5491100000001',
+        senderAddress: '+9911963367943',
         fromMe: false,
         timestamp: 1_700_000_000_000,
         kind: 'text',
@@ -113,7 +113,7 @@ describe('messages.upsert (RF-10)', () => {
       isGroup: true,
       conversationName: 'Grupo Vecinos',
       sender: { id: BETO, publicName: 'Beto' },
-      message: { senderId: BETO, senderAddress: '+5491100000002', conversationId: GROUP },
+      message: { senderId: BETO, senderAddress: '+9912465397241', conversationId: GROUP },
     })
     // a group message without a participant has no sender
     expect(received[1]?.event).toMatchObject({ message: { senderId: null, senderAddress: null } })
@@ -154,8 +154,8 @@ describe('messages.upsert (RF-10)', () => {
       type: 'notify',
       messages: [
         text('S', 'status@broadcast', 'status'),
-        text('L', '120363000000000009@broadcast', 'list'),
-        text('N', '120363000000000002@newsletter', 'news'),
+        text('L', '120363384211496942@broadcast', 'list'),
+        text('N', '120363278292219878@newsletter', 'news'),
         text('O1', ME, 'to myself'),
         text('O2', ME_LID, 'to myself via lid'),
         text('O3', `${ME.replace('@', ':7@')}`, 'to myself with device'),
@@ -198,7 +198,7 @@ describe('LID to phone number (RF-13)', () => {
     const msg = text('M', ANA_LID, 'hola')
     await translator.messagesUpsert({ type: 'notify', messages: [{ ...msg, key: { ...msg.key, remoteJidAlt: ANA } }] })
     expect(only(calls, 'receiveMessage')[0]?.event).toMatchObject({
-      message: { conversationId: ANA, senderId: ANA, senderAddress: '+5491100000001' },
+      message: { conversationId: ANA, senderId: ANA, senderAddress: '+9911963367943' },
     })
   })
 
@@ -308,7 +308,7 @@ describe('two ids of one person (marks cover both)', () => {
   it('aliasesOf gives the other ids that are known, in both directions, and nothing for the unknown', async () => {
     const { translator } = setup({
       resolveLid: async (phone) => (phone === BETO ? '99900000002@lid' : null),
-      resolvePhoneNumber: async (lid) => (lid === '99900000003@lid' ? '5491100000003@s.whatsapp.net' : null),
+      resolvePhoneNumber: async (lid) => (lid === '99900000003@lid' ? '9912752183123@s.whatsapp.net' : null),
     })
     expect(await translator.aliasesOf(ANA)).toEqual([])
     await translator.learnLidMapping({ lid: ANA_LID, pn: ANA })
@@ -316,7 +316,7 @@ describe('two ids of one person (marks cover both)', () => {
     expect(await translator.aliasesOf(ANA_LID)).toEqual([ANA])
     // from the platform's own mapping
     expect(await translator.aliasesOf(BETO)).toEqual(['99900000002@lid'])
-    expect(await translator.aliasesOf('99900000003@lid')).toEqual(['5491100000003@s.whatsapp.net'])
+    expect(await translator.aliasesOf('99900000003@lid')).toEqual(['9912752183123@s.whatsapp.net'])
     expect(await translator.aliasesOf('99900000077@lid')).toEqual([])
   })
 })
@@ -583,7 +583,7 @@ describe('asking WhatsApp for a group name', () => {
         return 'From WhatsApp'
       },
     })
-    const other = '120363000000000077@g.us'
+    const other = '120363593221737256@g.us'
     await translator.messagesUpsert({ type: 'notify', messages: [text('A', GROUP, 'a'), text('B', other, 'b')] })
     expect(asked).toEqual([other])
     const names = only(calls, 'receiveMessage').map((c) => (c.event as { conversationName: string }).conversationName)
@@ -660,7 +660,7 @@ describe('history order matters for exclusion (RF-14), on SQLite', () => {
         ownIds: new OwnConversationIds(),
       })
       const stamp = Math.floor(ba(3, 10, 9, 0) / 1000)
-      const mariana = '5491100000003@s.whatsapp.net'
+      const mariana = '9912752183123@s.whatsapp.net'
       await translator.historySet({
         // messages listed FIRST in the payload, as Baileys may order them: the adapter must still do contacts first
         messages: [

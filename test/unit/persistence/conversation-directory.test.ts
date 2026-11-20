@@ -24,9 +24,9 @@ describe('SqliteConversationDirectory', () => {
   it('lists newest first with the name the digest uses, the count, the last time and the unread state', () => {
     const { writer, directory } = setup()
     writer.upsertParticipant(participant({ id: 'p1', savedName: 'Ana Test', publicName: 'Anita' }))
-    writer.upsertConversation(conversation({ id: 'c1', participantId: 'p1', address: '+5491100000001' }))
+    writer.upsertConversation(conversation({ id: 'c1', participantId: 'p1', address: '+9911963367943' }))
     writer.upsertParticipant(participant({ id: 'p2', savedName: null, publicName: 'Beto' }))
-    writer.upsertConversation(conversation({ id: 'c2', participantId: 'p2', address: '+5491100000002' }))
+    writer.upsertConversation(conversation({ id: 'c2', participantId: 'p2', address: '+9912465397241' }))
     writer.upsertConversation(
       conversation({ id: 'g1@g.us', isGroup: true, participantId: null, name: null, address: 'g1' }),
     )
@@ -42,14 +42,14 @@ describe('SqliteConversationDirectory', () => {
       id: 'c1',
       isGroup: false,
       name: 'Ana Test',
-      address: '+5491100000001',
+      address: '+9911963367943',
       lastMessageAt: 300,
       messages: 2,
       unread: { kind: 'count', count: 2 },
     })
     // an unsaved contact is "alias ( address )"; a group with no name and no messages comes last, with the digest's label
     expect(page.items[1]).toMatchObject({
-      name: 'Beto ( +5491100000002 )',
+      name: 'Beto ( +9912465397241 )',
       unread: { kind: 'markedUnread' },
       messages: 1,
     })
@@ -59,8 +59,8 @@ describe('SqliteConversationDirectory', () => {
   it('searches the name and the address, case-insensitively and beyond ASCII', () => {
     const { writer, directory } = setup()
     for (const [id, saved, address] of [
-      ['c1', 'Álvaro Peña', '+5491100000001'],
-      ['c2', 'Lavadero Express', '+5491100000002'],
+      ['c1', 'Álvaro Peña', '+9911963367943'],
+      ['c2', 'Lavadero Express', '+9912465397241'],
     ] as const) {
       writer.upsertParticipant(participant({ id: `p-${id}`, savedName: saved }))
       writer.upsertConversation(conversation({ id, participantId: `p-${id}`, address }))
@@ -72,7 +72,7 @@ describe('SqliteConversationDirectory', () => {
     expect(directory.list({ q: 'álvaro' }).items.map((i) => i.id)).toEqual(['c1'])
     expect(directory.list({ q: 'ÁLVARO' }).items.map((i) => i.id)).toEqual(['c1'])
     expect(directory.list({ q: 'cerámica' }).items.map((i) => i.id)).toEqual(['g'])
-    expect(directory.list({ q: '0002' }).items.map((i) => i.id)).toEqual(['c2'])
+    expect(directory.list({ q: '7241' }).items.map((i) => i.id)).toEqual(['c2'])
     expect(directory.list({ q: '  express ' }).total).toBe(1)
     expect(directory.list({ q: 'nobody' })).toEqual({ total: 0, items: [] })
   })

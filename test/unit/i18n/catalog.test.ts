@@ -85,7 +85,7 @@ const SAMPLES: Record<string, unknown[][]> = {
       {
         id: 'x',
         source: '/p',
-        masked: '+54****0011',
+        masked: '+99****9818',
         sessionFiles: 3,
         conversations: 2,
         participants: 1,
@@ -113,7 +113,7 @@ const SAMPLES: Record<string, unknown[][]> = {
       {
         id: 'x',
         source: '/p',
-        masked: '+54****0011',
+        masked: '+99****9818',
         sessionFiles: 1,
         conversations: 0,
         participants: 0,
@@ -249,7 +249,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   'cli.accounts.missingDir': [['x']],
   'cli.accounts.notADirectory': [['x']],
   'cli.accounts.row': [['id', 'whatsapp', 's']],
-  'cli.accounts.linked': [['+54****0009']],
+  'cli.accounts.linked': [['+99****1432']],
   'cli.accounts.blocked': [['r']],
   'cli.unlink.confirm': [['x']],
   'cli.unlink.done': [['x']],

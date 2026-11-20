@@ -10,7 +10,7 @@ export const account = (over: Partial<AccountView> = {}): AccountView => ({
   blockedAt: null,
   retryAfter: null,
   fix: null,
-  maskedNumber: '+54*******0009',
+  maskedNumber: '+99*******1432',
   lastDigest: null,
   nextRun: null,
   timezone: 'America/Argentina/Buenos_Aires',

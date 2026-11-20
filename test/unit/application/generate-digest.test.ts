@@ -73,7 +73,7 @@ function setup(
 describe('GenerateDigest: window', () => {
   it('returns the window errors and touches nothing when the window is invalid', async () => {
     const { source, store, summarizer, run } = setup({ pointer: 500 })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     const result = await run(request({ hours: -1 }))
     expect(result).toEqual(err({ kind: 'invalidWindow', errors: ['invalidHours'] }))
     expect(store.commits).toEqual([])
@@ -90,7 +90,7 @@ describe('GenerateDigest: window', () => {
 
   it('uses the clock for the end and the pointer for the start when they are not given', async () => {
     const { source, store, summarizer, run } = setup({ pointer: at(6) })
-    addChat(source, '5491100000001', 'Ana Gómez', [
+    addChat(source, '9911963367943', 'Ana Gómez', [
       [at(5), 'before the pointer'],
       [at(7), 'after the pointer'],
     ])
@@ -104,7 +104,7 @@ describe('GenerateDigest: window', () => {
 
   it('never moves the pointer back', async () => {
     const { source, store, run } = setup({ pointer: UNTIL + 1000 })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     await run(request({ hours: 24 }))
     expect(store.pointer).toBe(UNTIL + 1000)
   })
@@ -125,7 +125,7 @@ describe('GenerateDigest: empty window', () => {
 
   it('also counts as empty when every conversation is filtered out', async () => {
     const { source, store, run } = setup()
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     const result = await run(request({ settings: settings({ excludePatterns: ['ana'] }) }))
     expect(result.ok && result.value.digest).toBeNull()
     expect(store.pointer).toBe(UNTIL)
@@ -136,7 +136,7 @@ describe('GenerateDigest: empty window', () => {
 describe('GenerateDigest: preview', () => {
   it('returns the digest and saves nothing', async () => {
     const { source, store, run } = setup({ pointer: 100 })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     const result = await run(request({ preview: true }))
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -160,7 +160,7 @@ describe('GenerateDigest: saving', () => {
   it('saves the full digest, enqueues the delivery parts and moves the pointer in one commit', async () => {
     const { source, store, clock, run } = setup({ pointer: SINCE })
     clock.time = UNTIL + 5
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     const result = await run(request({ settings: settings({ hideRest: true }) }))
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -178,8 +178,8 @@ describe('GenerateDigest: saving', () => {
 
 describe('GenerateDigest: failures', () => {
   const twoChats = (source: InMemorySource) => {
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hello from ana']])
-    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'hello from beto']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hello from ana']])
+    addChat(source, '9912465397241', 'Beto Ruiz', [[at(2), 'hello from beto']])
   }
 
   it('counts a schema error from the LLM as a failure of that conversation only and advances the pointer', async () => {
@@ -193,7 +193,7 @@ describe('GenerateDigest: failures', () => {
     if (!result.ok) return
     expect(result.value.summarized).toBe(1)
     expect(result.value.failed).toEqual([
-      { conversationId: '5491100000001', name: 'Ana Gómez', reason: expect.stringContaining('prioridad') },
+      { conversationId: '9911963367943', name: 'Ana Gómez', reason: expect.stringContaining('prioridad') },
     ])
     const text = result.value.digest?.fullLines.join('\n') ?? ''
     expect(text).toContain('⚠️ 1')
@@ -227,7 +227,7 @@ describe('GenerateDigest: failures', () => {
       throw new Error('boom')
     })
     const { source, run } = setup({ summarizer })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     const result = await run(request())
     expect(result.ok && result.value.failed[0]?.reason).toBe('boom')
   })
@@ -236,8 +236,8 @@ describe('GenerateDigest: failures', () => {
 describe('GenerateDigest: filters', () => {
   it('never sends an excluded conversation to the Summarizer', async () => {
     const { source, summarizer, run } = setup()
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'secret chat']])
-    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'normal chat']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'secret chat']])
+    addChat(source, '9912465397241', 'Beto Ruiz', [[at(2), 'normal chat']])
     await run(request({ settings: settings({ excludePatterns: ['ANA GÓ'] }) }))
     expect(summarizer.calls).toHaveLength(1)
     expect(summarizer.calls[0]?.transcript).toContain('normal chat')
@@ -245,11 +245,11 @@ describe('GenerateDigest: filters', () => {
   })
 
   it('never sends the content of the own chat to the Summarizer, under any of its ids', async () => {
-    const own = ['5491100000009', '9990000000009']
+    const own = ['9913174261432', '9990000000009']
     const { source, summarizer, run } = setup({ ownConversationIds: () => own })
-    addChat(source, '5491100000009', 'Yo', [[at(1), 'note in my own chat']])
+    addChat(source, '9913174261432', 'Yo', [[at(1), 'note in my own chat']])
     addChat(source, '9990000000009', 'Yo LID', [[at(1), 'note in my own LID chat']])
-    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'normal chat']])
+    addChat(source, '9912465397241', 'Beto Ruiz', [[at(2), 'normal chat']])
     await run(request())
     expect(summarizer.calls).toHaveLength(1)
     expect(summarizer.calls[0]?.transcript).toContain('normal chat')
@@ -309,7 +309,7 @@ describe('GenerateDigest: unread only', () => {
 
   it('summarizes from the first unread message and passes the earlier ones as context', async () => {
     const { source, summarizer, run } = setup()
-    const id = '5491100000001'
+    const id = '9911963367943'
     source.addConversation(conversation({ id, name: 'Ana Gómez', participantId: id }))
     source.addParticipant({ id, savedName: 'Ana Gómez', publicName: null })
     const chat = (n: number, timestamp: number, text: string, read: boolean) =>
@@ -337,9 +337,9 @@ describe('GenerateDigest: unread only', () => {
 
   it('skips conversations whose unread state is unknown or zero', async () => {
     const { source, summarizer, run } = setup()
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'unknown state']])
-    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'zero unread']])
-    source.setUnread('5491100000002', { kind: 'count', count: 0 })
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'unknown state']])
+    addChat(source, '9912465397241', 'Beto Ruiz', [[at(2), 'zero unread']])
+    source.setUnread('9912465397241', { kind: 'count', count: 0 })
     const result = await run(request({ settings: unreadSettings }))
     expect(summarizer.calls).toEqual([])
     expect(result.ok && result.value.digest).toBeNull()
@@ -347,11 +347,11 @@ describe('GenerateDigest: unread only', () => {
 
   it('summarizes the whole window of a conversation marked as unread by hand, with no context', async () => {
     const { source, summarizer, run } = setup()
-    addChat(source, '5491100000001', 'Ana Gómez', [
+    addChat(source, '9911963367943', 'Ana Gómez', [
       [SINCE - 1000, 'before the window'],
       [at(1), 'in window'],
     ])
-    source.setUnread('5491100000001', { kind: 'markedUnread' })
+    source.setUnread('9911963367943', { kind: 'markedUnread' })
     await run(request({ settings: unreadSettings }))
     const transcript = summarizer.calls[0]?.transcript ?? ''
     expect(transcript).toContain('in window')
@@ -361,8 +361,8 @@ describe('GenerateDigest: unread only', () => {
 
   it('does not read unread state when the option is off', async () => {
     const { source, summarizer, run } = setup()
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'plain']])
-    source.setUnread('5491100000001', { kind: 'count', count: 0 })
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'plain']])
+    source.setUnread('9911963367943', { kind: 'count', count: 0 })
     await run(request())
     expect(summarizer.calls).toHaveLength(1)
   })
@@ -371,7 +371,7 @@ describe('GenerateDigest: unread only', () => {
 describe('GenerateDigest: concurrency', () => {
   const addMany = (source: InMemorySource, n: number) => {
     for (let i = 1; i <= n; i++)
-      addChat(source, `54911000000${String(i).padStart(2, '0')}`, `Chat ${i}`, [[at(1, i), `message ${i}`]])
+      addChat(source, `99649735567${String(i).padStart(2, '0')}`, `Chat ${i}`, [[at(1, i), `message ${i}`]])
   }
   const idOf = (transcript: string): number => Number(/message (\d+)/.exec(transcript)?.[1])
 
@@ -464,7 +464,7 @@ describe('GenerateDigest: concurrent runs', () => {
     })
     const { source, store, run } = setup({ pointer: SINCE, summarizer })
     holder.store = store
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     const result = await run(request())
     expect(result).toEqual(err({ kind: 'concurrentRun' }))
     expect(store.commits).toEqual([])
@@ -488,7 +488,7 @@ describe('GenerateDigest: concurrent runs', () => {
 
   it('sends the pointer it read as previousPointer', async () => {
     const { source, store, run } = setup({ pointer: SINCE })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'hi']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     await run(request({ from: undefined }))
     expect(store.commits[0]?.previousPointer).toBe(SINCE)
   })
@@ -525,19 +525,19 @@ describe('GenerateDigest: sections and counts', () => {
   it('flags unsaved contacts only when the option is on, and only the unsaved ones', async () => {
     const run1 = async (flagUnsaved: boolean) => {
       const { source, run } = setup()
-      addChat(source, '5491100000001', 'Saved Sam', [[at(1), 'hi']])
+      addChat(source, '9911963367943', 'Saved Sam', [[at(1), 'hi']])
       source.addConversation(
-        conversation({ id: '5491100000002', name: null, participantId: 'stranger', address: '+5491100000002' }),
+        conversation({ id: '9912465397241', name: null, participantId: 'stranger', address: '+9912465397241' }),
       )
       source.addMessages(
-        message({ id: 's', conversationId: '5491100000002', senderId: 'stranger', timestamp: at(2), text: 'hello' }),
+        message({ id: 's', conversationId: '9912465397241', senderId: 'stranger', timestamp: at(2), text: 'hello' }),
       )
       const result = await run(request({ settings: settings({ flagUnsaved }) }))
       return result.ok ? (result.value.digest?.fullLines.join('\n') ?? '') : ''
     }
     const on = await run1(true)
     expect(on).toContain('Unsaved: 1 chat')
-    expect(position(on, '+5491100000002')).toBeLessThan(position(on, 'Saved Sam'))
+    expect(position(on, '+9912465397241')).toBeLessThan(position(on, 'Saved Sam'))
     expect(await run1(false)).not.toContain('Unsaved')
   })
 
@@ -628,11 +628,11 @@ describe('GenerateDigest: throw safety', () => {
       clock: new FixedClock(UNTIL),
       renderers: throwing,
     })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'a']])
-    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'b']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'a']])
+    addChat(source, '9912465397241', 'Beto Ruiz', [[at(2), 'b']])
     const result = await run(request())
     expect(result.ok && result.value.failed).toEqual([
-      { conversationId: '5491100000001', name: 'Ana Gómez', reason: 'render exploded' },
+      { conversationId: '9911963367943', name: 'Ana Gómez', reason: 'render exploded' },
     ])
     expect(result.ok && result.value.summarized).toBe(1)
     expect(store.pointer).toBe(UNTIL)
@@ -641,7 +641,7 @@ describe('GenerateDigest: throw safety', () => {
   it('treats an outcome that is not a Result as a failure', async () => {
     const summarizer = new FakeSummarizer((() => undefined) as unknown as () => Result<unknown, string>)
     const { source, run } = setup({ summarizer })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'a']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'a']])
     const result = await run(request())
     expect(result.ok && result.value.failed.map((f) => f.reason)).toEqual([
       'the summarizer returned something that is not a result',
@@ -667,8 +667,8 @@ describe('GenerateDigest: throw safety', () => {
       clock: new FixedClock(UNTIL),
       renderers,
     })
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'a']])
-    addChat(source, '5491100000002', 'Beto Ruiz', [[at(2), 'b']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'a']])
+    addChat(source, '9912465397241', 'Beto Ruiz', [[at(2), 'b']])
     const result = await run(request({ runId: 7 }))
     expect(result.ok && result.value.providers).toEqual({ anthropic: 1, ollama: 1 })
     // ...and it is what the committed run (the history) is given
@@ -683,8 +683,8 @@ describe('GenerateDigest: throw safety', () => {
 
   it('passes the conversation to the Summarizer', async () => {
     const { source, summarizer, run } = setup()
-    addChat(source, '5491100000001', 'Ana Gómez', [[at(1), 'a']])
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'a']])
     await run(request())
-    expect(summarizer.calls[0]?.conversation).toEqual({ id: '5491100000001', name: 'Ana Gómez', isGroup: false })
+    expect(summarizer.calls[0]?.conversation).toEqual({ id: '9911963367943', name: 'Ana Gómez', isGroup: false })
   })
 })

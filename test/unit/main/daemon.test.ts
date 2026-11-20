@@ -529,7 +529,7 @@ describe('Daemon: terminal states of the connection (idle, never a reconnect loo
         conversationId: 'c@s.whatsapp.net',
         senderId: 'c@s.whatsapp.net',
         senderName: null,
-        senderAddress: '+5491100000001',
+        senderAddress: '+9911963367943',
         fromMe: false,
         timestamp: Date.now(),
         kind: 'text' as const,

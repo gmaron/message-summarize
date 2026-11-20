@@ -59,7 +59,7 @@ describe('lines', () => {
     expect(body({ messages: [entry({ savedName: 'Saved', publicName: 'Public' })] })).toBe('[09:05] Saved: x')
     expect(body({ messages: [entry({ savedName: null, publicName: 'Public' })] })).toBe('[09:05] Public: x')
     expect(body({ messages: [entry(null, { senderName: 'Push' })] })).toBe('[09:05] Push: x')
-    expect(body({ messages: [entry(null, { senderAddress: '+5491100000009' })] })).toBe('[09:05] +5491100000009: x')
+    expect(body({ messages: [entry(null, { senderAddress: '+9913174261432' })] })).toBe('[09:05] +9913174261432: x')
     expect(body({ messages: [entry(null)] })).toBe('[09:05] ?: x')
   })
   it('shows the time in the given time zone', () => {

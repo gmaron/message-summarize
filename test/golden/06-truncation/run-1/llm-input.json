@@ -2,37 +2,37 @@
   "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
   "calls": [
     {
-      "jid": "5491155550175@s.whatsapp.net",
+      "jid": "9958983683679@s.whatsapp.net",
       "chatName": "Gonzalo Peña",
       "isGroup": false,
       "userMessage": "Chat con: Gonzalo Peña\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[08:10] Gonzalo Peña: k01 k02 k03 k04 k05 k06 k07 k08 k09 k10 k11 k12 k13 k14 k15 k16 k17 k18 k19 k20 k21 k22 k2\n[08:20] Sofía [VOS]: l01 l02 l03 l04 l05 l06 l07 l08 l09 l10 l11 l12 l13 l14 l15 l16 l17 l18 l19 l20 l21 l22 l2\n[08:30] Gonzalo Peña: s01 s02 s03 s04 s05 s06 s07 s08 s09 s10 s11 s12 s13 s14 s15 s16 s17 s18 s19 s20 s21 s22 s2\n[08:40] Sofía [VOS]: t01 t02 t03 t04 t05 t06 t07 t08 t09 t10 t11 t12 t13 t14 t15 t16 t17 t18 t19 t20 t21 t22 t2\n[08:50] Gonzalo Peña: u01 u02 u03 u04 u05 u06 u07 u08 u09 u10 u11 u12 u13 u14 u15 u16 u17 u18 u19 u20 u21 u22 u2\n\nMensajes sin leer (resumí estos):\n(…mensajes anteriores recortados…)\n37 v3\n[10:05] Sofía [VOS]: w01 w02 w03 w04 w05 w06 w07 w08 w09 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25.\n[10:10] Gonzalo Peña: x01 x02 x03 x04 x05 x06 x07 x08 x09 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30 x31 x32 x33 x34 x35 x36 x37 x3"
     },
     {
-      "jid": "5491155550176@s.whatsapp.net",
+      "jid": "9959921384218@s.whatsapp.net",
       "chatName": "Hilda Ríos",
       "isGroup": false,
       "userMessage": "Chat con: Hilda Ríos\n\nMensajes anteriores, ya leídos (solo como contexto, no los resumas):\n[08:15] Hilda Ríos: y01 y02 y03 y04 y05 y06 y07 y08 y09 y10 y11 y12 y13 y14 y15 y16 y17 y18 y19 y20.\n[08:25] Hilda Ríos: z01 z02 z03 z04 z05 z06 z07 z08 z09 z10 z11 z12 z13 z14 z15 z16 z17 z18 z19 z20.\n[08:35] Hilda Ríos: A01 A02 A03 A04 A05 A06 A07 A08 A09 A10 A11 A12 A13 A14 A15 A16 A17 A18 A19 A20.\n[08:45] Hilda Ríos: B01 B02 B03 B04 B05 B06 B07 B08 B09 B10 B11 B12 B13 B14 B15 B16 B17 B18 B19 B20.\n[08:55] Hilda Ríos: C01 C02 C03 C04 C05 C06 C07 C08 C09 C10 C11 C12 C13 C14 C15 C16 C17 C18 C19 C20.\n\nMensajes sin leer (resumí estos):\n[11:00] Hilda Ríos: D01 D02 D03 D04 D05 D06 D07 D08 D09 D10 D11 D12 D13 D14 D15."
     },
     {
-      "jid": "5491155550171@s.whatsapp.net",
+      "jid": "9953773875532@s.whatsapp.net",
       "chatName": "Ana Torres",
       "isGroup": false,
       "userMessage": "Chat con: Ana Torres\n\n[09:00] Ana Torres: a01 a02 a03 a04 a05 a06 a07 a08 a09 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20.\n[09:01] Ana Torres: b01 b02 b03 b04 b05 b06 b07 b08 b09 b10 b11 b12 b13 b14 b15 b16 b17 b18 b19 b20.\n[09:02] Ana Torres: c01 c02 c03 c04 c05 c06 c07 c08 c09 c10 c11 c12 c13 c14 c15 c16 c17 c18 c19 c2"
     },
     {
-      "jid": "5491155550172@s.whatsapp.net",
+      "jid": "9954749878772@s.whatsapp.net",
       "chatName": "Omar Vega",
       "isGroup": false,
       "userMessage": "Chat con: Omar Vega\n\n(…mensajes anteriores recortados…)\n09:10] Omar Vega: d01 d02 d03 d04 d05 d06 d07 d08 d09 d10 d11 d12 d13 d14 d15 d16 d17 d18 d19 d20.\n[09:11] Omar Vega: e01 e02 e03 e04 e05 e06 e07 e08 e09 e10 e11 e12 e13 e14 e15 e16 e17 e18 e19 e20.\n[09:12] Omar Vega: f01 f02 f03 f04 f05 f06 f07 f08 f09 f10 f11 f12 f13 f14 f15 f16 f17 f18 f19 f20 f2"
     },
     {
-      "jid": "5491155550173@s.whatsapp.net",
+      "jid": "9955328569774@s.whatsapp.net",
       "chatName": "Marina Cruz",
       "isGroup": false,
       "userMessage": "Chat con: Marina Cruz\n\n(…mensajes anteriores recortados…)\n2 o13 o14 o15 o16 o17 o1\n[09:23] Marina Cruz: p01 p02 p03 p04 p05 p06 p07 p08 p09 p10 p11 p12 p13 p14 p15 p16 p17 p1\n[09:24] Marina Cruz: q01 q02 q03 q04 q05 q06 q07 q08 q09 q10 q11 q12 q13 q14 q15 q16 q17 q1\n[09:25] Marina Cruz: r01 r02 r03 r04 r05 r06 r07 r08 r09 r10 r11 r12 r13 r14 r15 r16 r17 r1"
     },
     {
-      "jid": "5491155550174@s.whatsapp.net",
+      "jid": "9958486329435@s.whatsapp.net",
       "chatName": "Emi Díaz",
       "isGroup": false,
       "userMessage": "Chat con: Emi Díaz\n\n(…mensajes anteriores recortados…)\n\ude00h01 h02 h03 h04 h05.\n[09:31] Emi Díaz: i01 i02 i03 i04 i05 i06 i07 i08 i09 i10 i11 i12 i13 i14 i15 i16 i17 i18 i19 i20 i21 i22 i23 i24 i25 i26 i27 i28 i29 i30.\n[09:32] Emi Díaz: j01 j02 j03 j04 j05 j06 j07 j08 j09 j10 j11 j12 j13 j14 j15 j16 j17 j18 j19 j20 j21 j22 j23 j24 j25 j26 j27 j28 j29 j30 j"

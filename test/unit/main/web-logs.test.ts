@@ -102,14 +102,14 @@ describe('GET /api/logs (RF-75)', () => {
     const sneaky = {
       code: 'E',
       text: 'PRIVATE-CHAT-TEXT',
-      phone: '+5491100000001',
+      phone: '+9911963367943',
       account: 'alpha',
     } as unknown as LogFields
     store.add(buildLogRecord('warn', 'x.failed', sneaky, T0))
     const w = await world({ logs: store })
     const reply = await w.api('GET', '/api/logs')
     expect(JSON.stringify(reply.body)).not.toContain('PRIVATE')
-    expect(JSON.stringify(reply.body)).not.toContain('5491100000001')
+    expect(JSON.stringify(reply.body)).not.toContain('9911963367943')
     expect((reply.body.items as { fields: object }[])[0]?.fields).toEqual({ code: 'E' })
   })
 })

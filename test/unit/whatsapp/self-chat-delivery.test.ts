@@ -18,12 +18,12 @@ import { FixedClock, InMemoryAccountIdentity, InMemoryOutbox } from '../../suppo
 import { TempDatabase } from '../../support/persistence-backends.js'
 import { type FakeSocket, fakeSocket, fakeSocketFactory, recordingCapture } from '../../support/whatsapp-fakes.js'
 
-const ME = '5491100000009@s.whatsapp.net'
-const ME_DEVICE = '5491100000009:4@s.whatsapp.net'
+const ME = '9913174261432@s.whatsapp.net'
+const ME_DEVICE = '9913174261432:4@s.whatsapp.net'
 const ME_LID = '99900000009@lid'
-const OTHER_ACCOUNT = '5491100000077@s.whatsapp.net'
-const ANA = '5491100000001@s.whatsapp.net'
-const GROUP = '120363000000000001@g.us'
+const OTHER_ACCOUNT = '9916244224364@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
+const GROUP = '120363146125332922@g.us'
 const ANA_LID = '99900000001@lid'
 
 /** A source that behaves like a connected connection over a fake socket. */
@@ -190,7 +190,7 @@ describe('reconcileAccount', () => {
 
   it('matches when the socket is the bound account, whatever the device', () => {
     const identity = new InMemoryAccountIdentity(ME)
-    expect(reconcileAccount(identity, { id: '5491100000009:12@s.whatsapp.net' })).toBe('matches')
+    expect(reconcileAccount(identity, { id: '9913174261432:12@s.whatsapp.net' })).toBe('matches')
   })
 
   it('reports a mismatch for a different account and keeps the bound one', () => {
@@ -319,7 +319,7 @@ describe('the connection hands out the send capability only while connected', ()
     await t.conn.start()
     const socketB = t.factory.sockets[1] as FakeSocket
     expect(socketB).not.toBe(socketA)
-    open(socketB, { id: '5491100000077:3@s.whatsapp.net', lid: '99900000077:3@lid' })
+    open(socketB, { id: '9916244224364:3@s.whatsapp.net', lid: '99900000077:3@lid' })
 
     expect(reconcileAccount(identity, t.conn.selfChat()?.user)).toBe('mismatch')
     expect(identity.get()).toBe(ME)

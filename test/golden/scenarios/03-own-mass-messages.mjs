@@ -42,15 +42,15 @@ const N1_NEAR = chars('Consorcio: reunión el jueves 18 hs en el SUM!', 45)
 const P2 = chars('Se suspende la clase de hoy por lluvia, perdón!', 47)
 const OUTW = chars('El taller de cerámica cambió de día: ahora el martes.', 53)
 
-const beto = '5491155550121@s.whatsapp.net'
-const cora = '5491155550122@s.whatsapp.net'
-const dani = '5491155550123@s.whatsapp.net'
-const eli = '5491155550124@s.whatsapp.net'
-const fede = '5491155550125@s.whatsapp.net'
-const gabi = '5491155550126@s.whatsapp.net'
-const hugo = '5491155550127@s.whatsapp.net'
-const juan = '5491155550128@s.whatsapp.net'
-const kari = '5491155550129@s.whatsapp.net'
+const beto = '9929945427978@s.whatsapp.net'
+const cora = '9931292158168@s.whatsapp.net'
+const dani = '9931695121572@s.whatsapp.net'
+const eli = '9932128849692@s.whatsapp.net'
+const fede = '9932339695991@s.whatsapp.net'
+const gabi = '9932684563789@s.whatsapp.net'
+const hugo = '9932768343897@s.whatsapp.net'
+const juan = '9933568831267@s.whatsapp.net'
+const kari = '9934185296885@s.whatsapp.net'
 
 export default {
   description: 'Own mass messages: whole-database counting, length and distinct-chat thresholds, skipped chats.',

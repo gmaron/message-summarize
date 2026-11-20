@@ -20,7 +20,7 @@ import { until } from '../../support/cli-harness.js'
 import { TempDatabase } from '../../support/persistence-backends.js'
 import { fakeSocketFactory, recordingCapture } from '../../support/whatsapp-fakes.js'
 
-const ANA = '5491100000001@s.whatsapp.net'
+const ANA = '9911963367943@s.whatsapp.net'
 const NOW = 1_800_000_000_000
 const SECONDS = NOW / 1000
 const DAY = 86_400
@@ -564,7 +564,7 @@ describe('the WhatsApp connection, the capture and SQLite together (RF-15, RNF-0
           conversationId: ANA,
           senderId: ANA,
           senderName: null,
-          senderAddress: '+5491100000001',
+          senderAddress: '+9911963367943',
           fromMe: false,
           timestamp: NOW - 1000,
           kind: 'audio',

@@ -40,12 +40,12 @@ const expect = (what, actual, wanted) => {
   if (actual !== wanted) throw new Error(`${what}: expected ${wanted}, got ${actual}`)
 }
 
-const ana = '5491155550171@s.whatsapp.net'
-const omar = '5491155550172@s.whatsapp.net'
-const marina = '5491155550173@s.whatsapp.net'
-const emi = '5491155550174@s.whatsapp.net'
-const gonzalo = '5491155550175@s.whatsapp.net'
-const hilda = '5491155550176@s.whatsapp.net'
+const ana = '9953773875532@s.whatsapp.net'
+const omar = '9954749878772@s.whatsapp.net'
+const marina = '9955328569774@s.whatsapp.net'
+const emi = '9958486329435@s.whatsapp.net'
+const gonzalo = '9958983683679@s.whatsapp.net'
+const hilda = '9959921384218@s.whatsapp.net'
 
 const anaTexts = [fill(80, 'a'), fill(80, 'b'), fill(78, 'c')]
 const omarTexts = [fill(80, 'd'), fill(80, 'e'), fill(82, 'f')]

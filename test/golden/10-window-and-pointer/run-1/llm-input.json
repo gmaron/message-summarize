@@ -2,13 +2,13 @@
   "system": "Sos el asistente de Sofía. Resumí cada conversación en español rioplatense.\nMarcá si Sofía tiene que responder y listá sus pendientes.",
   "calls": [
     {
-      "jid": "5491155550242@s.whatsapp.net",
+      "jid": "9983169618858@s.whatsapp.net",
       "chatName": "Xavier Roldán",
       "isGroup": false,
       "userMessage": "Chat con: Xavier Roldán\n\n[06:00] Xavier Roldán: Sofi, ¿confirmamos la visita de las 10?"
     },
     {
-      "jid": "5491155550243@s.whatsapp.net",
+      "jid": "9983571415483@s.whatsapp.net",
       "chatName": "Bea Cortés",
       "isGroup": false,
       "userMessage": "Chat con: Bea Cortés\n\n[09:00] Bea Cortés: Te dejo las llaves en la portería\n[09:10] Bea Cortés: Cualquier cosa me llamás"

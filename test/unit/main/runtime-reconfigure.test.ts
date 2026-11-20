@@ -90,14 +90,14 @@ describe('Runtime.reconfigure', () => {
         {
           id: 'a1',
           text: 'private plan',
-          conversationId: '5491100000001@s.whatsapp.net',
+          conversationId: '9911963367943@s.whatsapp.net',
           conversationName: 'Ana Test',
           timestamp: h.clock.time - 3_600_000,
         },
         {
           id: 'b1',
           text: 'lunch',
-          conversationId: '5491100000002@s.whatsapp.net',
+          conversationId: '9912465397241@s.whatsapp.net',
           conversationName: 'Beto Test',
           timestamp: h.clock.time - 3_500_000,
         },
@@ -161,7 +161,7 @@ describe('Runtime.reconfigure', () => {
         {
           id: 'a1',
           text: 'private plan',
-          conversationId: '5491100000001@s.whatsapp.net',
+          conversationId: '9911963367943@s.whatsapp.net',
           conversationName: 'Ana Test',
           timestamp: h.clock.time - 3_600_000,
         },

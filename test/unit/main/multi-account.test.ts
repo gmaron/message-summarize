@@ -70,11 +70,11 @@ describe('msum accounts', () => {
     await writeBlocked(h.accountOf('beta').blockedFile, 'forbidden', NOW)
     expect(await run(h, 'accounts')).toBe(0)
     const output = text(h.out)
-    expect(output).toMatch(/^ {2}alpha\s+whatsapp\s+linked \(\+54\*+0009\)$/m)
+    expect(output).toMatch(/^ {2}alpha\s+whatsapp\s+linked \(\+99\*+1432\)$/m)
     expect(output).toMatch(/^ {2}beta\s+whatsapp\s+blocked: WhatsApp refused the connection/m)
     expect(output).toMatch(/^ {2}gamma\s+whatsapp\s+not linked$/m)
     expect(output).toContain(maskAccount(ME))
-    expect(output).not.toContain('5491100000009')
+    expect(output).not.toContain('9913174261432')
     expect(output).not.toContain('creds')
   })
 
@@ -426,12 +426,12 @@ describe('msum status with accounts', () => {
     h.out.length = 0
     expect(await run(h, 'status')).toBe(0)
     const output = text(h.out)
-    expect(output).toMatch(/^Account: +alpha \(\+54\*+0009\)$/m)
+    expect(output).toMatch(/^Account: +alpha \(\+99\*+1432\)$/m)
     expect(output).toMatch(/^Account: +beta \(not linked\)$/m)
     expect(output.match(/^Pending deliveries:/gm)).toHaveLength(2)
     expect(output).toMatch(/^Daemon: +stopped$/m)
     expect(output).not.toContain('CONFIDENTIAL')
-    expect(output).not.toContain('5491100000009')
+    expect(output).not.toContain('9913174261432')
     h.out.length = 0
     await run(h, 'status', '--account', 'beta')
     expect(text(h.out)).toContain('beta (not linked)')
