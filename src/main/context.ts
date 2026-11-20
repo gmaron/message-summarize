@@ -181,7 +181,7 @@ export async function hasSession(account: Pick<AccountLayout, 'authDir'>): Promi
   }
 }
 
-/** "5491100000009@s.whatsapp.net" as "+54*******0009": enough to recognize the account, not to read the number. */
+/** "9963667784458@s.whatsapp.net" as "+99*******4458": enough to recognize the account, not to read the number. */
 export function maskAccount(jid: string): string {
   const digits = jid.split('@')[0]?.replace(/\D/g, '') ?? ''
   if (digits.length <= 6) return '+******'

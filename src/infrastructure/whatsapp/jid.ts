@@ -1,6 +1,6 @@
 /**
  * WhatsApp identifiers ("JIDs"), as pure functions. Everything WhatsApp-specific about ids stops here: the core only
- * sees the normalized phone-number JID ("5491100000001@s.whatsapp.net") or, when no number is known, the LID.
+ * sees the normalized phone-number JID ("9963667784458@s.whatsapp.net") or, when no number is known, the LID.
  */
 
 const PHONE_SERVER = 's.whatsapp.net'
@@ -46,7 +46,7 @@ export function selfChatJid(user: { readonly id?: string | null | undefined } | 
   return /^\d+@s\.whatsapp\.net$/.test(normalized) ? normalized : null
 }
 
-/** What the digest shows for an individual chat with no name: "+5491100000001", or the raw id when it is no number. */
+/** What the digest shows for an individual chat with no name: "+9963667784458", or the raw id when it is no number. */
 export function addressOf(jid: string): string {
   const decoded = decode(jid)
   return decoded !== null && decoded.server === PHONE_SERVER ? `+${decoded.user}` : jid

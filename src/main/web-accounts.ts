@@ -33,7 +33,7 @@ export interface AccountView {
    * (`POST .../retry`). Null when the account is not blocked. The page offers a button for it and nothing else.
    */
   readonly fix: 'relink' | 'retry' | null
-  /** "+54*******0009", or null when nothing is linked. */
+  /** "+99*******4458", or null when nothing is linked. */
   readonly maskedNumber: string | null
   /** Where the last digest ended (epoch ms), or null when there has been none. */
   readonly lastDigest: number | null
