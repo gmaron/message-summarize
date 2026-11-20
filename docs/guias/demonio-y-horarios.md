@@ -71,7 +71,7 @@ Una instalación puede tener varias cuentas: `msum link --account trabajo` crea 
   - sus opciones de primer nivel reemplazan a las de la instalación;
   - `provider` se combina clave por clave;
   - las listas de privacidad `localOnlyPatterns` y `excludePatterns` se **suman** a las de la instalación (nunca las reemplazan), así que una cuenta solo puede volverlas más estrictas.
-- Un patrón es un pedazo de `<id> <nombre>` sin distinguir mayúsculas ("ana" también coincide con "Mariana"), salvo `id:<id de la conversación>`, que coincide exactamente con ese id. Es lo que escribe la página web al marcar un chat, porque un id común como `5491112345678@s.whatsapp.net` también está contenido en `15491112345678@s.whatsapp.net`.
+- Un patrón es un pedazo de `<id> <nombre>` sin distinguir mayúsculas ("ana" también coincide con "Mariana"), salvo `id:<id de la conversación>`, que coincide exactamente con ese id. Es lo que escribe la página web al marcar un chat, porque un id común como `9963667784458@s.whatsapp.net` también está contenido en `19963667784458@s.whatsapp.net`.
 - `msum unlink --account trabajo` borra solo los datos de esa cuenta.
 - Una instalación anterior a esta estructura (`account/`) se mueve sola a `accounts/default/`, sin ningún daemon corriendo.
 

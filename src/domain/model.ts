@@ -10,7 +10,7 @@ export interface Conversation {
   readonly name: string | null
   /** The participant whose name and saved state identify an individual chat. Null for groups. */
   readonly participantId: string | null
-  /** What to show for an individual chat with no name. The adapter computes it at capture ("+5491155550000" or the raw id). */
+  /** What to show for an individual chat with no name. The adapter computes it at capture ("+9963667784458" or the raw id). */
   readonly address: string
 }
 

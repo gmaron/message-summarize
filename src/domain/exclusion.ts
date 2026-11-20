@@ -24,8 +24,8 @@ export function hasIdPattern(patterns: readonly string[], conversationId: string
  * The name is the resolved one, as shown in the digest.
  *
  * - A pattern `id:<conversation id>` is EXACT: it matches only the conversation whose id equals it (case-insensitive,
- *   spaces after the prefix ignored) and never matches by substring, so `id:5491112345678@s.whatsapp.net` does not catch
- *   `15491112345678@s.whatsapp.net`.
+ *   spaces after the prefix ignored) and never matches by substring, so `id:9963667784458@s.whatsapp.net` does not catch
+ *   `19963667784458@s.whatsapp.net`.
  * - Every other pattern is a case-insensitive substring of "<id> <name>". On purpose: "ana" also matches "Mariana".
  */
 export function isExcluded(patterns: readonly string[], conversationId: string, resolvedName: string | null): boolean {

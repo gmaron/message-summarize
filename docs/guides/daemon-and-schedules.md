@@ -71,7 +71,7 @@ An installation can have several accounts: `msum link --account work` creates an
   - its top-level options replace those of the installation;
   - `provider` is merged key by key;
   - the privacy lists `localOnlyPatterns` and `excludePatterns` are **added** to those of the installation (they never replace them), so an account can only make them stricter.
-- A pattern is a piece of `<id> <name>`, case-insensitive ("ana" also matches "Mariana"), except `id:<conversation id>`, which matches exactly that id. This is what the web page writes when you mark a chat, because a plain id such as `5491112345678@s.whatsapp.net` is also contained in `15491112345678@s.whatsapp.net`.
+- A pattern is a piece of `<id> <name>`, case-insensitive ("ana" also matches "Mariana"), except `id:<conversation id>`, which matches exactly that id. This is what the web page writes when you mark a chat, because a plain id such as `9963667784458@s.whatsapp.net` is also contained in `19963667784458@s.whatsapp.net`.
 - `msum unlink --account work` deletes only that account's data.
 - An installation that predates this structure (`account/`) moves itself to `accounts/default/`, with no daemon running.
 
