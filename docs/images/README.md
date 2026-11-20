@@ -3,7 +3,8 @@
 - `diagrams/`: `overview`, `privacy` and `architecture`, each as an editable `.excalidraw` source (open it at
   excalidraw.com or in the Excalidraw extension) and a rendered `.svg` (exported by Excalidraw itself).
 - `screenshots/`: the web page as the README shows it, 1280 px wide, device scale 2, light theme. Every name, chat and
-  number on them is made up (the number is +54 11 5555-0100).
+  id on them is made up. Phone ids are `99` (a country code that does not exist) followed by ten random digits, and
+  group ids are `120363` followed by twelve random digits, so none can be a real number.
 
 ## Regenerate the diagrams
 
