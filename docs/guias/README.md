@@ -2,6 +2,10 @@
 
 Guías de uso y de referencia, en español. [English](../guides/README.md) · Volver al [README](../../README.es.md).
 
+## Para empezar
+
+- [Cómo funciona, explicado sin tecnicismos](como-funciona.md): qué problema resuelve la aplicación y qué pasa desde que llega un mensaje hasta que recibís el resumen. Para quien no sabe de programación.
+
 ## Paso a paso, para dejar listo el proveedor
 
 Guías cortas y sin jerga.
