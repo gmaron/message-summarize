@@ -2,6 +2,10 @@
 
 Usage and reference guides, in English. [Español](../guias/README.md) · Back to the [README](../../README.md).
 
+## To get started
+
+- [How it works, explained without jargon](how-it-works.md): what problem the app solves and what happens from the moment a message arrives until you get the summary. For readers who do not program.
+
 ## Step by step, to get the provider ready
 
 Short guides, no jargon. Their screenshots show the Spanish interface.

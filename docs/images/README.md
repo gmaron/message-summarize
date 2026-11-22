@@ -2,13 +2,19 @@
 
 - `diagrams/`: `overview`, `privacy` and `architecture`, each as an editable `.excalidraw` source (open it at
   excalidraw.com or in the Excalidraw extension) and a rendered `.svg` (exported by Excalidraw itself).
+- `diagrams/flujo-*` and `diagrams/flow-*`: the same six flow charts in Spanish (`flujo-general`, `flujo-primer-uso`,
+  `flujo-mensaje`, `flujo-resumen`, `flujo-privacidad`, `flujo-sesion`) and in English (`flow-general`,
+  `flow-first-use`, `flow-message`, `flow-digest`, `flow-privacy`, `flow-session`), for the guides
+  [Cómo funciona](../guias/como-funciona.md) and [How it works](../guides/how-it-works.md). Same pipeline and palette,
+  built with the `flowKit` helpers (steps, pills, decisions, notes, labelled arrows); each chart is written once and
+  takes its text for the language from `t(es, en)`.
 - `screenshots/`: the web page as the README shows it, 1280 px wide, device scale 2, light theme. Every name, chat and
   id on them is made up. Phone ids are `99` (a country code that does not exist) followed by ten random digits, and
   group ids are `120363` followed by twelve random digits, so none can be a real number.
 
 ## Regenerate the diagrams
 
-`generate-diagrams.mjs` holds the three diagrams as data (palette of `DESIGN.md`, Helvetica, roughness 0), writes the
+`generate-diagrams.mjs` holds the diagrams as data (palette of `DESIGN.md`, Helvetica, roughness 0), writes the
 `.excalidraw` files and renders the SVGs with `exportToSvg` inside a headless Google Chrome. Nothing is installed in
 this repository: the tooling lives in a folder outside it.
 
