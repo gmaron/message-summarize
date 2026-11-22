@@ -1,6 +1,6 @@
 # Cómo funciona message-summarize, explicado sin tecnicismos
 
-Este documento es para cualquier persona, sin importar si sabe de programación. Cuenta qué problema resuelve la aplicación y qué pasa, paso a paso, desde que te llega un mensaje hasta que recibís el resumen. Volver al [README](../../README.es.md) · [Índice de guías](README.md).
+Este documento es para cualquier persona, sin importar si sabe de programación. Cuenta qué problema resuelve la aplicación y qué pasa, paso a paso, desde que te llega un mensaje hasta que recibís el resumen. [English](../guides/how-it-works.md) · Volver al [README](../../README.es.md) · [Índice de guías](README.md).
 
 ## El problema
 

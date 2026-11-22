@@ -336,51 +336,110 @@ function flowKit() {
   return d
 }
 
-function flujoGeneral() {
+// The flow charts of the "how it works" guide. Each takes a language ('es' or 'en') and is written twice from the
+// same layout: `t(es, en)` picks the text. Spanish files are `flujo-*`, English files are `flow-*`.
+const text = (lang) => (es, en) => (lang === 'en' ? en : es)
+
+function flowGeneral(lang) {
+  const t = text(lang)
   const d = flowKit()
   const steps = [
-    ['m1', 'Te llegan mensajes', 'a WhatsApp, durante todo el día'],
-    ['m2', 'La app los guarda', 'solo en tu computadora'],
-    ['m3', 'Una IA los resume', 'en los horarios que elegís'],
-    ['m4', 'Recibís la nota', 'en tu propio chat'],
+    ['m1', t('Te llegan mensajes', 'Messages reach you'), t('a WhatsApp, durante todo el día', 'on WhatsApp, all day')],
+    ['m2', t('La app los guarda', 'The app saves them'), t('solo en tu computadora', 'only on your computer')],
+    [
+      'm3',
+      t('Una IA los resume', 'An AI summarizes them'),
+      t('en los horarios que elegís', 'on the schedule you choose'),
+    ],
+    ['m4', t('Recibís la nota', 'You get the note'), t('en tu propio chat', 'in your own chat')],
   ]
   steps.forEach(([id, title, detail], i) => {
     d.node(id, 150 + i * 330, 60, 250, 92, title, detail, i === 3 ? 'pill' : 'step')
     if (i > 0) d.link(`a${i}`, steps[i - 1][0], id)
   })
-  d.text(645, 150, 'Lo que la app nunca hace', { size: 17, color: INK2 })
-  const never = ['No contesta por vos', 'No le escribe a nadie más', 'No te marca "en línea"', 'No manda datos de uso']
-  never.forEach((t, i) => {
-    d.node(`n${i}`, 150 + i * 330, 230, 250, 56, t, undefined, 'stop')
+  d.text(645, 150, t('Lo que la app nunca hace', 'What the app never does'), { size: 17, color: INK2 })
+  const never = [
+    t('No contesta por vos', 'Never replies for you'),
+    t('No le escribe a nadie más', 'Never writes to anyone else'),
+    t('No te marca "en línea"', 'Never marks you "online"'),
+    t('No manda datos de uso', 'Never sends usage data'),
+  ]
+  never.forEach((title, i) => {
+    d.node(`n${i}`, 150 + i * 330, 230, 280, 56, title, undefined, 'stop')
   })
   return d
 }
 
-function flujoPrimerUso() {
+function flowFirstUse(lang) {
+  const t = text(lang)
   const d = flowKit()
   const y = d.chain(
     240,
     10,
     [
-      { id: 'p1', title: 'Instalás el programa', kind: 'pill' },
-      { id: 'p2', title: 'Se abre la página de control', detail: 'Empieza un asistente de 3 pasos' },
-      { id: 'p3', title: 'Paso 1: Vos', detail: 'Tu nombre y el nombre de la cuenta' },
-      { id: 'p4', title: 'Paso 2: Resumen', detail: 'Elegís la IA y probás la conexión' },
-      { id: 'p5', title: 'Paso 3: Vincular', detail: 'Escaneás el código QR con el celular' },
-      { id: 'p6', title: 'Se descarga el historial reciente', detail: 'Se ve una barra de progreso' },
-      { id: 'p7', title: 'Se crean dos horarios', detail: '9:00 y 18:00, todos los días' },
-      { id: 'p8', title: 'Listo: el primer resumen\nllega en el próximo horario', kind: 'pill', h: 64 },
+      { id: 'p1', title: t('Instalás el programa', 'You install the program'), kind: 'pill' },
+      {
+        id: 'p2',
+        title: t('Se abre la página de control', 'The control page opens'),
+        detail: t('Empieza un asistente de 3 pasos', 'A 3-step wizard starts'),
+      },
+      {
+        id: 'p3',
+        title: t('Paso 1: Vos', 'Step 1: You'),
+        detail: t('Tu nombre y el nombre de la cuenta', 'Your name and the account name'),
+      },
+      {
+        id: 'p4',
+        title: t('Paso 2: Resumen', 'Step 2: Summary'),
+        detail: t('Elegís la IA y probás la conexión', 'Pick the AI and test the connection'),
+      },
+      {
+        id: 'p5',
+        title: t('Paso 3: Vincular', 'Step 3: Link'),
+        detail: t('Escaneás el código QR con el celular', 'Scan the QR code with your phone'),
+      },
+      {
+        id: 'p6',
+        title: t('Se descarga el historial reciente', 'Recent history is downloaded'),
+        detail: t('Se ve una barra de progreso', 'A progress bar shows it'),
+      },
+      {
+        id: 'p7',
+        title: t('Se crean dos horarios', 'Two schedules are created'),
+        detail: t('9:00 y 18:00, todos los días', '9:00 and 18:00, every day'),
+      },
+      {
+        id: 'p8',
+        title: t(
+          'Listo: el primer resumen\nllega en el próximo horario',
+          'Done: the first summary\narrives at the next time',
+        ),
+        kind: 'pill',
+        h: 64,
+      },
     ],
     { w: 340 },
   )
-  d.node('n2', 690, y.p2, 300, 64, 'Podés cerrarlo a mitad\ny retomarlo donde quedó', undefined, 'note')
+  d.node(
+    'n2',
+    690,
+    y.p2,
+    300,
+    64,
+    t('Podés cerrarlo a mitad\ny retomarlo donde quedó', 'You can close it halfway\nand pick it up where you left off'),
+    undefined,
+    'note',
+  )
   d.node(
     'n4',
     690,
     y.p4,
     300,
     104,
-    'Antes de elegir la IA ves:\ncuánto cuesta, si tus chats salen\nde tu computadora, hacia quién\nvan y qué hace con ellos.\n"Probar conexión" usa un chat inventado',
+    t(
+      'Antes de elegir la IA ves:\ncuánto cuesta, si tus chats salen\nde tu computadora, hacia quién\nvan y qué hace con ellos.\n"Probar conexión" usa un chat inventado',
+      'Before choosing the AI you see:\nwhat it costs, whether your chats\nleave your computer, to whom they\ngo and what it does with them.\n"Test connection" uses an invented chat',
+    ),
     undefined,
     'note',
   )
@@ -390,7 +449,10 @@ function flujoPrimerUso() {
     y.p5,
     300,
     76,
-    'En el celular: WhatsApp,\nAjustes, Dispositivos vinculados.\nSi el QR vence, se renueva solo',
+    t(
+      'En el celular: WhatsApp,\nAjustes, Dispositivos vinculados.\nSi el QR vence, se renueva solo',
+      'On your phone: WhatsApp,\nSettings, Linked devices.\nIf the QR expires, it renews itself',
+    ),
     undefined,
     'note',
   )
@@ -400,30 +462,50 @@ function flujoPrimerUso() {
   return d
 }
 
-function flujoMensaje() {
+function flowMessage(lang) {
+  const t = text(lang)
   const d = flowKit()
   const y = d.chain(240, 10, [
-    { id: 'm1', title: 'Llega un mensaje\na tu WhatsApp', kind: 'pill', h: 64 },
-    { id: 'm2', title: '¿El chat está excluido?', kind: 'decision' },
-    { id: 'm3', title: 'Se guarda en tu computadora', label: 'No' },
+    { id: 'm1', title: t('Llega un mensaje\na tu WhatsApp', 'A message reaches\nyour WhatsApp'), kind: 'pill', h: 64 },
+    { id: 'm2', title: t('¿El chat está excluido?', 'Is the chat excluded?'), kind: 'decision' },
+    { id: 'm3', title: t('Se guarda en tu computadora', 'Saved on your computer'), label: 'No' },
     {
       id: 'm4',
-      title: 'Se identifica quién lo mandó',
-      detail: 'Nombre de tu agenda; si no hay,\nnombre público y número',
+      title: t('Se identifica quién lo mandó', 'The sender is identified'),
+      detail: t(
+        'Nombre de tu agenda; si no hay,\nnombre público y número',
+        'Name from your contacts; if none,\npublic name and number',
+      ),
       h: 76,
     },
-    { id: 'm5', title: 'Se actualizan los no leídos', detail: 'Igual que en tu celular' },
-    { id: 'm6', title: 'Queda listo para el\npróximo resumen', kind: 'pill', h: 64 },
+    {
+      id: 'm5',
+      title: t('Se actualizan los no leídos', 'Unread counts are updated'),
+      detail: t('Igual que en tu celular', 'Same as on your phone'),
+    },
+    { id: 'm6', title: t('Queda listo para el\npróximo resumen', 'Ready for the\nnext summary'), kind: 'pill', h: 64 },
   ])
-  d.node('m2x', 690, y.m2, 300, 70, 'Se descarta', 'No se guarda ni se resume', 'stop')
-  d.link('lx', 'm2', 'm2x', { label: 'Sí' })
+  d.node(
+    'm2x',
+    690,
+    y.m2,
+    300,
+    70,
+    t('Se descarta', 'Discarded'),
+    t('No se guarda ni se resume', 'Not saved, not summarized'),
+    'stop',
+  )
+  d.link('lx', 'm2', 'm2x', { label: t('Sí', 'Yes') })
   d.node(
     'n3',
     690,
     y.m3,
     340,
     120,
-    'Cómo se guarda cada tipo:\ntexto: tal cual\nfoto, video, documento: una\ndescripción, como "[imagen]"\nnota de voz: "[audio]" o su transcripción',
+    t(
+      'Cómo se guarda cada tipo:\ntexto: tal cual\nfoto, video, documento: una\ndescripción, como "[imagen]"\nnota de voz: "[audio]" o su transcripción',
+      'How each type is saved:\ntext: as is\nphoto, video, document: a\ndescription, like "[image]"\nvoice note: "[audio]" or its transcript',
+    ),
     undefined,
     'note',
   )
@@ -431,35 +513,64 @@ function flujoMensaje() {
   return d
 }
 
-function flujoResumen() {
+function flowDigest(lang) {
+  const t = text(lang)
   const d = flowKit()
   const y = d.chain(
     240,
     10,
     [
-      { id: 'r1', title: 'Llega un horario o\ntocás "Resumir ahora"', kind: 'pill', h: 64 },
-      { id: 'r2', title: 'Se define el período', detail: 'Desde donde terminó el resumen anterior' },
-      { id: 'r3', title: 'Se juntan los mensajes', detail: 'de cada conversación del período' },
+      {
+        id: 'r1',
+        title: t('Llega un horario o\ntocás "Resumir ahora"', 'A scheduled time arrives or\nyou tap "Summarize now"'),
+        kind: 'pill',
+        h: 64,
+      },
+      {
+        id: 'r2',
+        title: t('Se define el período', 'The period is set'),
+        detail: t('Desde donde terminó el resumen anterior', 'From where the last summary ended'),
+      },
+      {
+        id: 'r3',
+        title: t('Se juntan los mensajes', 'Messages are gathered'),
+        detail: t('de cada conversación del período', 'from each conversation in the period'),
+      },
       {
         id: 'r4',
-        title: 'Se descartan los que no aportan',
-        detail: 'Cadenas tuyas enviadas a 3 chats o más;\navisos repetidos en varios grupos',
+        title: t('Se descartan los que no aportan', 'Noise is discarded'),
+        detail: t(
+          'Cadenas tuyas enviadas a 3 chats o más;\navisos repetidos en varios grupos',
+          'Your own text sent to 3 or more chats;\nthe same notice in several groups',
+        ),
         h: 80,
       },
       {
         id: 'r5',
-        title: 'La IA resume cada conversación',
-        detail: 'Resumen, pendientes, si necesita\nrespuesta y prioridad',
+        title: t('La IA resume cada conversación', 'The AI summarizes each conversation'),
+        detail: t(
+          'Resumen, pendientes, si necesita\nrespuesta y prioridad',
+          'Summary, pending items, whether it\nneeds a reply, and priority',
+        ),
         h: 80,
       },
       {
         id: 'r6',
-        title: 'Se ordena en secciones',
-        detail: 'Sin agendar, necesitan respuesta,\ncon pendientes, el resto',
+        title: t('Se ordena en secciones', 'Sorted into sections'),
+        detail: t(
+          'Sin agendar, necesitan respuesta,\ncon pendientes, el resto',
+          'Not in contacts, need a reply,\nwith pending items, the rest',
+        ),
         h: 80,
       },
-      { id: 'r7', title: '¿La cuenta está conectada?', kind: 'decision' },
-      { id: 'r8', title: 'Llega a tu chat\n"Mensaje a mí mismo"', kind: 'pill', h: 64, label: 'Sí' },
+      { id: 'r7', title: t('¿La cuenta está conectada?', 'Is the account connected?'), kind: 'decision' },
+      {
+        id: 'r8',
+        title: t('Llega a tu chat\n"Mensaje a mí mismo"', 'Delivered to your chat\n"Message yourself"'),
+        kind: 'pill',
+        h: 64,
+        label: t('Sí', 'Yes'),
+      },
     ],
     { w: 360 },
   )
@@ -469,7 +580,10 @@ function flujoResumen() {
     y.r2,
     300,
     92,
-    'El marcador solo avanza. La vista\nprevia muestra el resultado sin\nenviarlo ni mover el marcador',
+    t(
+      'El marcador solo avanza. La vista\nprevia muestra el resultado sin\nenviarlo ni mover el marcador',
+      'The marker only moves forward. The\npreview shows the result without\nsending it or moving the marker',
+    ),
     undefined,
     'note',
   )
@@ -479,7 +593,10 @@ function flujoResumen() {
     y.r5,
     300,
     92,
-    'Si la IA falla con un chat: reintenta\ny usa la IA de respaldo. Si no se\npuede, el resumen avisa cuál faltó',
+    t(
+      'Si la IA falla con un chat: reintenta\ny usa la IA de respaldo. Si no se\npuede, el resumen avisa cuál faltó',
+      'If the AI fails on a chat: it retries\nand uses the backup AI. If that fails,\nthe summary says which one is missing',
+    ),
     undefined,
     'note',
   )
@@ -489,8 +606,11 @@ function flujoResumen() {
     y.r7,
     300,
     80,
-    'Queda en una cola',
-    'Se envía al reconectar, incluso\nsi reiniciás la computadora',
+    t('Queda en una cola', 'Waits in a queue'),
+    t(
+      'Se envía al reconectar, incluso\nsi reiniciás la computadora',
+      'Sent on reconnect, even if you\nrestart the computer',
+    ),
     'stop',
   )
   d.link('l2', 'r2', 'n2', { dashed: true })
@@ -499,54 +619,133 @@ function flujoResumen() {
   return d
 }
 
-function flujoPrivacidad() {
+function flowPrivacy(lang) {
+  const t = text(lang)
+  const yes = t('Sí', 'Yes')
   const d = flowKit()
-  d.node('q0', 220, 40, 300, 56, 'Una conversación con mensajes', undefined, 'pill')
-  d.node('q1', 220, 180, 280, 124, '¿La conversación\nestá excluida?', undefined, 'decision')
-  d.node('q2', 220, 380, 280, 124, '¿Está marcada\n"solo local"?', undefined, 'decision')
-  d.node('q3', 600, 380, 280, 124, '¿Hay una IA\nlocal disponible?', undefined, 'decision')
-  d.node('x1', 600, 180, 300, 76, 'No se guarda ni se resume', 'Y se borra lo que ya estaba guardado', 'stop')
-  d.node('x2', 980, 380, 300, 84, 'Se resume en tu máquina', 'Con Ollama: el texto no sale\nde tu computadora', 'good')
-  d.node('x3', 600, 570, 300, 76, 'Se omite y se avisa', 'Nunca va a una IA externa', 'stop')
+  d.node('q0', 220, 40, 300, 56, t('Una conversación con mensajes', 'A conversation with messages'), undefined, 'pill')
+  d.node(
+    'q1',
+    220,
+    180,
+    280,
+    124,
+    t('¿La conversación\nestá excluida?', 'Is the conversation\nexcluded?'),
+    undefined,
+    'decision',
+  )
+  d.node(
+    'q2',
+    220,
+    380,
+    280,
+    124,
+    t('¿Está marcada\n"solo local"?', 'Is it marked\n"local only"?'),
+    undefined,
+    'decision',
+  )
+  d.node(
+    'q3',
+    600,
+    380,
+    280,
+    124,
+    t('¿Hay una IA\nlocal disponible?', 'Is a local AI\navailable?'),
+    undefined,
+    'decision',
+  )
+  d.node(
+    'x1',
+    600,
+    180,
+    300,
+    76,
+    t('No se guarda ni se resume', 'Not saved, not summarized'),
+    t('Y se borra lo que ya estaba guardado', 'And what was already stored is deleted'),
+    'stop',
+  )
+  d.node(
+    'x2',
+    980,
+    380,
+    300,
+    84,
+    t('Se resume en tu máquina', 'Summarized on your machine'),
+    t('Con Ollama: el texto no sale\nde tu computadora', 'With Ollama: the text does not\nleave your computer'),
+    'good',
+  )
+  d.node(
+    'x3',
+    600,
+    570,
+    300,
+    76,
+    t('Se omite y se avisa', 'Skipped, and you are told'),
+    t('Nunca va a una IA externa', 'Never goes to an external AI'),
+    'stop',
+  )
   d.node(
     'x4',
     220,
     570,
     300,
     92,
-    'Se resume con la IA que elegiste',
-    'El texto viaja a ese proveedor,\ncon tu aceptación previa',
+    t('Se resume con la IA que elegiste', 'Summarized by your chosen AI'),
+    t(
+      'El texto viaja a ese proveedor,\ncon tu aceptación previa',
+      'The text goes to that provider,\nwith your prior consent',
+    ),
     'bad',
   )
   d.link('k0', 'q0', 'q1')
-  d.link('k1', 'q1', 'x1', { label: 'Sí' })
+  d.link('k1', 'q1', 'x1', { label: yes })
   d.link('k2', 'q1', 'q2', { label: 'No' })
-  d.link('k3', 'q2', 'q3', { label: 'Sí' })
+  d.link('k3', 'q2', 'q3', { label: yes })
   d.link('k4', 'q2', 'x4', { label: 'No' })
-  d.link('k5', 'q3', 'x2', { label: 'Sí' })
+  d.link('k5', 'q3', 'x2', { label: yes })
   d.link('k6', 'q3', 'x3', { label: 'No' })
-  d.text(600, 660, 'Borde verde: no sale de tu computadora. Borde rojo: sale hacia el proveedor.', {
-    size: 14,
-    color: MUTE,
-  })
+  d.text(
+    600,
+    660,
+    t(
+      'Borde verde: no sale de tu computadora. Borde rojo: sale hacia el proveedor.',
+      'Green border: does not leave your computer. Red border: goes to the provider.',
+    ),
+    { size: 14, color: MUTE },
+  )
   return d
 }
 
-function flujoSesion() {
+function flowSession(lang) {
+  const t = text(lang)
   const d = flowKit()
   const y = d.chain(
     530,
     10,
     [
-      { id: 's1', title: 'WhatsApp cierra, rechaza o\nreemplaza la sesión', kind: 'pill', h: 64 },
+      {
+        id: 's1',
+        title: t(
+          'WhatsApp cierra, rechaza o\nreemplaza la sesión',
+          'WhatsApp closes, rejects or\nreplaces the session',
+        ),
+        kind: 'pill',
+        h: 64,
+      },
       {
         id: 's2',
-        title: 'La app deja de reconectar esa cuenta',
-        detail: 'A propósito: reintentar sin parar\npodría hacer que bloqueen tu número',
+        title: t('La app deja de reconectar esa cuenta', 'The app stops reconnecting'),
+        detail: t(
+          'A propósito: reintentar sin parar\npodría hacer que bloqueen tu número',
+          'On purpose: retrying nonstop\ncould get your number banned',
+        ),
         h: 80,
       },
-      { id: 's3', title: 'La página muestra el estado y el motivo' },
-      { id: 's4', title: '¿Qué pasó?', kind: 'decision', w: 220 },
+      {
+        id: 's3',
+        title: t('La página muestra el estado y el motivo', 'The page shows the status\nand the reason'),
+      },
+      { id: 's4', title: t('¿Qué pasó?', 'What happened?'), kind: 'decision', w: 220 },
     ],
     { w: 340 },
   )
@@ -556,8 +755,11 @@ function flujoSesion() {
     y.s4,
     260,
     92,
-    'Reintentar',
-    'Desde la página de control.\nTras un rechazo hay que\nesperar 30 minutos',
+    t('Reintentar', 'Retry'),
+    t(
+      'Desde la página de control.\nTras un rechazo hay que\nesperar 30 minutos',
+      'From the control page.\nAfter a rejection you must\nwait 30 minutes',
+    ),
     'step',
   )
   d.node(
@@ -566,8 +768,8 @@ function flujoSesion() {
     y.s4,
     260,
     92,
-    'Volver a vincular',
-    'Desde la página de control,\nescaneando el QR otra vez',
+    t('Volver a vincular', 'Link again'),
+    t('Desde la página de control,\nescaneando el QR otra vez', 'From the control page,\nscanning the QR again'),
     'step',
   )
   d.node(
@@ -576,26 +778,41 @@ function flujoSesion() {
     y.s4 + 190,
     340,
     64,
-    'Las otras cuentas de la instalación\nsiguen funcionando con normalidad',
+    t(
+      'Las otras cuentas de la instalación\nsiguen funcionando con normalidad',
+      'The other accounts in the installation\nkeep working normally',
+    ),
     undefined,
     'note',
   )
-  d.link('kl', 's4', 'sl', { label: 'Conexión rechazada\no reemplazada' })
-  d.link('kr', 's4', 'sr', { label: 'Sesión cerrada\no inválida' })
+  d.link('kl', 's4', 'sl', { label: t('Conexión rechazada\no reemplazada', 'Connection rejected\nor replaced') })
+  d.link('kr', 's4', 'sr', { label: t('Sesión cerrada\no inválida', 'Session closed\nor invalid') })
   d.link('kn', 's4', 'sn', { dashed: true })
   return d
 }
 
-const DIAGRAMS = {
-  overview,
-  privacy,
-  architecture,
-  'flujo-general': flujoGeneral,
-  'flujo-primer-uso': flujoPrimerUso,
-  'flujo-mensaje': flujoMensaje,
-  'flujo-resumen': flujoResumen,
-  'flujo-privacidad': flujoPrivacidad,
-  'flujo-sesion': flujoSesion,
+const FLOWS = {
+  general: flowGeneral,
+  'first-use': flowFirstUse,
+  message: flowMessage,
+  digest: flowDigest,
+  privacy: flowPrivacy,
+  session: flowSession,
+}
+// File names: Spanish `flujo-<es>`, English `flow-<en>`.
+const FLOW_NAMES = {
+  general: ['flujo-general', 'flow-general'],
+  'first-use': ['flujo-primer-uso', 'flow-first-use'],
+  message: ['flujo-mensaje', 'flow-message'],
+  digest: ['flujo-resumen', 'flow-digest'],
+  privacy: ['flujo-privacidad', 'flow-privacy'],
+  session: ['flujo-sesion', 'flow-session'],
+}
+
+const DIAGRAMS = { overview, privacy, architecture }
+for (const [key, make] of Object.entries(FLOWS)) {
+  DIAGRAMS[FLOW_NAMES[key][0]] = () => make('es')
+  DIAGRAMS[FLOW_NAMES[key][1]] = () => make('en')
 }
 
 // The alternative text of each SVG (screen readers, and Biome's a11y lint, which checks SVG files).
@@ -618,6 +835,18 @@ const TITLES = {
     'Adónde va cada conversación: una excluida no se guarda ni se resume; una marcada como solo local se resume en tu máquina o se omite; el resto se resume con la IA que elegiste.',
   'flujo-sesion':
     'Qué pasa cuando WhatsApp corta la sesión: la app deja de reconectar esa cuenta a propósito, la página muestra el motivo y vos elegís reintentar o volver a vincular con el código QR.',
+  'flow-general':
+    'General flow: messages reach you, the app saves them on your computer, an AI summarizes them on your schedule and you get the note in your own chat. The app never replies for you, never writes to anyone else, never marks you online and never sends usage data.',
+  'flow-first-use':
+    'First use: install, a three-step wizard (You, Summary, Link), download of the recent history, creation of the 9:00 and 18:00 schedules and the first summary.',
+  'flow-message':
+    'What happens to each incoming message: if the chat is excluded it is discarded; otherwise it is saved on your computer, the sender is identified and the unread counts are updated.',
+  'flow-digest':
+    'How a summary is built: the period is set, messages are gathered, noise is discarded, the AI summarizes each conversation, the result is sorted into sections and delivered to your chat, or queued if the account is disconnected.',
+  'flow-privacy':
+    'Where each conversation goes: an excluded one is not saved or summarized; one marked local only is summarized on your machine or skipped; the rest is summarized by the AI you chose.',
+  'flow-session':
+    'What happens when WhatsApp cuts the session: the app stops reconnecting that account on purpose, the page shows the reason and you choose to retry or link again with the QR code.',
 }
 const withTitle = (svg, name) =>
   svg.replace(/^<svg /, '<svg role="img" ').replace(/(<svg[^>]*>)/, `$1<title>${TITLES[name]}</title>`)
