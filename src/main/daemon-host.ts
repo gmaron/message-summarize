@@ -1155,6 +1155,8 @@ export class DaemonHost {
    */
   private blockUnit(id: string, reason: BlockedReason): void {
     this.blocks.set(id, { reason, persisted: false, warned: false })
+    // The unit has said it already (the log and the line for the user): the first look at the released account must not.
+    this.idleReasons.set(id, `blocked:${reason}`)
     this.notifyChange()
     const release = Promise.resolve()
       .then(async () => {
