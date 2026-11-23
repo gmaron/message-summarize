@@ -25,6 +25,12 @@ const FIELDS = [
   'failed',
   'parts',
   'pointer',
+  // Counts of a web request ("Ask"): conversations in the period, the page start, read, answered and left out.
+  'candidates',
+  'offset',
+  'consulted',
+  'answered',
+  'skipped',
   'nextRun',
   'pid',
   // Where the local web listens: an address and a port, never a token.

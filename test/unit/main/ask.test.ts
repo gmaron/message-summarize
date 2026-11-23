@@ -10,6 +10,7 @@ import {
   startOfLocalDay,
   windowOf,
 } from '../../../src/main/ask.js'
+import { buildLogRecord, type LogFields, type LogLevel } from '../../../src/main/logger.js'
 import type { Runtime } from '../../../src/main/runtime.js'
 import { deferred } from '../../support/application-fakes.js'
 
@@ -43,7 +44,14 @@ function setup(options: { askChats?: AskChats | null; runtime?: boolean; timezon
       get:
         (_t, level: string) =>
         (message: string, fields: unknown): void => {
-          logs.push({ level, message, fields })
+          // Through the real allowlist: a field the logger would drop does not reach the assertions either.
+          const {
+            time: _t,
+            level: _l,
+            event: _e,
+            ...kept
+          } = buildLogRecord(level as LogLevel, message, (fields ?? {}) as LogFields, 0)
+          logs.push({ level, message, fields: kept })
         },
     },
   )
@@ -262,7 +270,7 @@ describe('AskService: pages and continuation', () => {
     const { service, logs } = setup({ askChats: async () => err({ kind: 'invalidWindow' as const }) })
     service.start('alpha', input)
     await settled()
-    expect(logs.find((l) => l.message === 'ask.finished')?.fields).toMatchObject({ state: 'failed', error: 'failed' })
+    expect(logs.find((l) => l.message === 'ask.finished')?.fields).toMatchObject({ state: 'failed', reason: 'failed' })
   })
 
   it('continues an ask with a new entry: same question, period, chats and window, next offset', async () => {

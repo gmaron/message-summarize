@@ -1,7 +1,7 @@
 import { type AskItem, cleanQuestion, MAX_ASK_CONVERSATIONS } from '../application/ask-chats.js'
 import type { WebErrorCode } from '../infrastructure/i18n/index.js'
 import type { CommandContext } from './context.js'
-import { errorCode } from './logger.js'
+import { errorCode, type LogFields } from './logger.js'
 import type { Runtime } from './runtime.js'
 
 /** The periods the page offers. */
@@ -291,17 +291,18 @@ export class AskService {
       this.active.delete(id)
     }
     if (this.stopped) return
-    ctx.logger.info('ask.finished', {
-      account: id,
-      state: entry.view.state,
-      ...(entry.view.error === undefined ? {} : { error: entry.view.error }),
-      ...(entry.view.candidates === undefined ? {} : { candidates: entry.view.candidates, offset: entry.view.offset }),
-      ...(entry.view.candidates === undefined || entry.view.consulted === undefined
-        ? {}
-        : { skipped: entry.view.remaining }),
-      ...(entry.view.consulted === undefined ? {} : { consulted: entry.view.consulted }),
-      ...(entry.view.items === undefined ? {} : { answered: entry.view.items.length }),
-    })
+    // Built field by field, typed: a field outside the logger's allowlist would be dropped silently, so it must not compile.
+    const view = entry.view
+    const fields: LogFields = { account: id, state: view.state }
+    if (view.error !== undefined) fields.reason = view.error
+    if (view.candidates !== undefined) {
+      fields.candidates = view.candidates
+      fields.offset = view.offset ?? 0
+    }
+    if (view.consulted !== undefined) fields.consulted = view.consulted
+    if (view.remaining !== undefined) fields.skipped = view.remaining
+    if (view.items !== undefined) fields.answered = view.items.length
+    ctx.logger.info('ask.finished', fields)
     try {
       onEvent(event)
     } catch (error) {
