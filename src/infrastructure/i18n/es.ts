@@ -93,6 +93,7 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
       event: '[evento]',
       order: '[pedido de catálogo]',
       product: '[producto de catálogo]',
+      other: '[otro tipo de mensaje]',
     },
     replyToStatus: (what) => `[respondió a tu estado${what === null ? '' : `: ${what}`}]`,
     replyTo: (excerpt) => `[en respuesta a «${excerpt}»]`,
@@ -101,6 +102,7 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
   capture: {
     editedPrefix: '(editado) ',
     unnamedDocument: 'sin nombre',
+    otherType: (name) => `[otro tipo de mensaje: ${name}]`,
     contacts: '[contactos]',
     order: (items, total) =>
       `[pedido de catálogo${[items === null ? null : `${items} ${items === 1 ? 'artículo' : 'artículos'}`, total]

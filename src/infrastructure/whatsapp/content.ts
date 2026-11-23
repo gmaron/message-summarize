@@ -57,7 +57,8 @@ export function parseContent(content: WaContent, catalog: Catalog): ParsedConten
   }
   if (content.extendedTextMessage) return nonEmpty('text', content.extendedTextMessage.text ?? '')
   if (content.imageMessage) return { kind: 'image', text: labelled(label.image, content.imageMessage.caption) }
-  if (content.videoMessage) return { kind: 'video', text: labelled(label.video, content.videoMessage.caption) }
+  const video = content.videoMessage ?? content.ptvMessage
+  if (video) return { kind: 'video', text: labelled(label.video, video.caption) }
   if (content.audioMessage) return { kind: 'audio', text: label.audio }
   if (content.documentMessage) {
     const doc = content.documentMessage
@@ -93,6 +94,36 @@ export function parseContent(content: WaContent, catalog: Catalog): ParsedConten
   if (content.eventMessage) {
     const event = content.eventMessage
     return { kind: 'event', text: labelled(label.event, `${event.name ?? ''} ${event.description ?? ''}`.trim()) }
+  }
+  const other = otherTypeOf(content)
+  return other === null ? null : { kind: 'other', text: catalog.capture.otherType(other) }
+}
+
+/**
+ * Fields that are not a message of the user: protocol traffic (edits are read apart, deletions, history notices),
+ * sender key distribution, the context that rides along, and reactions and poll votes (routed before this).
+ */
+const NOT_A_MESSAGE = new Set([
+  'protocolMessage',
+  'senderKeyDistributionMessage',
+  'fastRatchetKeyContent',
+  'messageContextInfo',
+  'reactionMessage',
+  'encReactionMessage',
+  'pollUpdateMessage',
+  'encEventResponseMessage',
+])
+
+/**
+ * The protocol's field name of a content of a type that is not handled (`groupInviteMessage`, `buttonsResponseMessage`,
+ * `pinInChatMessage`, ...), or null when there is nothing but protocol traffic. It is a fixed identifier of the
+ * protocol, never text written by the sender; anything that does not look like one is called `unknown`.
+ */
+function otherTypeOf(content: WaContent): string | null {
+  for (const [field, value] of Object.entries(content)) {
+    if (value === undefined || value === null || NOT_A_MESSAGE.has(field)) continue
+    if (WRAPPERS.some((wrapper) => wrapper === field)) continue
+    return /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(field) ? field : 'unknown'
   }
   return null
 }

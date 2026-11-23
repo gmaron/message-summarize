@@ -48,6 +48,8 @@ export interface WaContent {
   extendedTextMessage?: { text?: string | null; contextInfo?: WaContextInfo | null } | null
   imageMessage?: WaMediaFields | null
   videoMessage?: WaMediaFields | null
+  /** A round video note: handled as a video. */
+  ptvMessage?: WaMediaFields | null
   /**
    * What is read of an audio. ALL of it is written by the sender, so none of it is trusted: `fileLength` (bytes, to refuse
    * a huge download), `mimetype` (to pick the format), `directPath` (where on WhatsApp's media host the file is: checked

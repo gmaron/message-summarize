@@ -69,6 +69,44 @@ describe('parseContent: one text per kind, in the language of the account (RF-10
     })
   }
 
+  it('a round video note is a video', () => {
+    expect(parseContent({ ptvMessage: { caption: 'hi' } }, es)).toEqual({ kind: 'video', text: '[video] hi' })
+  })
+
+  const unknown = [
+    'groupInviteMessage',
+    'buttonsResponseMessage',
+    'listResponseMessage',
+    'templateButtonReplyMessage',
+    'interactiveMessage',
+    'templateMessage',
+    'pinInChatMessage',
+    'callLogMesssage',
+    'buttonsMessage',
+    'listMessage',
+  ]
+  for (const type of unknown) {
+    it(`stores ${type} as another kind of message, named by its protocol field`, () => {
+      const content = { [type]: { anything: 1 } } as WaContent
+      expect(parseContent(content, es)).toEqual({ kind: 'other', text: `[otro tipo de mensaje: ${type}]` })
+      expect(parseContent(content, en)).toEqual({ kind: 'other', text: `[other message type: ${type}]` })
+    })
+  }
+
+  it('an odd field name is never copied into the text', () => {
+    const content = { 'hola amigo': { x: 1 } } as unknown as WaContent
+    expect(parseContent(content, en)?.text).toBe('[other message type: unknown]')
+  })
+
+  it('protocol traffic, key distribution and context alone are still dropped', () => {
+    expect(parseContent({ senderKeyDistributionMessage: { groupId: 'g' } } as WaContent, es)).toBeNull()
+    expect(parseContent({ messageContextInfo: {} } as unknown as WaContent, es)).toBeNull()
+    expect(
+      parseContent({ messageContextInfo: {}, protocolMessage: { type: 3 } } as unknown as WaContent, es),
+    ).toBeNull()
+    expect(parseContent({ reactionMessage: { text: 'x' } }, es)).toBeNull()
+  })
+
   it('returns null for what is not a message of the user, and for an empty text', () => {
     expect(parseContent({}, es)).toBeNull()
     expect(parseContent({ conversation: '' }, es)).toBeNull()

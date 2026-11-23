@@ -82,6 +82,7 @@ function quotedOf(context: WaContextInfo | null, catalog: Catalog): QuotedMessag
 const MEDIA_FIELDS = [
   ['imageMessage', 'image'],
   ['videoMessage', 'video'],
+  ['ptvMessage', 'video'],
   ['audioMessage', 'audio'],
   ['documentMessage', 'document'],
   ['stickerMessage', 'sticker'],

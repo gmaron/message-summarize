@@ -40,6 +40,7 @@ const SAMPLES: Record<string, unknown[][]> = {
     [1, null],
     [null, null],
   ],
+  'capture.otherType': [['groupInviteMessage']],
   'capture.product': [
     ['Cake', '5.000'],
     [null, null],
@@ -447,6 +448,7 @@ describe('catalogs', () => {
       'event',
       'order',
       'product',
+      'other',
     ]
     for (const catalog of [es, en]) {
       expect(Object.keys(catalog.transcript.kinds).sort()).toEqual([...kinds].sort())

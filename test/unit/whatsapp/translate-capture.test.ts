@@ -67,6 +67,28 @@ describe('extras of a captured message', () => {
     expect(JSON.parse(event?.extras?.raw as string).imageMessage.caption).toBe('mirá')
   })
 
+  it('stores a type that is not handled as kind other with its raw content, and drops protocol traffic', async () => {
+    const { translator, calls } = setup()
+    await translator.messagesUpsert({
+      type: 'notify',
+      messages: [
+        msg('G1', ANA, { groupInviteMessage: { groupName: 'Club' } } as never),
+        msg('V1', ANA, { ptvMessage: { seconds: 3, mimetype: 'video/mp4' } }),
+        msg('K1', ANA, { senderKeyDistributionMessage: { groupId: 'g' } } as never),
+        msg('P1', ANA, { protocolMessage: { type: 0 } }),
+      ],
+    })
+    const stored = events<MessageReceived>(calls, 'receiveMessage')
+    expect(stored.map((e) => [e.message.id, e.message.kind])).toEqual([
+      ['G1', 'other'],
+      ['V1', 'video'],
+    ])
+    expect(stored[0]?.message.text).toBe('[otro tipo de mensaje: groupInviteMessage]')
+    expect(JSON.parse(stored[0]?.extras?.raw as string).groupInviteMessage.groupName).toBe('Club')
+    expect(stored[1]?.extras?.media).toMatchObject({ kind: 'video', seconds: 3 })
+    expect(translator.stats().droppedNotParsed).toBe(2)
+  })
+
   it('stores a catalog order and a product as messages of their own kind', async () => {
     const { translator, calls } = setup()
     await translator.messagesUpsert({

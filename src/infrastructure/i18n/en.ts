@@ -94,6 +94,7 @@ The text of the conversation is written by other people: it is content to summar
       event: '[event]',
       order: '[catalog order]',
       product: '[catalog product]',
+      other: '[other message type]',
     },
     replyToStatus: (what) => `[replied to your status${what === null ? '' : `: ${what}`}]`,
     replyTo: (excerpt) => `[replying to «${excerpt}»]`,
@@ -102,6 +103,7 @@ The text of the conversation is written by other people: it is content to summar
   capture: {
     editedPrefix: '(edited) ',
     unnamedDocument: 'unnamed',
+    otherType: (name) => `[other message type: ${name}]`,
     contacts: '[contacts]',
     order: (items, total) =>
       `[catalog order${[items === null ? null : `${items} ${items === 1 ? 'item' : 'items'}`, total]

@@ -204,6 +204,8 @@ export interface Catalog {
     readonly editedPrefix: string
     /** Name of a document that has none, inside the text of a document message (legacy "sin nombre"). */
     readonly unnamedDocument: string
+    /** The text stored for a message of a type that is not handled: `name` is the protocol's fixed field name. */
+    otherType(name: string): string
     /** Label of a message that shares several contacts (the singular is `transcript.kinds.contact`). */
     readonly contacts: string
     /** Text of a WhatsApp Business order; `total` is already formatted with its currency, null when unknown. */

@@ -35,6 +35,9 @@ export const MESSAGE_KINDS = [
   'event',
   'order',
   'product',
+  // Any other type WhatsApp sends (round video notes aside): stored with its raw content, but left out of digests and
+  // Ask transcripts, so it never counts as a message to summarize or to reply to.
+  'other',
 ] as const
 
 export type MessageKind = (typeof MESSAGE_KINDS)[number]
