@@ -38,6 +38,19 @@ export interface DownloadDescriptor {
   readonly mimetype: string
   /** Bytes, when the sender's phone says so. */
   readonly fileLength: number | null
+  /**
+   * The key of the message as the platform wrote it. Asking the phone to upload an old media again needs it. Absent: the
+   * media cannot be asked for again once the server forgot it.
+   */
+  readonly reuploadKey?: ReuploadKey
+}
+
+/** The identity of a message on the platform, as the phone knows it. Not secret. */
+export interface ReuploadKey {
+  readonly remoteJid: string
+  readonly fromMe: boolean
+  /** The author of a message in a group. */
+  readonly participant: string | null
 }
 
 export interface InsertResult {

@@ -31,7 +31,6 @@ describe('openDatabase and migrations', () => {
     const t = fresh()
     const db = t.open()
     expect(currentVersion(db)).toBe(MIGRATIONS.length)
-    expect(currentVersion(db)).toBe(4)
     expect(tables(db)).toEqual([
       'account',
       'conversations',
@@ -52,7 +51,7 @@ describe('openDatabase and migrations', () => {
     first.close()
     const second = t.open()
     expect(second.prepare('SELECT version, applied_at FROM schema_version').all()).toEqual(applied)
-    expect(currentVersion(second)).toBe(4)
+    expect(currentVersion(second)).toBe(MIGRATIONS.length)
   })
 
   it('upgrades a database at version 2 to 3 keeping its data and adding the runs table (RF-74, RNF-16)', () => {
@@ -119,7 +118,7 @@ describe('openDatabase and migrations', () => {
       old.close()
 
       const upgraded = t.open()
-      expect(currentVersion(upgraded)).toBe(4)
+      expect(currentVersion(upgraded)).toBe(MIGRATIONS.length)
       expect(upgraded.prepare('SELECT trigger_kind, started_at FROM digest_runs').all()).toEqual([
         { trigger_kind: 'manual', started_at: 10 },
       ])
@@ -151,6 +150,60 @@ describe('openDatabase and migrations', () => {
                  VALUES ('c1', 'm-${status}', 0, 1, 'audio', '${status}')`)
       for (const status of ['pending', 'done', 'failed']) expect(() => insert(status)).not.toThrow()
       expect(() => insert('lost')).toThrow()
+    })
+  })
+
+  describe('migration 5 (audio queue claims and media re-upload)', () => {
+    it('adds the claim and re-upload columns to a database at version 4 and keeps its queues untouched', () => {
+      const t = fresh()
+      const old = openDatabase(t.path, { migrations: MIGRATIONS.slice(0, 4) })
+      expect(currentVersion(old)).toBe(4)
+      old.exec(`INSERT INTO conversations (id, address) VALUES ('c1', '+1')`)
+      old.exec(`INSERT INTO messages (conversation_id, id, from_me, timestamp, kind, transcribe_status, media_ref)
+                VALUES ('c1', 'm1', 0, 1000, 'audio', 'pending', 'm1.ogg'),
+                       ('c1', 'm2', 0, 2000, 'audio', 'download_pending', NULL)`)
+      old.close()
+
+      const upgraded = t.open()
+      expect(currentVersion(upgraded)).toBe(MIGRATIONS.length)
+      const columns = (
+        upgraded.prepare("SELECT name FROM pragma_table_info('messages')").all() as { name: string }[]
+      ).map((r) => r.name)
+      expect(columns).toEqual(
+        expect.arrayContaining([
+          'transcribe_claimed_at',
+          'dl_remote_jid',
+          'dl_from_me',
+          'dl_participant',
+          'dl_reupload_attempts',
+          'dl_needs_reupload',
+        ]),
+      )
+      expect(
+        upgraded
+          .prepare(
+            `SELECT id, transcribe_status, transcribe_claimed_at, dl_remote_jid, dl_reupload_attempts, dl_needs_reupload
+             FROM messages ORDER BY id`,
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: 'm1',
+          transcribe_status: 'pending',
+          transcribe_claimed_at: null,
+          dl_remote_jid: null,
+          dl_reupload_attempts: 0,
+          dl_needs_reupload: 0,
+        },
+        {
+          id: 'm2',
+          transcribe_status: 'download_pending',
+          transcribe_claimed_at: null,
+          dl_remote_jid: null,
+          dl_reupload_attempts: 0,
+          dl_needs_reupload: 0,
+        },
+      ])
     })
   })
 

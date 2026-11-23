@@ -8,7 +8,7 @@ import makeWASocket, {
   downloadContentFromMessage,
 } from 'baileys'
 import { loadSecureAuthState } from './auth-state.js'
-import type { SocketFactory, WhatsAppSocket } from './connection.js'
+import type { AudioReuploadRequest, SocketFactory, WhatsAppSocket } from './connection.js'
 import { normalizeJid, selfChatJid } from './jid.js'
 import { type AudioDescriptor, isSafeDirectPath } from './media.js'
 import type {
@@ -30,7 +30,8 @@ import type {
  *   a log (RNF-04), so it all goes nowhere.
  *
  * The adapter never changes presence or sends read receipts, and `WhatsAppSocket` does not even have those. The only
- * thing it can send is a text to the account's own chat, through `sendTextToSelf`.
+ * thing it can send is a text to the account's own chat, through `sendTextToSelf`, and a request to the account's own
+ * phone to upload an old audio again, through `requestAudioReupload`.
  */
 export const BAILEYS_SOCKET_OPTIONS = {
   markOnlineOnConnect: false,
@@ -68,8 +69,8 @@ async function sendTextToSelf(socket: BaileysSocket, text: string): Promise<void
 /**
  * Opens the audio of a received message as a stream of its decrypted bytes (RF-15). It is a download from WhatsApp's
  * media servers: nothing is sent to anyone. No download context is given on purpose: with one, Baileys answers a media
- * that has expired by asking the sender to upload it again, which is a message out (RNF-17). Without it an expired
- * media is just an error, and the audio is left untranscribed.
+ * that has expired by asking the SENDER to upload it again, which is a message out (RNF-17). Without it an expired media
+ * is just an error; the audio is then asked of the owner's own phone (`requestAudioReupload`).
  */
 async function openAudio(descriptor: AudioDescriptor): Promise<Readable> {
   // Baileys builds the address from the `url` and `directPath` of the message, which the SENDER writes: left alone, a
@@ -81,6 +82,55 @@ async function openAudio(descriptor: AudioDescriptor): Promise<Readable> {
   return downloadContentFromMessage({ mediaKey: descriptor.mediaKey, directPath: descriptor.directPath }, 'audio', {
     host: DEF_MEDIA_HOST,
   })
+}
+
+/** How long the phone has to answer a request to upload a media again. */
+export const REUPLOAD_ANSWER_TIMEOUT_MS = 45_000
+
+/**
+ * Asks the OWNER'S OWN PHONE to upload an audio again, because WhatsApp's servers no longer have it (RF-15). It is Baileys'
+ * standard media retry (`updateMediaMessage`): a receipt addressed to the account's own JID, which the phone answers with
+ * the new place of the file. It is a normal feature of a linked device and it sends nothing to a third party: the
+ * conversation is not touched and nobody else is told. This is the ONLY function of the adapter that names it, and the
+ * read-only guard test allows it nowhere else. It never sets presence and sends no read receipt.
+ *
+ * Answers with the new `directPath` (checked like any other). Rejects with the Boom of Baileys when the phone says it does
+ * not have the file (status 404) or with `Error('timeout')` when it does not answer in `timeoutMs`.
+ */
+async function requestAudioReupload(
+  socket: BaileysSocket,
+  request: AudioReuploadRequest,
+  timeoutMs: number,
+): Promise<string> {
+  const message = {
+    key: {
+      remoteJid: request.key.remoteJid,
+      id: request.key.id,
+      fromMe: request.key.fromMe,
+      ...(request.key.participant === null ? {} : { participant: request.key.participant }),
+    },
+    message: {
+      audioMessage: {
+        mediaKey: request.descriptor.mediaKey,
+        directPath: request.descriptor.directPath,
+        mimetype: request.descriptor.mimetype,
+      },
+    },
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('timeout')), timeoutMs)
+  })
+  const updating = socket.updateMediaMessage(message)
+  updating.catch(() => undefined) // when the timeout wins, nobody awaits it
+  try {
+    const updated = await Promise.race([updating, timedOut])
+    const path = updated.message?.audioMessage?.directPath
+    if (!isSafeDirectPath(path)) throw new Error('invalid-media-path')
+    return path
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** The LID Baileys has STORED for a phone-number JID, from the auth state on disk. Never asks WhatsApp. */
@@ -113,6 +163,7 @@ export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
     sendTextToSelf: (text) => sendTextToSelf(socket, text),
     groupMetadata: (jid) => socket.groupMetadata(jid),
     openAudio,
+    requestAudioReupload: (request) => requestAudioReupload(socket, request, REUPLOAD_ANSWER_TIMEOUT_MS),
     signalRepository: {
       lidMapping: {
         // LOCAL lookup (RNF-01, RNF-17): `_getPNsForLIDsImpl` (baileys/lib/Signal/lid-mapping.js) reads its memory cache and

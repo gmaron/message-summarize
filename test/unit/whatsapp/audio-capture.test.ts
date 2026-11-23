@@ -102,6 +102,8 @@ describe('the translator hands the capture the download descriptor (RF-15, RNF-0
             mediaKey: new Uint8Array(SECRET_KEY),
             mimetype: 'audio/ogg; codecs=opus',
             fileLength: 20,
+            // What it takes to ask the phone to upload the media again if the server forgets it.
+            reuploadKey: { remoteJid: ANA, fromMe: false, participant: null },
           },
         },
       ],

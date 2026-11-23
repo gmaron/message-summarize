@@ -5,7 +5,11 @@ import type { CaptureRepository } from '../../src/application/ports/capture-repo
 import type { DigestSource } from '../../src/application/ports/digest-source.js'
 import type { DigestRecord, DigestStore } from '../../src/application/ports/digest-store.js'
 import type { DownloadQueue } from '../../src/application/ports/download-queue.js'
-import type { TranscriptionStore } from '../../src/application/ports/transcription-store.js'
+import type {
+  AudioQueueStatsSource,
+  TranscriptionClaims,
+  TranscriptionStore,
+} from '../../src/application/ports/transcription-store.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../src/domain/model.js'
 import {
   type Database,
@@ -64,7 +68,7 @@ export interface RawAudioRow {
 export interface CaptureFixture {
   readonly repository: CaptureRepository
   /** The transcription queue over the same data (RF-15). */
-  readonly transcription: TranscriptionStore
+  readonly transcription: TranscriptionStore & TranscriptionClaims & AudioQueueStatsSource
   /** The durable download queue over the same data (RF-15, RNF-08). */
   readonly downloads: DownloadQueue
   /** Reads the raw row of an audio: what the database really holds (the descriptor columns, the attempts...). */

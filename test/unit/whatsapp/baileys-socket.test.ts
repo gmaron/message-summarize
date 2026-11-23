@@ -172,6 +172,7 @@ describe('the Baileys socket configuration', () => {
       'ev',
       'groupMetadata',
       'openAudio',
+      'requestAudioReupload',
       'sendTextToSelf',
       'signalRepository',
       'user',
@@ -248,7 +249,16 @@ describe('the LID mapping of the narrow socket (RNF-01, RNF-17)', () => {
     const mapping = session.socket.signalRepository?.lidMapping
     expect(Object.keys(mapping ?? {}).sort()).toEqual(['getPNForLID', 'storedLidForPN'])
     expect(Object.keys(session.socket).sort()).toEqual(
-      ['end', 'ev', 'groupMetadata', 'openAudio', 'sendTextToSelf', 'signalRepository', 'user'].sort(),
+      [
+        'end',
+        'ev',
+        'groupMetadata',
+        'openAudio',
+        'requestAudioReupload',
+        'sendTextToSelf',
+        'signalRepository',
+        'user',
+      ].sort(),
     )
   })
 

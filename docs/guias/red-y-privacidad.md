@@ -17,7 +17,7 @@ No se envía nada a ningún lado salvo lo que figura en esta guía. No hay telem
 
 ### WhatsApp
 
-Por la conexión de tu propia cuenta (incluida la descarga de los audios que recibís, cuando la transcripción está activada).
+Por la conexión de tu propia cuenta (incluida la descarga de los audios que recibís, cuando la transcripción está activada). Para un audio viejo que los servidores de WhatsApp ya no tienen, el programa le pide a **tu propio celular** que lo suba de nuevo (el pedido estándar de reintento de medio de un dispositivo vinculado, dirigido a tu propia cuenta): no se le envía nada a nadie más.
 
 ### El proveedor de LLM que elegiste
 

@@ -483,6 +483,16 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
         mediaKey,
         mimetype: audio.mimetype,
         fileLength: toNumber(audio.fileLength),
+        // What it takes to ask the phone to upload the media again when WhatsApp's servers have forgotten it.
+        ...(msg.key?.remoteJid
+          ? {
+              reuploadKey: {
+                remoteJid: msg.key.remoteJid,
+                fromMe: Boolean(msg.key.fromMe),
+                participant: msg.key.participant ?? null,
+              },
+            }
+          : {}),
       },
     })
     ports.audio?.kick()

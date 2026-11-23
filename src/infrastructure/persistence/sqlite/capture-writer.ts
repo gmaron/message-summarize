@@ -16,7 +16,8 @@ import { inTransaction } from './transaction.js'
  * needs it (it is cleared when the file is stored or the download failed for good).
  */
 export const CLEAR_DESCRIPTOR =
-  'dl_direct_path = NULL, dl_media_key = NULL, dl_mimetype = NULL, dl_file_length = NULL, dl_attempts = 0, dl_next_attempt_at = NULL'
+  'dl_direct_path = NULL, dl_media_key = NULL, dl_mimetype = NULL, dl_file_length = NULL, dl_attempts = 0, dl_next_attempt_at = NULL, ' +
+  'dl_remote_jid = NULL, dl_from_me = NULL, dl_participant = NULL, dl_reupload_attempts = 0, dl_needs_reupload = 0'
 
 /**
  * SQL condition inside the upsert of a message: the stored row is a provisional message created by an edit
@@ -230,10 +231,22 @@ export class SqliteCaptureWriter {
     const result = this.db
       .prepare(
         `UPDATE messages SET transcribe_status = 'download_pending', transcribe_error = NULL, dl_attempts = 0,
-           dl_direct_path = ?, dl_media_key = ?, dl_mimetype = ?, dl_file_length = ?
+           dl_reupload_attempts = 0, dl_needs_reupload = 0,
+           dl_direct_path = ?, dl_media_key = ?, dl_mimetype = ?, dl_file_length = ?,
+           dl_remote_jid = ?, dl_from_me = ?, dl_participant = ?
          WHERE conversation_id = ? AND id = ? AND kind = 'audio' AND transcript IS NULL AND transcribe_status IS NULL`,
       )
-      .run(descriptor.directPath, descriptor.mediaKey, descriptor.mimetype, descriptor.fileLength, conversationId, id)
+      .run(
+        descriptor.directPath,
+        descriptor.mediaKey,
+        descriptor.mimetype,
+        descriptor.fileLength,
+        descriptor.reuploadKey?.remoteJid ?? null,
+        descriptor.reuploadKey === undefined ? null : descriptor.reuploadKey.fromMe ? 1 : 0,
+        descriptor.reuploadKey?.participant ?? null,
+        conversationId,
+        id,
+      )
     return Number(result.changes) === 1
   }
 

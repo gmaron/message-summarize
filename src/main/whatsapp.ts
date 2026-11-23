@@ -62,6 +62,7 @@ export const connectionFactoryWith =
               queue: runtime.downloadQueue,
               ...(hooks.downloadAudios === false ? { worker: false } : {}),
               maxDirBytes: runtime.config.transcription.maxMediaMb * 1024 * 1024,
+              concurrency: runtime.config.transcription.downloadConcurrency,
               // A file that was stored joins the transcription queue: the daemon's transcription starts at once.
               onDownloaded: () => runtime.transcription.kick(),
               ...(hooks.onDownload === undefined ? {} : { onOutcome: hooks.onDownload }),

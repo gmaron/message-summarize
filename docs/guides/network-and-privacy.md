@@ -17,7 +17,7 @@ Nothing is sent anywhere except what this guide lists. There is no telemetry, an
 
 ### WhatsApp
 
-Through your own account's connection (including the download of the audio you receive, when transcription is on).
+Through your own account's connection (including the download of the audio you receive, when transcription is on). For an old audio that WhatsApp's servers no longer have, the program asks **your own phone** to upload it again (the standard media retry request of a linked device, addressed to your own account): nothing is sent to anyone else.
 
 ### The LLM provider you chose
 

@@ -24,7 +24,7 @@ afterEach(async () => {
   disposeHarnesses()
 })
 
-async function setup(transcriber: FakeTranscriber | null) {
+async function setup(transcriber: FakeTranscriber | null, daemonOptions: { audioStatsMs?: number } = {}) {
   const h: Harness = await makeHarness()
   const parsed = parseConfig({ language: 'en', timezone: BA, provider: { primary: 'claude-cli' } }, BA)
   if (!parsed.ok) throw new Error('bad config')
@@ -39,7 +39,13 @@ async function setup(transcriber: FakeTranscriber | null) {
     onTranscription: (outcome) => outcomes.push(outcome),
   })
   runtime.identity.bind('9913174261432@s.whatsapp.net')
-  const daemon = new Daemon({ runtime, connection: h.connection, logger: h.ctx.logger, sweepMs: 40 })
+  const daemon = new Daemon({
+    runtime,
+    connection: h.connection,
+    logger: h.ctx.logger,
+    sweepMs: 40,
+    ...daemonOptions,
+  })
   current = { runtime, daemon }
   /** A voice note whose file was downloaded: stored and queued (through the repository: no wake-up). */
   const queued = async (id: string, timestamp = NOW - 60_000): Promise<void> => {
@@ -74,7 +80,7 @@ async function setup(transcriber: FakeTranscriber | null) {
 }
 
 describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
-  it('works through the audios that were waiting when it starts, oldest first, one at a time', async () => {
+  it('works through the audios that were waiting when it starts, newest first, one at a time', async () => {
     const transcriber = new FakeTranscriber()
     transcriber.answer = async (r) => ok(`text of ${basename(r.audioPath)}`)
     const t = await setup(transcriber)
@@ -82,7 +88,7 @@ describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
     await t.queued('early', NOW - 9_000)
     await t.daemon.start()
     await until(() => t.outcomes.length === 2, 'both audios handled')
-    expect(transcriber.calls.map((c) => basename(c.audioPath))).toEqual(['early.ogg', 'late.ogg'])
+    expect(transcriber.calls.map((c) => basename(c.audioPath))).toEqual(['late.ogg', 'early.ogg'])
     expect(transcriber.maxInFlight).toBe(1)
     expect(t.transcriptOf('early')).toBe('text of early.ogg')
     expect(t.status('late')).toBe('done')
@@ -99,7 +105,7 @@ describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
     await until(() => kicks >= 3, 'three sweeps')
   })
 
-  it('sweeps the download queue even with transcription off: stuck rows fail and old keys are cleared', async () => {
+  it('sweeps the download queue even with transcription off: stuck rows fail, and old audios wait for a re-upload', async () => {
     const t = await setup(null)
     const DAY = 24 * 60 * 60 * 1000
     const queueAudio = async (id: string, timestamp: number): Promise<void> => {
@@ -133,12 +139,14 @@ describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
     await queueAudio('fresh', NOW - 2_000)
     t.runtime.db.prepare("UPDATE messages SET dl_media_key = NULL WHERE id = 'broken'").run()
     await t.daemon.start()
-    await until(() => t.status('old') === 'failed' && t.status('broken') === 'failed', 'the sweep')
+    await until(() => t.status('broken') === 'failed', 'the sweep')
     const row = (id: string) =>
       t.runtime.db
         .prepare('SELECT transcribe_error AS e, dl_direct_path AS p, dl_media_key AS k FROM messages WHERE id = ?')
         .get(id)
-    expect(row('old')).toMatchObject({ e: 'expired', p: null, k: null })
+    // No age limit: the media of an old message may still be asked of the phone (a full history is the point).
+    expect(t.status('old')).toBe('download_pending')
+    expect(row('old')).toMatchObject({ p: '/v/old' })
     expect(row('broken')).toMatchObject({ e: 'invalid-media', p: null, k: null })
     expect(t.status('fresh')).toBe('download_pending')
     expect(row('fresh')).toMatchObject({ p: '/v/fresh' })
@@ -186,5 +194,43 @@ describe('the transcription queue in the daemon (RF-15, RNF-09)', () => {
     expect(t.status('a1')).toBe('pending')
     expect(t.transcriptOf('a1')).toBeNull()
     expect(t.outcomes).toEqual([])
+  })
+
+  it('logs transcription.stats (counts only) when the queues changed, not when they did not', async () => {
+    const transcriber = new FakeTranscriber()
+    transcriber.answer = async () => ok('text')
+    const t = await setup(transcriber, { audioStatsMs: 20 })
+    const stats = (): Record<string, unknown>[] =>
+      t.h.logs
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((e) => e.event === 'transcription.stats')
+    await t.queued('a1')
+    await t.queued('a2')
+    await t.daemon.start()
+    await until(() => stats().length >= 1 && t.status('a1') === 'done' && t.status('a2') === 'done', 'the stats')
+    await new Promise((resolve) => setTimeout(resolve, 150)) // many ticks with nothing new
+    const lines = stats()
+    expect(lines.length).toBeLessThanOrEqual(3)
+    const last = lines.at(-1)
+    expect(last).toMatchObject({ pending: 0, downloading: 0, running: 0, done: 2, failed: 0, reuploadRequested: 0 })
+    // counts only: nothing of a message, a file or a key
+    expect(Object.keys(last ?? {}).sort()).toEqual(
+      ['done', 'downloading', 'event', 'failed', 'level', 'pending', 'reuploadRequested', 'running', 'time'].sort(),
+    )
+    // and not repeated while it does not change
+    const before = stats().length
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(stats().length).toBe(before)
+  })
+
+  it('at start, an audio that was in progress when the previous process died goes back to the queue and is done', async () => {
+    const transcriber = new FakeTranscriber()
+    transcriber.answer = async () => ok('after the restart')
+    const t = await setup(transcriber)
+    await t.queued('a1')
+    t.runtime.db.prepare('UPDATE messages SET transcribe_claimed_at = 1').run() // the old process died with it
+    await t.daemon.start()
+    await until(() => t.transcriptOf('a1') === 'after the restart', 'the audio to be transcribed')
+    expect(t.h.logs.some((line) => line.includes('transcription.resumed'))).toBe(true)
   })
 })
