@@ -21,6 +21,8 @@ const BA = 'America/Argentina/Buenos_Aires'
 const report = (overrides: Partial<AskReport> = {}): AskReport => ({
   window: { since: 0, until: 1 },
   consulted: 2,
+  candidates: 2,
+  offset: 0,
   items: [{ name: 'Ana Gómez', answer: 'Asked for a loan.', todos: [], needsReply: true, messageCount: 2 }],
   failed: 0,
   providers: { 'claude-cli': 2 },
@@ -126,6 +128,7 @@ describe('AskService: start', () => {
         chats: ['ana'],
         settings: DEFAULT_SETTINGS,
         concurrency: 3,
+        offset: 0,
       },
     ])
     expect(service.isBusy('alpha')).toBe(false)
@@ -188,7 +191,6 @@ describe('AskService: start', () => {
 
   it('marks the request failed with the mapped error code of the use case', async () => {
     const cases = [
-      [{ kind: 'tooMany' as const, count: 70 }, 'tooManyChats'],
       [{ kind: 'emptyQuestion' as const }, 'emptyQuestion'],
       [{ kind: 'invalidWindow' as const }, 'failed'],
     ] as const
@@ -224,6 +226,124 @@ describe('AskService: start', () => {
     await settled()
     expect(service.list('alpha')[0]?.state).toBe('done')
     expect(logs.some((l) => l.message === 'ask.eventFailed')).toBe(true)
+  })
+})
+
+describe('AskService: pages and continuation', () => {
+  const paged = (overrides: Partial<AskReport>) => report({ consulted: 80, candidates: 200, offset: 0, ...overrides })
+
+  function pagedSetup() {
+    const reports = [paged({}), paged({ offset: 80 }), paged({ offset: 160, consulted: 40 })]
+    let n = 0
+    const calls: Parameters<AskChats>[0][] = []
+    const made = setup({
+      askChats: async (request) => {
+        calls.push(request)
+        const r = reports[n++] as AskReport
+        // the use case echoes the offset it was asked for
+        return ok({ ...r, offset: request.offset ?? 0 })
+      },
+    })
+    return { ...made, calls }
+  }
+
+  it('keeps candidates and offset in the view and logs them with skipped, never the text', async () => {
+    const { service, logs } = pagedSetup()
+    service.start('alpha', input)
+    await settled()
+    expect(service.list('alpha')[0]).toMatchObject({ candidates: 200, offset: 0, consulted: 80 })
+    const finished = logs.find((l) => l.message === 'ask.finished')
+    expect(finished?.fields).toMatchObject({ state: 'done', consulted: 80, candidates: 200, offset: 0, skipped: 120 })
+    expect(JSON.stringify(logs)).not.toContain('money')
+    expect(JSON.stringify(logs)).not.toContain('Ana')
+  })
+
+  it('logs the error of a failed request', async () => {
+    const { service, logs } = setup({ askChats: async () => err({ kind: 'invalidWindow' as const }) })
+    service.start('alpha', input)
+    await settled()
+    expect(logs.find((l) => l.message === 'ask.finished')?.fields).toMatchObject({ state: 'failed', error: 'failed' })
+  })
+
+  it('continues an ask with a new entry: same question, period, chats and window, next offset', async () => {
+    const { service, calls, state } = pagedSetup()
+    service.start('alpha', { ...input, chats: ['ana'] })
+    await settled()
+    state.now = NOW + 3 * HOUR
+    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: true, id: 2 })
+    await settled()
+    expect(calls.map((c) => c.offset)).toEqual([0, 80])
+    expect(calls[1]).toMatchObject({ question: 'who asked me for money?', chats: ['ana'], window: calls[0]?.window })
+    const [second, first] = service.list('alpha') as [AskView, AskView]
+    expect(second).toMatchObject({
+      id: 2,
+      offset: 80,
+      since: first.since,
+      until: first.until,
+      period: 'h24',
+      chats: ['ana'],
+    })
+    // the third page is still possible: 40 remain
+    expect(service.start('alpha', { continueFrom: 2 })).toEqual({ ok: true, id: 3 })
+    await settled()
+    expect(calls[2]?.offset).toBe(160)
+    // and now nothing remains
+    expect(service.start('alpha', { continueFrom: 3 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+  })
+
+  it('continues a source only once', async () => {
+    const { service } = pagedSetup()
+    service.start('alpha', input)
+    await settled()
+    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: true, id: 2 })
+    await settled()
+    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+    const [second, first] = service.list('alpha') as [AskView, AskView]
+    expect(first).toMatchObject({ continuedBy: 2, remaining: 120, next: 80 })
+    expect(second).toMatchObject({ remaining: 40, next: 40 })
+    expect(second.continuedBy).toBeUndefined()
+  })
+
+  it('never continues an ask of another account, by id', async () => {
+    const { service } = pagedSetup()
+    service.start('alpha', input)
+    await settled()
+    service.start('beta', input)
+    await settled()
+    // ids are global: alpha has 1, beta has 2; each one has leftovers but only for its own account
+    expect(service.start('alpha', { continueFrom: 2 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+    expect(service.start('beta', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+    expect(service.start('beta', { continueFrom: 2 })).toMatchObject({ ok: true })
+  })
+
+  it('does not continue an ask of a previous link of the account', async () => {
+    const { service, state } = pagedSetup()
+    service.start('alpha', input)
+    await settled()
+    state.stamp = 'created-2'
+    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+  })
+
+  it('rejects a continuation of a missing, running, failed or complete ask', async () => {
+    const { service } = setup()
+    expect(service.start('alpha', { continueFrom: 7 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+    service.start('alpha', input)
+    await settled()
+    // the default report has candidates == consulted: nothing remains
+    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+    expect(service.start('beta', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+
+    const gate = deferred<ReturnType<typeof ok<AskReport>>>()
+    const running = setup({ askChats: () => gate.promise })
+    running.service.start('alpha', input)
+    expect(running.service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
+    gate.resolve(ok(report()))
+    await settled()
+
+    const failed = setup({ askChats: async () => err({ kind: 'invalidWindow' as const }) })
+    failed.service.start('alpha', input)
+    await settled()
+    expect(failed.service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
   })
 })
 

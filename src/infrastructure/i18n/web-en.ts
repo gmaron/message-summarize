@@ -58,7 +58,7 @@ export const webEn: WebTexts = {
     wrongStep: 'That step is not the one the wizard is on. Reload the page.',
     emptyQuestion: 'Write what you want to ask for.',
     questionTooLong: 'The request is too long: keep it to 1000 characters or fewer.',
-    tooManyChats: 'There are too many chats in that period to read at once: pick fewer days or filter by chats.',
+    nothingToContinue: 'That request has no more chats left to read.',
   },
   linkErrors: {
     timeout: 'Time ran out before the QR was scanned. Try again.',
@@ -180,6 +180,8 @@ export const webEn: WebTexts = {
       statsFailedOne: '1 could not be read',
       statsFailedMany: '{count} could not be read',
       nothing: 'No chat had anything for this request.',
+      partial: 'Chats {from}–{to} of {total} were read, the ones with the most recent activity. {left} left.',
+      continue: 'Continue with the next {count}',
       needsReply: 'Waiting for your reply',
       copy: 'Copy',
       copied: 'Copied',

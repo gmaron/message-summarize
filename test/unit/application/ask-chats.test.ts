@@ -200,29 +200,176 @@ describe('AskChats: privacy', () => {
   })
 })
 
-describe('AskChats: the limit', () => {
-  it('reads exactly the maximum', async () => {
-    const { source, run } = setup()
-    for (let i = 0; i < MAX_ASK_CONVERSATIONS; i++)
-      addChat(source, `99119633${String(i).padStart(5, '0')}`, `Person ${i}`)
+describe('AskChats: the selection (as the digest)', () => {
+  it('skips the conversations where only the owner wrote', async () => {
+    const { source, summarizer, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez')
+    source.addConversation(conversation({ id: '9911963367944', name: 'Beto Ruiz', participantId: '9911963367944' }))
+    source.addMessages(
+      message({
+        id: 'o1',
+        conversationId: '9911963367944',
+        fromMe: true,
+        senderId: null,
+        timestamp: at(2),
+        text: 'Hi Beto',
+      }),
+    )
     const result = await run(request())
-    expect(result.ok && result.value.consulted).toBe(MAX_ASK_CONVERSATIONS)
+    expect(result.ok && result.value.candidates).toBe(1)
+    expect(result.ok && result.value.consulted).toBe(1)
+    expect((summarizer as FakeSummarizer).calls.map((c) => c.conversation.name)).toEqual(['Ana Gómez'])
   })
 
-  it('refuses more than the maximum with the count, and reads nothing (no silent cut)', async () => {
+  it('drops mass messages, so a chat with only a mass message and own text is skipped, and a mixed one keeps its incoming', async () => {
     const { source, summarizer, run } = setup()
-    for (let i = 0; i <= MAX_ASK_CONVERSATIONS; i++)
-      addChat(source, `99119633${String(i).padStart(5, '0')}`, `Person ${i}`)
-    expect(await run(request())).toEqual(err({ kind: 'tooMany', count: MAX_ASK_CONVERSATIONS + 1 }))
+    const blast = 'Big sale this weekend only, write me to order your pieces now!'
+    for (const id of ['9911963367001', '9911963367002', '9911963367003']) {
+      source.addConversation(conversation({ id, name: `Client ${id}`, participantId: id }))
+      source.addMessages(
+        message({ id: `m-${id}`, conversationId: id, fromMe: true, senderId: null, timestamp: at(2), text: blast }),
+      )
+    }
+    // a mass message plus an incoming reply: the chat stays, and the transcript has no mass text
+    source.addParticipant({ id: '9911963367001', savedName: 'Client 1', publicName: null })
+    source.addMessages(
+      message({
+        id: 'r1',
+        conversationId: '9911963367001',
+        senderId: '9911963367001',
+        timestamp: at(3),
+        text: 'How much?',
+      }),
+    )
+    const result = await run(request())
+    expect(result.ok && result.value.candidates).toBe(1)
+    const calls = (summarizer as FakeSummarizer).calls
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.transcript).toContain('How much?')
+    expect(calls[0]?.transcript).not.toContain('Big sale')
+  })
+
+  it('still applies the exclusions before the chat filter', async () => {
+    const { source, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez')
+    const result = await run(request({ chats: ['Ana'], settings: settings({ excludePatterns: ['Ana'] }) }))
+    expect(result.ok && result.value.candidates).toBe(0)
+  })
+})
+
+describe('AskChats: the pages', () => {
+  const idOf = (i: number) => `99119633${String(i).padStart(5, '0')}`
+
+  it('reads a page of the maximum, ranked by the latest incoming message, and reports candidates and offset', async () => {
+    const { source, summarizer, run } = setup()
+    const total = MAX_ASK_CONVERSATIONS + 5
+    // chat i has its incoming message at minute i: the highest i is the most recent
+    for (let i = 0; i < total; i++) {
+      source.addConversation(conversation({ id: idOf(i), name: `Person ${i}`, participantId: idOf(i) }))
+      source.addParticipant({ id: idOf(i), savedName: `Person ${i}`, publicName: null })
+      source.addMessages(
+        message({
+          id: `m${i}`,
+          conversationId: idOf(i),
+          senderId: idOf(i),
+          timestamp: at(1, i % 60) + Math.floor(i / 60) * 3600_000,
+          text: `says ${i}`,
+        }),
+      )
+    }
+    const result = await run(request())
+    expect(result.ok && [result.value.consulted, result.value.candidates, result.value.offset]).toEqual([
+      MAX_ASK_CONVERSATIONS,
+      total,
+      0,
+    ])
+    const names = (summarizer as FakeSummarizer).calls.map((c) => c.conversation.name)
+    expect(names).toHaveLength(MAX_ASK_CONVERSATIONS)
+    // the 5 oldest are the ones left out
+    for (let i = 0; i < 5; i++) expect(names).not.toContain(`Person ${i}`)
+    expect(names).toContain(`Person ${total - 1}`)
+  })
+
+  it('ranks by the latest INCOMING message: an own reply later does not move a chat up; ties go by conversation id', async () => {
+    const { source } = setup()
+    for (const [id, name] of [
+      ['b', 'Bea'],
+      ['a', 'Ana'],
+      ['c', 'Cora'],
+    ] as const) {
+      source.addConversation(conversation({ id, name, participantId: id }))
+      source.addParticipant({ id, savedName: name, publicName: null })
+    }
+    source.addMessages(
+      message({ id: '1', conversationId: 'a', senderId: 'a', timestamp: at(1), text: 'old a' }),
+      message({ id: '2', conversationId: 'a', fromMe: true, senderId: null, timestamp: at(9), text: 'my late reply' }),
+      message({ id: '3', conversationId: 'b', senderId: 'b', timestamp: at(5), text: 'b' }),
+      message({ id: '4', conversationId: 'c', senderId: 'c', timestamp: at(5), text: 'c' }),
+    )
+    const seen: string[] = []
+    const ranked = createAskChats({
+      source,
+      summarizer: new FakeSummarizer((r) => {
+        seen.push(r.conversation.name)
+        return answer('x')
+      }),
+      renderers,
+      systemPrompt: () => 'p',
+      contactStatus: () => 's',
+    })
+    await ranked(request({ concurrency: 1 }))
+    expect(seen).toEqual(['Bea', 'Cora', 'Ana'])
+  })
+
+  it('an offset returns the next slice of the same ranking', async () => {
+    const { source, summarizer, run } = setup()
+    const total = MAX_ASK_CONVERSATIONS + 5
+    for (let i = 0; i < total; i++) {
+      source.addConversation(conversation({ id: idOf(i), name: `Person ${i}`, participantId: idOf(i) }))
+      source.addParticipant({ id: idOf(i), savedName: `Person ${i}`, publicName: null })
+      source.addMessages(
+        message({
+          id: `m${i}`,
+          conversationId: idOf(i),
+          senderId: idOf(i),
+          timestamp: at(1, i % 60) + Math.floor(i / 60) * 3600_000,
+          text: `says ${i}`,
+        }),
+      )
+    }
+    const result = await run(request({ offset: MAX_ASK_CONVERSATIONS }))
+    expect(result.ok && [result.value.consulted, result.value.candidates, result.value.offset]).toEqual([
+      5,
+      total,
+      MAX_ASK_CONVERSATIONS,
+    ])
+    expect((summarizer as FakeSummarizer).calls.map((c) => c.conversation.name).sort()).toEqual(
+      [0, 1, 2, 3, 4].map((i) => `Person ${i}`).sort(),
+    )
+  })
+
+  it('treats a negative or non-finite offset as 0', async () => {
+    for (const offset of [-5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { source, run } = setup()
+      addChat(source, '9911963367943', 'Ana Gómez')
+      const result = await run(request({ offset }))
+      expect(result.ok && [result.value.consulted, result.value.offset]).toEqual([1, 0])
+    }
+  })
+
+  it('an offset past the end reads nothing', async () => {
+    const { source, summarizer, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez')
+    const result = await run(request({ offset: 10 }))
+    expect(result.ok && [result.value.consulted, result.value.candidates]).toEqual([0, 1])
     expect((summarizer as FakeSummarizer).calls).toEqual([])
   })
 
-  it('counts after the exclusions and the filter, so narrowing the request makes it fit', async () => {
+  it('counts candidates after the exclusions and the filter', async () => {
     const { source, run } = setup()
-    for (let i = 0; i <= MAX_ASK_CONVERSATIONS; i++)
-      addChat(source, `99119633${String(i).padStart(5, '0')}`, `Person ${i}`)
-    const result = await run(request({ chats: ['Person 1'] }))
-    expect(result.ok).toBe(true)
+    for (let i = 0; i <= MAX_ASK_CONVERSATIONS; i++) addChat(source, idOf(i), `Person ${i}`)
+    const result = await run(request({ chats: ['Person 80'] }))
+    expect(result.ok && result.value.candidates).toBe(1)
   })
 })
 

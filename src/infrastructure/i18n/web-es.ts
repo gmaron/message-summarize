@@ -57,7 +57,7 @@ export const webEs: WebTexts = {
     wrongStep: 'Ese paso no es el que muestra el asistente. Recargá la página.',
     emptyQuestion: 'Escribí qué querés pedir.',
     questionTooLong: 'El pedido es demasiado largo: que no pase de 1000 caracteres.',
-    tooManyChats: 'Hay demasiados chats en ese período para leerlos de una vez: elegí menos días o filtrá por chats.',
+    nothingToContinue: 'Ese pedido no tiene más chats para seguir leyendo.',
   },
   linkErrors: {
     timeout: 'Pasó el tiempo sin que se escaneara el QR. Volvé a intentar.',
@@ -178,6 +178,8 @@ export const webEs: WebTexts = {
       statsFailedOne: '1 no se pudo leer',
       statsFailedMany: '{count} no se pudieron leer',
       nothing: 'Ningún chat tenía algo para este pedido.',
+      partial: 'Se consultaron los chats {from}–{to} de {total}, los de actividad más reciente. Quedan {left}.',
+      continue: 'Seguir con los próximos {count}',
       needsReply: 'Espera tu respuesta',
       copy: 'Copiar',
       copied: 'Copiado',

@@ -168,6 +168,11 @@ export interface AskView {
   readonly since: number
   readonly until: number
   readonly consulted?: number
+  readonly candidates?: number
+  readonly offset?: number
+  readonly remaining?: number
+  readonly next?: number
+  readonly continuedBy?: number
   readonly failedChats?: number
   readonly items?: readonly {
     readonly name: string

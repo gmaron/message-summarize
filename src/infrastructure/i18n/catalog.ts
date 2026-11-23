@@ -63,7 +63,7 @@ export type WebErrorCode =
   | 'setupCompleted'
   | 'wrongStep'
   | 'emptyQuestion'
-  | 'tooManyChats'
+  | 'nothingToContinue'
   | 'questionTooLong'
 
 /** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
@@ -898,6 +898,10 @@ export interface WebTexts {
       readonly statsFailedOne: string
       readonly statsFailedMany: string
       readonly nothing: string
+      /** `{from}`, `{to}`, `{total}`, `{left}`: a page did not read every chat of the period. */
+      readonly partial: string
+      /** `{count}`: the button that reads the next chats of the same request. */
+      readonly continue: string
       readonly needsReply: string
       readonly copy: string
       readonly copied: string

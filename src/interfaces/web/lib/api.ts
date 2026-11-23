@@ -165,7 +165,7 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     cancelLink: (id: string) => request<{ ok: boolean }>('DELETE', `${account(id)}/link`),
     retry: (id: string) => request<{ ok: boolean }>('POST', `${account(id)}/retry`),
     digestNow: (id: string) => request<{ state: 'started' | 'deferred' }>('POST', `${account(id)}/digest`),
-    ask: (id: string, body: { question: string; period: string; chats: string[] }) =>
+    ask: (id: string, body: { question: string; period: string; chats: string[] } | { continueFrom: number }) =>
       request<{ id: number }>('POST', `${account(id)}/ask`, body),
     asks: async (id: string) => (await request<{ asks: AskView[] }>('GET', `${account(id)}/asks`)).asks,
     deleteAsk: (id: string, askId: number) => request<undefined>('DELETE', `${account(id)}/asks/${askId}`),

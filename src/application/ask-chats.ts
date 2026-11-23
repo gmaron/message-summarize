@@ -1,4 +1,5 @@
 import { isExcluded } from '../domain/exclusion.js'
+import { findMassTexts, isMassMessage } from '../domain/mass.js'
 import type { Message, Participant } from '../domain/model.js'
 import { resolveConversationName } from '../domain/names.js'
 import { err, ok, type Result } from '../domain/result.js'
@@ -10,8 +11,11 @@ import type { DigestSource } from './ports/digest-source.js'
 import type { Renderers, TranscriptEntry } from './ports/rendering.js'
 import type { Summarizer } from './ports/summarizer.js'
 
-/** The most conversations one request reads: a wider one has to be narrowed (period or chat filter), not cut silently. */
-export const MAX_ASK_CONVERSATIONS = 60
+/**
+ * The most conversations one request reads. A wider one is read in pages of this size, the most recent incoming message
+ * first; the report says how many were left out and the next page continues over the same window (`offset`).
+ */
+export const MAX_ASK_CONVERSATIONS = 80
 /** The longest question accepted, in characters. */
 export const MAX_QUESTION_CHARS = 1000
 /** What the model writes in `resumen` when a conversation has nothing to do with the request. */
@@ -37,6 +41,8 @@ export interface AskChatsRequest {
   readonly chats?: readonly string[]
   readonly settings: DigestSettings
   readonly concurrency?: number
+  /** How many of the ranked conversations were already read by earlier pages. Default 0. */
+  readonly offset?: number
 }
 
 /** What one conversation answered to the request. */
@@ -50,8 +56,12 @@ export interface AskItem {
 
 export interface AskReport {
   readonly window: SummaryWindow
-  /** Conversations that were read (they had messages in the period and were not excluded). */
+  /** Conversations that were read in this page. */
   readonly consulted: number
+  /** Conversations that could be read in total: with incoming messages in the period, not excluded, matching the filter. */
+  readonly candidates: number
+  /** The conversations of the ranking that earlier pages already read. */
+  readonly offset: number
   /** The conversations that had something for the request. Empty is a valid answer. */
   readonly items: readonly AskItem[]
   /** Conversations that could not be read by the provider. Their names are private: only the count is kept. */
@@ -60,11 +70,7 @@ export interface AskReport {
   readonly providers: Readonly<Record<string, number>>
 }
 
-export type AskChatsError =
-  | { readonly kind: 'emptyQuestion' }
-  | { readonly kind: 'invalidWindow' }
-  /** More conversations than `MAX_ASK_CONVERSATIONS`: narrow the period or the chat filter. */
-  | { readonly kind: 'tooMany'; readonly count: number }
+export type AskChatsError = { readonly kind: 'emptyQuestion' } | { readonly kind: 'invalidWindow' }
 
 export type AskChats = (request: AskChatsRequest) => Promise<Result<AskReport, AskChatsError>>
 
@@ -106,11 +112,20 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
     assertConcurrency(concurrency)
 
     const ownIds = new Set(deps.ownConversationIds?.() ?? [])
+    const offset = Number.isFinite(request.offset) ? Math.max(0, Math.floor(request.offset ?? 0)) : 0
     const conversations = (await source.conversationsWithMessages(window)).filter((c) => !ownIds.has(c.id))
-    const loaded: { conversation: (typeof conversations)[number]; messages: readonly Message[] }[] = []
+    // The same selection as the digest: mass messages do not count, and a chat where only the owner wrote has nothing to ask.
+    const mass = conversations.length === 0 ? new Set<string>() : findMassTexts(await source.ownMessageTexts())
+    const loaded: {
+      conversation: (typeof conversations)[number]
+      messages: readonly Message[]
+      lastIncoming: number
+    }[] = []
     for (const conversation of conversations) {
-      const messages = await source.messagesInWindow(conversation.id, window)
-      if (messages.length > 0) loaded.push({ conversation, messages })
+      const messages = (await source.messagesInWindow(conversation.id, window)).filter((m) => !isMassMessage(mass, m))
+      let lastIncoming = -Infinity
+      for (const m of messages) if (!m.fromMe && m.timestamp > lastIncoming) lastIncoming = m.timestamp
+      if (lastIncoming > -Infinity) loaded.push({ conversation, messages, lastIncoming })
     }
 
     const ids = new Set<string>()
@@ -123,9 +138,10 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
 
     const filters = (request.chats ?? []).map((c) => c.trim()).filter((c) => c !== '')
     const named = loaded
-      .map(({ conversation, messages }) => ({
+      .map(({ conversation, messages, lastIncoming }) => ({
         conversation,
         messages,
+        lastIncoming,
         ...resolveConversationName(conversation, personOf(conversation.participantId), {
           unnamedGroup: renderers.transcript.unnamedGroup,
         }),
@@ -133,10 +149,17 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
       // The privacy exclusions come first and cannot be overridden by the filter of the request.
       .filter((c) => !isExcluded(settings.excludePatterns, c.conversation.id, c.name))
       .filter((c) => filters.length === 0 || isExcluded(filters, c.conversation.id, c.name))
-    if (named.length > MAX_ASK_CONVERSATIONS) return err({ kind: 'tooMany', count: named.length })
+    // The most recent incoming message first; the id breaks ties so every page of the same window agrees.
+    named.sort(
+      (a, b) =>
+        b.lastIncoming - a.lastIncoming ||
+        (a.conversation.id < b.conversation.id ? -1 : a.conversation.id > b.conversation.id ? 1 : 0),
+    )
+    const candidates = named.length
+    const page = named.slice(offset, offset + MAX_ASK_CONVERSATIONS)
 
     const systemPrompt = deps.systemPrompt(question, settings.ownerName)
-    const outcomes = await mapWithConcurrency(named, concurrency, async (item) => {
+    const outcomes = await mapWithConcurrency(page, concurrency, async (item) => {
       try {
         const entries: TranscriptEntry[] = item.messages.map((m) => ({
           message: { ...m, copies: 0 },
@@ -195,6 +218,6 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
     }
     // The most urgent first: what needs a reply, then the busiest conversation.
     items.sort((a, b) => Number(b.needsReply) - Number(a.needsReply) || b.messageCount - a.messageCount)
-    return ok({ window, consulted: named.length, items, failed, providers })
+    return ok({ window, consulted: page.length, candidates, offset, items, failed, providers })
   }
 }
