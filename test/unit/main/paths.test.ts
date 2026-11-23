@@ -67,6 +67,7 @@ describe('layoutOf', () => {
       legacyAccountDir: join('/d', 'account'),
       legacyQrFile: join('/d', 'qr.png'),
       webTokenFile: join('/d', 'web-token'),
+      webSessionFile: join('/d', 'web-session'),
       webAddressFile: join('/d', 'web.json'),
     })
     expect(accountLayoutOf(layout, 'work')).toEqual({

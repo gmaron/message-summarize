@@ -106,6 +106,8 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
   }
   const account = (id: string) => `/api/accounts/${enc(id)}`
   return {
+    /** Exchanges the access token for the session cookie (what the link does). Throws `ApiError` (401: not the token). */
+    openSession: (token: string) => request<{ ok: true }>('POST', '/api/session', { token }),
     info: () => request<{ language?: unknown }>('GET', '/api/info'),
     setup: () => request<SetupView>('GET', '/api/setup'),
     /** Saves the step the wizard is on and moves to the next (`{ from, ...data }`), or goes back (`{ goto }`). */

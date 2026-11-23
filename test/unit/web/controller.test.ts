@@ -279,3 +279,79 @@ describe('actions', () => {
     expect(seen.length).toBe(count)
   })
 })
+
+describe('signIn (the "no access" screen)', () => {
+  const unauthorizedAnswers: Answers = {
+    'GET /api/accounts': { status: 401, body: { error: 'unauthorized' } },
+    'GET /api/info': { status: 401 },
+  }
+
+  it('exchanges the pasted token (or link) for a session and loads the app', async () => {
+    let allowed = false
+    const { controller, calls } = setup({
+      'POST /api/session': () => {
+        allowed = true
+        return { body: { ok: true } }
+      },
+      'GET /api/accounts': () =>
+        allowed ? { body: { accounts: [account()] } } : { status: 401, body: { error: 'unauthorized' } },
+      'GET /api/info': () => (allowed ? { body: { language: 'es' } } : { status: 401 }),
+    })
+    await controller.start()
+    expect(controller.state.unauthorized).toBe(true)
+    expect(await controller.signIn('  https://host.ts.net/#token=abc_123  ')).toBe('ok')
+    expect(calls.find((call) => call.method === 'POST')).toEqual({
+      method: 'POST',
+      path: '/api/session',
+      body: { token: 'abc_123' },
+    })
+    expect(controller.state.unauthorized).toBe(false)
+    expect(controller.state.accounts).toEqual([account()])
+  })
+
+  it('says rejected on a 401 and stays on the screen', async () => {
+    const { controller } = setup({
+      ...unauthorizedAnswers,
+      'POST /api/session': { status: 401, body: { error: 'unauthorized' } },
+    })
+    await controller.start()
+    expect(await controller.signIn('wrong')).toBe('rejected')
+    expect(controller.state.unauthorized).toBe(true)
+  })
+
+  it('says invalid, without asking the daemon, for text that cannot be a token', async () => {
+    const { controller, calls } = setup(unauthorizedAnswers)
+    await controller.start()
+    const before = calls.length
+    expect(await controller.signIn('not a token')).toBe('invalid')
+    expect(calls.length).toBe(before)
+  })
+
+  it('says failed when the daemon errors or does not answer', async () => {
+    const { controller } = setup({ ...unauthorizedAnswers, 'POST /api/session': { status: 500 } })
+    await controller.start()
+    expect(await controller.signIn('abc')).toBe('failed')
+    expect(controller.state.unauthorized).toBe(true)
+  })
+
+  it('closes the previous stream before opening a new one, so repeated sign-ins never leave two', async () => {
+    const { controller } = setup({ 'POST /api/session': { body: { ok: true } } })
+    await controller.start()
+    const first = FakeEventSource.last()
+    expect(await controller.signIn('abc')).toBe('ok')
+    const second = FakeEventSource.last()
+    expect(second).not.toBe(first)
+    expect(first.closed).toBe(true)
+    expect(second.closed).toBe(false)
+    await controller.signIn('abc')
+    expect(second.closed).toBe(true)
+    expect(FakeEventSource.all.filter((source) => !source.closed).length).toBe(1)
+  })
+
+  it('says failed when the session was accepted but the app is still unauthorized (cookies blocked)', async () => {
+    const { controller } = setup({ ...unauthorizedAnswers, 'POST /api/session': { body: { ok: true } } })
+    await controller.start()
+    expect(await controller.signIn('abc')).toBe('failed')
+    expect(controller.state.unauthorized).toBe(true)
+  })
+})

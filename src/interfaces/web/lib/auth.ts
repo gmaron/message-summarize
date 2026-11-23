@@ -28,3 +28,14 @@ export async function consumeToken(env: AuthEnv): Promise<'none' | 'ok' | 'rejec
     return 'failed'
   }
 }
+
+/**
+ * The token out of what a person pasted: the token alone, or the whole link (`https://host/#token=...`), with blanks
+ * around either. null when it is empty or cannot be a token (a token is only letters, digits, `-` and `_`).
+ */
+export function tokenFromInput(text: string): string | null {
+  const trimmed = text.trim()
+  const fromLink = /(?:^|[#?&])token=([^&#\s]*)/.exec(trimmed)
+  const token = fromLink === null ? trimmed : (fromLink[1] as string)
+  return /^[A-Za-z0-9_-]+$/.test(token) ? token : null
+}

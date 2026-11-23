@@ -23,6 +23,8 @@ export interface DataLayout {
   readonly legacyQrFile: string
   /** The access token of the local web (RNF-03), generated once per installation. A secret: mode 0600, never logged. */
   readonly webTokenFile: string
+  /** The secret behind the session cookies of the web, generated once. A secret: mode 0600, never logged. Deleting it ends every session. */
+  readonly webSessionFile: string
   /** Where the running daemon's web really listens (host and port as bound). Exists only while it does: see `web-address.ts`. */
   readonly webAddressFile: string
 }
@@ -91,6 +93,7 @@ export function layoutOf(dataDir: string): DataLayout {
     legacyAccountDir: join(dataDir, 'account'),
     legacyQrFile: join(dataDir, 'qr.png'),
     webTokenFile: join(dataDir, 'web-token'),
+    webSessionFile: join(dataDir, 'web-session'),
     webAddressFile: join(dataDir, 'web.json'),
   }
 }

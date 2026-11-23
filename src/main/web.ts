@@ -32,7 +32,7 @@ import { accountCreator, accountRoutes } from './web-routes.js'
 import { scheduleRoutes } from './web-schedules.js'
 import { settingsRoutes } from './web-settings.js'
 import { setupRoutes } from './web-setup.js'
-import { ensureWebToken } from './web-token.js'
+import { ensureWebSession, ensureWebToken } from './web-token.js'
 
 /**
  * The events the web pushes over SSE, by name. `qr` only says that the QR of a link changed (`seq` counts them): the
@@ -264,6 +264,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
       allowedHosts: options.web.allowedHosts,
       port: listenPort,
       token: await ensureWebToken(ctx.layout),
+      sessionSecret: await ensureWebSession(ctx.layout),
       routes,
       events: bus,
       staticDir: ctx.web?.staticDir ?? DEFAULT_STATIC_DIR,

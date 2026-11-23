@@ -32,6 +32,23 @@
   let app: AppState = $state.raw(untrack(() => controller.state))
   $effect(() => controller.subscribe((next) => (app = next)))
 
+  // The token pasted on the "no access" screen: it lives only in this field, goes in one request and the field is emptied.
+  let pasted = $state('')
+  let signingIn = $state(false)
+  let signInProblem: 'wrong' | 'failed' | null = $state(null)
+  async function signIn(event: SubmitEvent) {
+    event.preventDefault()
+    if (signingIn || pasted.trim() === '') return
+    const sending = pasted
+    pasted = ''
+    signingIn = true
+    signInProblem = null
+    const result = await controller.signIn(sending)
+    signingIn = false
+    if (result === 'invalid' || result === 'rejected') signInProblem = 'wrong'
+    else if (result === 'failed') signInProblem = 'failed'
+  }
+
   const texts = $derived(textsFor(app.language))
   const ui = $derived(texts.ui)
 
@@ -107,6 +124,29 @@
   <main class="center-card" tabindex="-1">
     <h1>{ui.unauthorizedTitle}</h1>
     <p>{ui.unauthorizedText}</p>
+    <form class="stack-sm" onsubmit={signIn}>
+      <div class="field">
+        <label for="access-key">{ui.signInLabel}</label>
+        <input
+          id="access-key"
+          type="password"
+          bind:value={pasted}
+          autocomplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          autocapitalize="off"
+          spellcheck="false"
+          disabled={signingIn}
+        />
+      </div>
+      <div aria-live="polite">
+        {#if signInProblem !== null}
+          <p class="notice bad small" role="alert">{signInProblem === 'wrong' ? ui.signInWrong : ui.signInFailed}</p>
+        {/if}
+      </div>
+      <div><button type="submit" class="btn primary" disabled={signingIn || pasted.trim() === ''}>{signingIn ? ui.signInBusy : ui.signInButton}</button></div>
+    </form>
+    <p class="small muted">{ui.unauthorizedOwner}</p>
     <p><code class="cmd">msum open</code></p>
     <p class="small muted">{ui.unauthorizedNote}</p>
     <LanguageSwitch {texts} current={app.language} onchoose={(language) => controller.setLanguage(language)} />
