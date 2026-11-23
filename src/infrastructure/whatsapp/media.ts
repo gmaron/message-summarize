@@ -18,7 +18,8 @@ export const DEFAULT_MAX_MEDIA_DIR_BYTES = 500 * 1024 * 1024
  * - invalid-media-path: the message has no `directPath`, or it is not a plain WhatsApp media path. Nothing is requested
  *   (the sender writes these fields, and they must never choose where we connect).
  * - unsupported-format: the mimetype is not one of the audio formats of WhatsApp.
- * - media-cap: the account's media directory is full (`transcription.maxMediaMb`).
+ * - media-cap: the account's media directory is full (`transcription.maxMediaMb`). Not the fault of the audio: it is
+ *   `unavailable` (claim released, nothing counted, descriptor kept) and downloads go on when transcription frees space.
  * - invalid-media: no usable decryption key.
  * - expired: the server no longer has the file (HTTP 404 or 410). The download worker then asks the owner's own phone to
  *   upload it again (never the sender: that would be a message out, RNF-17).
@@ -48,6 +49,7 @@ export function classifyFailure(code: AudioFetchFailure): 'permanent' | 'transie
     case 'write-failed':
       return 'transient'
     case 'aborted':
+    case 'media-cap':
       return 'unavailable'
     default:
       return 'permanent'
@@ -181,7 +183,11 @@ export function createAudioFetcher(options: AudioFetcherOptions): AudioFetcher {
 
       try {
         if (!(await ensureMediaDir(options.mediaDir))) return err('write-failed')
-        if ((await mediaDirectoryBytes(options.mediaDir)) + (announced ?? 0) > maxDirBytes) return err('media-cap')
+        const used = await mediaDirectoryBytes(options.mediaDir)
+        if (used + (announced ?? 0) > maxDirBytes) {
+          // Waiting only helps when something is in the folder to be freed: an audio bigger than the whole limit never fits.
+          return err(used === 0 ? 'too-large' : 'media-cap')
+        }
       } catch {
         return err('write-failed')
       }

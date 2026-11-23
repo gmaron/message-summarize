@@ -66,7 +66,14 @@ class FakeDownloader implements AudioDownloader {
   abort(): void {}
 }
 
-function setup(options: { concurrency?: number; maxReuploadAttempts?: number } = {}) {
+function setup(
+  options: {
+    concurrency?: number
+    maxReuploadAttempts?: number
+    awaiting?: () => Promise<number>
+    maxAwaiting?: number
+  } = {},
+) {
   const repo = new InMemoryCaptureRepository()
   const downloader = new FakeDownloader()
   const outcomes: DownloadOutcome[] = []
@@ -79,6 +86,8 @@ function setup(options: { concurrency?: number; maxReuploadAttempts?: number } =
     clock,
     ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency }),
     ...(options.maxReuploadAttempts === undefined ? {} : { maxReuploadAttempts: options.maxReuploadAttempts }),
+    ...(options.awaiting === undefined ? {} : { awaiting: options.awaiting }),
+    ...(options.maxAwaiting === undefined ? {} : { maxAwaiting: options.maxAwaiting }),
     onOutcome: (outcome) => outcomes.push(outcome),
     wait: async (ms) => {
       waits.push(ms)
@@ -296,5 +305,44 @@ describe('an old media: the phone is asked to upload it again (RF-15)', () => {
   it('the number of attempts of the default is the one documented', () => {
     expect(MAX_REUPLOAD_ATTEMPTS).toBe(4)
     expect(REUPLOAD_MIN_INTERVAL_MS).toBe(2_000)
+  })
+})
+
+describe('a full media folder and the backlog of untranscribed audios', () => {
+  it('a full folder (media-cap, unavailable) is no failure: the descriptor stays, nothing is counted, and it resumes after a kick', async () => {
+    const t = setup({ concurrency: 2 })
+    for (let i = 0; i < 3; i++) await queued(t.repo, `a${i}`, 1000 + i)
+    let full = true
+    t.downloader.answer = async (item) =>
+      full ? err({ kind: 'unavailable', reason: 'media-cap' }) : ok(`${item.messageId}.ogg`)
+    t.worker.kick()
+    await t.worker.idle()
+    expect(t.outcomes.every((o) => o === 'unavailable')).toBe(true)
+    expect(await t.repo.countDownloads()).toBe(3)
+    for (const id of ['a0', 'a1', 'a2']) {
+      expect(state(t.repo, id)).toMatchObject({ status: 'download_pending', attempts: 0 })
+      expect(state(t.repo, id)?.descriptor).not.toBeNull()
+    }
+    // the folder frees up (a transcription deleted its file): the owner kicks the pool and everything is downloaded
+    full = false
+    t.worker.kick()
+    await t.worker.idle()
+    expect(await t.repo.countDownloads()).toBe(0)
+    expect(await t.repo.countPending()).toBe(3)
+  })
+
+  it('claims nothing while the downloaded audios waiting for whisper reach the bound, and goes on when they drop', async () => {
+    let waiting = 4
+    const t = setup({ concurrency: 2, awaiting: async () => waiting, maxAwaiting: 4 })
+    for (let i = 0; i < 3; i++) await queued(t.repo, `a${i}`, 1000 + i)
+    t.worker.kick()
+    await t.worker.idle()
+    expect(t.downloader.started).toEqual([])
+    expect(await t.repo.countDownloads()).toBe(3)
+    waiting = 3
+    t.worker.kick()
+    await t.worker.idle()
+    expect(t.downloader.started).toHaveLength(3)
+    expect(await t.repo.countDownloads()).toBe(0)
   })
 })

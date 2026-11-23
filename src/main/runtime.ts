@@ -123,6 +123,8 @@ export interface Runtime {
   readonly transcription: TranscribeAudios
   /** The durable queue of audio downloads (RF-15, RNF-08): the connection's download worker works through it. */
   readonly downloadQueue: DownloadQueue
+  /** Told when an audio file was deleted from the media folder (its transcription is over): room for more downloads. */
+  onMediaFreed(listener: () => void): void
   /** Counts of the audio queues, for the progress log (counts only). */
   audioQueueStats(): Promise<AudioQueueStats>
   /** Null when no provider was chosen. */
@@ -175,6 +177,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
             })
           : null
     const queues = new SqliteTranscriptionStore(db)
+    const mediaFreed = new Set<() => void>()
     // The process slot allows as many transcriptions at once as the most demanding account asks for.
     const slot = options.transcriptionSlot ?? processTranscriptionSlot
     if ('setLimit' in slot && 'limit' in slot) {
@@ -194,7 +197,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
         : { mustObserve: options.daemonRunning }),
       ...(options.transcriptionPollMs === undefined ? {} : { observePollMs: options.transcriptionPollMs }),
       // What is kept is the text: the audio file goes once it is transcribed, or failed for good.
-      deleteMedia: (mediaRef) => rm(join(layout.mediaDir, mediaRef), { force: true }),
+      deleteMedia: async (mediaRef) => {
+        await rm(join(layout.mediaDir, mediaRef), { force: true })
+        for (const listener of [...mediaFreed]) listener()
+      },
       ...(options.onTranscription === undefined ? {} : { onOutcome: options.onTranscription }),
     })
 
@@ -282,6 +288,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       ownIds,
       transcription,
       downloadQueue: queues,
+      onMediaFreed: (listener) => {
+        mediaFreed.add(listener)
+      },
       audioQueueStats: () => queues.audioQueueStats(),
       get generateDigest() {
         return parts.generateDigest

@@ -46,6 +46,14 @@ export interface DownloadAudiosDeps {
   readonly maxAttempts?: number
   /** Downloads that run at once (`transcription.downloadConcurrency`). Default 1. */
   readonly concurrency?: number
+  /**
+   * How many audios are downloaded and wait for a transcriber (their files are on disk). While it is at `maxAwaiting` or
+   * more no new download is claimed: with a full history downloads outpace whisper and would fill the media folder.
+   * Absent: no limit.
+   */
+  readonly awaiting?: () => Promise<number>
+  /** The bound for `awaiting` (the caller gives 4 times the transcription concurrency). Default 8. */
+  readonly maxAwaiting?: number
   /** Called after a file was stored, so the transcription queue can start. */
   readonly onDownloaded?: () => void
   /** Told about every attempt, for logs and tests. */
@@ -74,7 +82,7 @@ export interface DownloadAudiosDeps {
  * - A transient failure (network, timeout, disk): the audio stays in the queue with one more attempt and a BACKOFF (30 s,
  *   1 min, 2 min, 4 min): it is not due before that, so a burst of kicks cannot use up its attempts and the audios behind
  *   it go on. After `maxAttempts` it fails for good.
- * - Unavailable (no connection) or stopped: nothing is recorded and nothing is counted: the claim is released and the
+ * - Unavailable (no connection, the media folder is full) or stopped: nothing is recorded and nothing is counted: the claim is released and the
  *   audio is asked for again when the connection is back, after a restart, on the next sweep.
  *
  * `kick` tops the pools up; a kick during a run makes them look once more. `stop` aborts what is in progress and resolves
@@ -93,6 +101,7 @@ export interface DownloadAudios {
 export function createDownloadAudios(deps: DownloadAudiosDeps): DownloadAudios {
   const { queue, downloader } = deps
   const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_DOWNLOAD_ATTEMPTS
+  const maxAwaiting = Math.max(1, deps.maxAwaiting ?? 8)
   const maxReuploadAttempts = deps.maxReuploadAttempts ?? MAX_REUPLOAD_ATTEMPTS
   const reuploadIntervalMs = deps.reuploadIntervalMs ?? REUPLOAD_MIN_INTERVAL_MS
   const { wait } = deps
@@ -116,6 +125,9 @@ export function createDownloadAudios(deps: DownloadAudiosDeps): DownloadAudios {
     if (stopped) return 'stop'
     let item: PendingDownload | null = null
     try {
+      // Enough audios wait for whisper: the pool pauses (nothing is claimed) until a transcription finishes and the caller
+      // kicks it again.
+      if (deps.awaiting !== undefined && (await deps.awaiting()) >= maxAwaiting) return 'stop'
       item = await queue.claimDownload(deps.clock.now(), CLAIM_LEASE_MS)
       if (item === null) return 'stop'
       const next = item

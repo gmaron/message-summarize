@@ -229,6 +229,9 @@ export interface WhatsAppConnectionOptions {
     readonly maxAttempts?: number
     /** Downloads that run at once. Default 1. */
     readonly concurrency?: number
+    /** Downloaded files waiting for a transcriber: no new download while it is at `maxAwaiting` or more. */
+    readonly awaiting?: () => Promise<number>
+    readonly maxAwaiting?: number
     /** Called after a file was stored: the transcription queue can start. */
     readonly onDownloaded?: () => void
     /** Told about every download attempt (a fixed word), for logs. */
@@ -530,6 +533,8 @@ export class WhatsAppConnection {
       wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
       ...(media.maxAttempts === undefined ? {} : { maxAttempts: media.maxAttempts }),
       ...(media.concurrency === undefined ? {} : { concurrency: media.concurrency }),
+      ...(media.awaiting === undefined ? {} : { awaiting: media.awaiting }),
+      ...(media.maxAwaiting === undefined ? {} : { maxAwaiting: media.maxAwaiting }),
       ...(media.onDownloaded === undefined ? {} : { onDownloaded: media.onDownloaded }),
       ...(media.onOutcome === undefined ? {} : { onOutcome: media.onOutcome }),
     })
