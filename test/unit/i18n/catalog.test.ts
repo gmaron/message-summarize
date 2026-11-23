@@ -221,6 +221,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   'cli.secret.sourceFile': [['f']],
   'cli.config.secretInConfig': [['provider.openai.apiKey']],
   'cli.config.invalidPort': [['web.port']],
+  'cli.config.invalidHostName': [['web.allowedHosts']],
   'cli.config.belowMinimum': [['logs.maxBytes']],
   'cli.config.invalidUrl': [['provider.ollama.baseUrl']],
   'cli.config.installationOnly': [['web']],

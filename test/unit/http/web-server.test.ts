@@ -59,7 +59,9 @@ interface Setup {
   }): Promise<Reply>
 }
 
-async function setup(options: { withStatic?: boolean; host?: string; heartbeatMs?: number } = {}): Promise<Setup> {
+async function setup(
+  options: { withStatic?: boolean; host?: string; heartbeatMs?: number; allowedHosts?: readonly string[] } = {},
+): Promise<Setup> {
   const root = mkdtempSync(join(tmpdir(), 'msum-web-'))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const staticDir = join(root, 'public')
@@ -73,6 +75,7 @@ async function setup(options: { withStatic?: boolean; host?: string; heartbeatMs
   const logged: string[] = []
   const server = createWebServer({
     host: options.host ?? '127.0.0.1',
+    ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
     port: 0,
     token: TOKEN,
     routes,
@@ -242,6 +245,50 @@ describe('DNS rebinding and CSRF guards', () => {
     })
     expect(reply.status).toBe(403)
     expect(reply.headers['set-cookie']).toBeUndefined()
+  })
+
+  it('web.allowedHosts: a listed name is accepted as the Host without a port, and its https Origin too; no other name is', async () => {
+    const s = await setup({ host: '127.0.0.1', allowedHosts: ['resumenes-pao'] })
+    const json = { 'Content-Type': 'application/json' }
+    const bearer = { Authorization: `Bearer ${TOKEN}` }
+    expect((await s.call({ path: '/', host: 'resumenes-pao' })).status).toBe(200)
+    expect((await s.call({ path: '/', host: 'RESUMENES-PAO' })).status).toBe(200)
+    expect((await s.call({ path: '/', host: 'rebind.example' })).status).toBe(403)
+    const post = (origin: string) =>
+      s.call({
+        method: 'POST',
+        path: '/api/echo',
+        headers: { ...bearer, ...json, Origin: origin },
+        body: '{"a":1}',
+        host: 'resumenes-pao',
+      })
+    expect((await post('https://resumenes-pao')).status).toBe(200)
+    expect((await post('http://resumenes-pao')).status).toBe(200)
+    expect((await post('https://evil.example')).status).toBe(403)
+    // the token is still required for everything under /api
+    expect((await s.call({ path: '/api/echo', host: 'resumenes-pao' })).status).toBe(401)
+  })
+
+  it('without web.allowedHosts a name is refused and an https Origin is never accepted', async () => {
+    const s = await setup()
+    expect((await s.call({ path: '/', host: 'resumenes-pao' })).status).toBe(403)
+    const reply = await s.call({
+      method: 'POST',
+      path: '/api/echo',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json', Origin: 'https://127.0.0.1' },
+      body: '{"a":1}',
+    })
+    expect(reply.status).toBe(403)
+  })
+
+  it('isAllowedHost with allowedHosts: listed names pass with no port or the real one, others do not', () => {
+    const listed = ['resumenes-pao', 'resumenes-pao.tail57a9c5.ts.net']
+    expect(isAllowedHost('resumenes-pao', '0.0.0.0', 8788, listed)).toBe(true)
+    expect(isAllowedHost('resumenes-pao:8788', '0.0.0.0', 8788, listed)).toBe(true)
+    expect(isAllowedHost('resumenes-pao:9999', '0.0.0.0', 8788, listed)).toBe(false)
+    expect(isAllowedHost('resumenes-pao.tail57a9c5.ts.net', '0.0.0.0', 8788, listed)).toBe(true)
+    expect(isAllowedHost('otro.ts.net', '0.0.0.0', 8788, listed)).toBe(false)
+    expect(isAllowedHost('resumenes-pao', '0.0.0.0', 8788)).toBe(false)
   })
 
   it('isAllowedHost: a wildcard listen address accepts IP literals but not names; a specific one only itself', () => {

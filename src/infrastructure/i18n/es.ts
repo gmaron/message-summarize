@@ -242,6 +242,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       invalidLanguage: (option) =>
         `La opción "${option}" tiene que ser "auto" (detectar el idioma) o un código de idioma como "es" o "en".`,
       invalidPort: (option) => `La opción "${option}" tiene que ser un número de puerto entre 1 y 65535.`,
+      invalidHostName: (option) =>
+        `La opción "${option}" tiene que ser una lista de nombres de host sin esquema, puerto ni barra (por ejemplo "resumenes-pao").`,
       belowMinimum: (option) => `La opción "${option}" es demasiado chica: el mínimo es 1048576 (1 MB).`,
       invalidUrl: (option) =>
         `La opción "${option}" tiene que ser una dirección http o https absoluta (por ejemplo "http://127.0.0.1:11434")${

@@ -258,7 +258,7 @@ test/
 - Publishing to npm is blocked on purpose until that is resolved.
 - Gemini CLI and Codex are disabled: they document no verifiable way to turn their tools off (see [using a CLI as a provider](docs/guides/cli-provider.md)). The generic CLI can run them, at your own risk.
 - Only Spanish and English texts exist.
-- By default the web listens only on this machine; `web.host` can change that, which is an explicit choice.
+- By default the web listens only on this machine; `web.host` can change that, which is an explicit choice, and `web.allowedHosts` names the proxy hosts that may reach it.
 
 ## Guides
 

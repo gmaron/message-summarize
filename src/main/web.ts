@@ -245,6 +245,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
   try {
     server = createWebServer({
       host: listenHost,
+      allowedHosts: options.web.allowedHosts,
       port: listenPort,
       token: await ensureWebToken(ctx.layout),
       routes,

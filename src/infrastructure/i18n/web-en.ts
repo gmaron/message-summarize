@@ -99,6 +99,7 @@ export const webEn: WebTexts = {
     required: 'This option is required here.',
     invalidTimezone: 'Not a valid time zone (for example America/Argentina/Buenos_Aires).',
     invalidPort: 'Must be a port number between 1 and 65535.',
+    invalidHostName: 'Must be a list of host names without a scheme, port or slash.',
     belowMinimum: 'Too small: the minimum is 1048576 bytes (1 MB).',
     invalidUrl: 'Must be an absolute http or https address (for example http://127.0.0.1:11434).',
     concurrentEdit: 'The file changed while it was being saved: nothing was written. Try again.',

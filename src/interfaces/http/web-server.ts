@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import type { WebErrorCode } from '../../infrastructure/i18n/index.js'
 import type { EventSource } from './events.js'
-import { isAllowedHost } from './hosts.js'
+import { isAllowedHost, isListedHost } from './hosts.js'
 import { HttpError, matchRoute, type Route } from './router.js'
 import { notBuiltPage, serveStatic } from './static-files.js'
 
@@ -22,6 +22,8 @@ export interface WebLogger {
 
 export interface WebServerOptions {
   readonly host: string
+  /** Names a reverse proxy reaches the web by (`web.allowedHosts`): accepted as `Host` without a port and, in an `Origin`, over https. */
+  readonly allowedHosts?: readonly string[]
   /** 0 asks the system for a free port (tests). */
   readonly port: number
   readonly token: string
@@ -139,10 +141,13 @@ export function createWebServer(options: WebServerOptions): WebServer {
     return found
   }
 
+  const allowedHosts = options.allowedHosts ?? []
+
   const originAllowed = (origin: string): boolean => {
     try {
       const url = new URL(origin)
-      return url.protocol === 'http:' && isAllowedHost(url.host, options.host, bound)
+      if (!isAllowedHost(url.host, options.host, bound, allowedHosts)) return false
+      return url.protocol === 'http:' || (url.protocol === 'https:' && isListedHost(url.hostname, allowedHosts))
     } catch {
       return false
     }
@@ -227,7 +232,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value)
-    if (!isAllowedHost(req.headers.host, options.host, bound)) return sendError(res, 403, 'forbidden')
+    if (!isAllowedHost(req.headers.host, options.host, bound, allowedHosts)) return sendError(res, 403, 'forbidden')
     const method = req.method ?? 'GET'
     const origin = req.headers.origin
     if (method !== 'GET' && method !== 'HEAD' && origin !== undefined && !originAllowed(origin)) {
