@@ -249,6 +249,34 @@ describe('AskChats: the selection (as the digest)', () => {
     expect(calls[0]?.transcript).not.toContain('Big sale')
   })
 
+  it('with "unread only" reads just the unread tail, with the messages before it as context, and skips read chats', async () => {
+    const { source, summarizer, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez', 3)
+    addChat(source, '9911963367944', 'Beto Ruiz', 2)
+    // Ana: 1 unread (her last message); Beto: nothing unread
+    source.setUnread('9911963367943', { kind: 'count', count: 1 })
+    source.setUnread('9911963367944', { kind: 'count', count: 0 })
+    const result = await run(request({ settings: settings({ unreadOnly: true }) }))
+    expect(result.ok && result.value.candidates).toBe(1)
+    const calls = (summarizer as FakeSummarizer).calls
+    expect(calls.map((c) => c.conversation.name)).toEqual(['Ana Gómez'])
+    // the unread message is there, and the earlier ones only as context
+    expect(calls[0]?.transcript).toContain('Ana Gómez says 2')
+    expect(calls[0]?.transcript).toContain('Ana Gómez says 0')
+    const items = result.ok ? result.value.items : []
+    expect(items[0]?.messageCount).toBe(1)
+  })
+
+  it('without "unread only" reads every chat with incoming messages, read or not', async () => {
+    const { source, summarizer, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez')
+    addChat(source, '9911963367944', 'Beto Ruiz')
+    source.setUnread('9911963367944', { kind: 'count', count: 0 })
+    const result = await run(request({ settings: settings({ unreadOnly: false }) }))
+    expect(result.ok && result.value.candidates).toBe(2)
+    expect((summarizer as FakeSummarizer).calls).toHaveLength(2)
+  })
+
   it('still applies the exclusions before the chat filter', async () => {
     const { source, run } = setup()
     addChat(source, '9911963367943', 'Ana Gómez')

@@ -5,6 +5,7 @@ import { resolveConversationName } from '../domain/names.js'
 import { err, ok, type Result } from '../domain/result.js'
 import type { DigestSettings } from '../domain/settings.js'
 import { parseSummaryResponse } from '../domain/summary.js'
+import { CONTEXT_MESSAGES, selectUnreadTail } from '../domain/unread.js'
 import type { SummaryWindow } from '../domain/window.js'
 import { assertConcurrency, mapWithConcurrency } from './concurrency.js'
 import type { DigestSource } from './ports/digest-source.js'
@@ -119,28 +120,44 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
     const loaded: {
       conversation: (typeof conversations)[number]
       messages: readonly Message[]
+      context: readonly Message[]
       lastIncoming: number
     }[] = []
     for (const conversation of conversations) {
-      const messages = (await source.messagesInWindow(conversation.id, window)).filter((m) => !isMassMessage(mass, m))
+      let messages = await source.messagesInWindow(conversation.id, window)
+      let context: readonly Message[] = []
+      // The account's "unread only" applies as in the digest: only the unread tail of each chat, with a few messages before it.
+      if (settings.unreadOnly) {
+        const state = await source.unreadState(conversation.id)
+        const limit = state.kind === 'count' ? state.count : 0
+        const lastIncomingMessages = limit > 0 ? await source.lastIncoming(conversation.id, limit) : []
+        const tail = selectUnreadTail(state, messages, lastIncomingMessages)
+        messages = tail.messages
+        if (tail.contextBefore !== null) {
+          context = await source.messagesBefore(conversation.id, tail.contextBefore, CONTEXT_MESSAGES)
+        }
+      }
+      // Mass messages are removed after the unread tail, so they can still show up as context (as in the digest).
+      messages = messages.filter((m) => !isMassMessage(mass, m))
       let lastIncoming = -Infinity
       for (const m of messages) if (!m.fromMe && m.timestamp > lastIncoming) lastIncoming = m.timestamp
-      if (lastIncoming > -Infinity) loaded.push({ conversation, messages, lastIncoming })
+      if (lastIncoming > -Infinity) loaded.push({ conversation, messages, context, lastIncoming })
     }
 
     const ids = new Set<string>()
-    for (const { conversation, messages } of loaded) {
+    for (const { conversation, messages, context } of loaded) {
       if (conversation.participantId !== null) ids.add(conversation.participantId)
-      for (const m of messages) if (m.senderId !== null) ids.add(m.senderId)
+      for (const m of [...messages, ...context]) if (m.senderId !== null) ids.add(m.senderId)
     }
     const people = await source.participants([...ids])
     const personOf = (id: string | null): Participant | null => (id === null ? null : (people.get(id) ?? null))
 
     const filters = (request.chats ?? []).map((c) => c.trim()).filter((c) => c !== '')
     const named = loaded
-      .map(({ conversation, messages, lastIncoming }) => ({
+      .map(({ conversation, messages, context, lastIncoming }) => ({
         conversation,
         messages,
+        context,
         lastIncoming,
         ...resolveConversationName(conversation, personOf(conversation.participantId), {
           unnamedGroup: renderers.transcript.unnamedGroup,
@@ -170,7 +187,11 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
           name: item.name,
           isGroup: item.conversation.isGroup,
           messages: entries,
-          context: [],
+          context: item.context.map((m) => ({
+            message: { ...m, copies: 0 },
+            participant: m.fromMe ? null : personOf(m.senderId),
+            isMass: isMassMessage(mass, m),
+          })),
           ownerName: settings.ownerName,
           maxChars: settings.maxCharsPerConversation,
         })
