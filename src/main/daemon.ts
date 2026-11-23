@@ -1,5 +1,4 @@
 import { DeliverPending } from '../application/deliver-pending.js'
-import { DOWNLOAD_MAX_AGE_MS } from '../application/download-audios.js'
 import type { DigestErrorCode } from '../infrastructure/i18n/index.js'
 import { CronerScheduler } from '../infrastructure/scheduling/croner-scheduler.js'
 import { reconcileAccount } from '../infrastructure/whatsapp/account-binding.js'
@@ -46,6 +45,8 @@ export interface DaemonOptions {
   readonly logger: Logger
   /** How often the outbox is looked at while connected (the previous tool retried every 15 s). Default 30 s. */
   readonly sweepMs?: number
+  /** How often the progress of the audio queues is logged, when it changed (`transcription.stats`). Default 60 s. */
+  readonly audioStatsMs?: number
   /**
    * After a connection opens, how long to wait for the messages that arrived while offline before running a digest
    * that was due while disconnected, or one missed while the daemon was off. Default 60 s.
@@ -98,6 +99,8 @@ export type DigestEvent =
   | { readonly state: 'failed'; readonly error: DigestErrorCode }
 
 export const DEFAULT_SWEEP_MS = 30_000
+/** How often the progress of the audio queues is logged (only when it changed). */
+export const DEFAULT_AUDIO_STATS_MS = 60_000
 export const DEFAULT_SCHEDULE_RELOAD_MS = 5_000
 export const DEFAULT_MISSED_RUN_DELAY_MS = 60_000
 /**
@@ -170,6 +173,9 @@ export class Daemon {
   private catchUpDone = false
   private digestRun: Promise<DigestEvent> | null = null
   private sweepTimer: ReturnType<typeof setInterval> | null = null
+  private statsTimer: ReturnType<typeof setInterval> | null = null
+  private lastAudioStats = ''
+  private readonly audioStatsMs: number
   private catchUpTimer: ReturnType<typeof setTimeout> | null = null
   private unsubscribe: (() => void) | null = null
   private shutdownPromise: Promise<void> | null = null
@@ -184,6 +190,7 @@ export class Daemon {
     this.connection = options.connection
     this.logger = options.logger
     this.sweepMs = options.sweepMs ?? DEFAULT_SWEEP_MS
+    this.audioStatsMs = options.audioStatsMs ?? DEFAULT_AUDIO_STATS_MS
     this.missedRunDelayMs = options.missedRunDelayMs ?? DEFAULT_MISSED_RUN_DELAY_MS
     this.shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS
     this.onBlocked = options.onBlocked ?? (() => {})
@@ -250,8 +257,17 @@ export class Daemon {
     if (this.scheduleSource !== null) {
       this.reloadTimer = setInterval(() => this.reloadSchedules(), this.scheduleReloadMs)
     }
+    // An audio that was being transcribed when the last process died is pending again, before anything is kicked.
+    // Not awaited (the reset itself runs at once, before any claim): the start of the unit does not wait for the log.
+    this.runtime.transcription.recover().then(
+      (resumed) => {
+        if (resumed > 0) this.logger.info('transcription.resumed', { count: resumed })
+      },
+      (error: unknown) => this.logger.error('transcription.recoverFailed', { code: errorCode(error) }),
+    )
     // Stuck rows and old keys are cleaned up whether or not transcription is on, so a key never stays for good.
     void this.sweepDownloads()
+    this.statsTimer = setInterval(() => void this.logAudioStats(), this.audioStatsMs)
     this.sweepTimer = setInterval(() => {
       void this.deliver()
       void this.sweepDownloads()
@@ -301,14 +317,28 @@ export class Daemon {
   }
 
   /**
-   * Housekeeping of the download queue (RF-15): an audio with no path or key fails as `invalid-media`, and one waiting
-   * longer than `DOWNLOAD_MAX_AGE_MS` fails as `expired` with its descriptor (the key) cleared. A failure of the store
-   * is not fatal: it is tried again on the next sweep.
+   * Housekeeping of the download queue (RF-15): an audio with no path or key fails as `invalid-media`. There is no age
+   * limit: an old media that the server forgot is asked of the phone again, and fails as `expired` only when that does not
+   * work (a full history is the point). A failure of the store is not fatal: it is tried again on the next sweep.
    */
   private async sweepDownloads(): Promise<void> {
     if (this.shutdownPromise !== null) return
     try {
-      await this.runtime.downloadQueue.sweepDownloads(this.runtime.clock.now(), DOWNLOAD_MAX_AGE_MS)
+      await this.runtime.downloadQueue.sweepDownloads(this.runtime.clock.now(), null)
+    } catch {
+      // The database may be closing: nothing to do.
+    }
+  }
+
+  /** Logs the counts of the audio queues when they changed since the last time: counts only, never an audio. */
+  private async logAudioStats(): Promise<void> {
+    if (this.shutdownPromise !== null || !this.runtime.transcription.enabled) return
+    try {
+      const stats = await this.runtime.audioQueueStats()
+      const line = JSON.stringify(stats)
+      if (line === this.lastAudioStats) return
+      this.lastAudioStats = line
+      this.logger.info('transcription.stats', { ...stats })
     } catch {
       // The database may be closing: nothing to do.
     }
@@ -566,6 +596,8 @@ export class Daemon {
   private stopTimers(): void {
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer)
     this.sweepTimer = null
+    if (this.statsTimer !== null) clearInterval(this.statsTimer)
+    this.statsTimer = null
     this.clearCatchUp()
     if (this.reloadTimer !== null) clearInterval(this.reloadTimer)
     this.reloadTimer = null

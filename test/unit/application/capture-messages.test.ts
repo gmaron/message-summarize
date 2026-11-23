@@ -626,6 +626,12 @@ describe('CaptureMessages: audio download (RF-15)', () => {
     expect((await capture.receiveMessage(audio(NOW - 3 * DAY - 1, 'history'))).downloadAudio).toBe(false)
   })
 
+  it('a history window of 0 days means no limit: every audio of the history is wanted', async () => {
+    const { capture } = setup([], { audioHistoryDays: 0 })
+    expect((await capture.receiveMessage(audio(NOW - 3000 * DAY, 'history'))).downloadAudio).toBe(true)
+    expect((await capture.receiveMessage(audio(NOW - 1, 'history'))).downloadAudio).toBe(true)
+  })
+
   it('not for other kinds', async () => {
     const { capture } = setup()
     expect((await capture.receiveMessage(received({ id: 'i', kind: 'image' }))).downloadAudio).toBe(false)

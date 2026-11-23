@@ -279,12 +279,34 @@ CREATE TABLE reactions (
 );
 `
 
+/**
+ * Migration 6 (audio queue for a full history): claims for a pool of transcribers, and what it takes to ask the phone
+ * - transcribe_claimed_at: set (epoch ms) while a worker transcribes the audio. Reset to NULL at every start, so an audio
+ *   that was in progress when the process died is pending again. Only meaningful while transcribe_status is 'pending'.
+ * - dl_remote_jid, dl_from_me, dl_participant: the key of the message as the platform wrote it, kept with the download
+ *   descriptor (cleared with it). Asking the phone to upload a media again needs the whole key. Not secrets.
+ * - dl_reupload_attempts: how many times the phone was asked to upload this media again (bounded).
+ * - dl_needs_reupload: 1 while the row waits for the phone to answer that request (it is not downloadable until then).
+ */
+const SCHEMA_V6 = `
+ALTER TABLE messages ADD COLUMN transcribe_claimed_at INTEGER;
+ALTER TABLE messages ADD COLUMN dl_remote_jid TEXT;
+ALTER TABLE messages ADD COLUMN dl_from_me INTEGER;
+ALTER TABLE messages ADD COLUMN dl_participant TEXT;
+ALTER TABLE messages ADD COLUMN dl_reupload_attempts INTEGER NOT NULL DEFAULT 0;
+-- 1 while the server no longer has the media and the phone was asked to upload it again (the row waits for that).
+ALTER TABLE messages ADD COLUMN dl_needs_reupload INTEGER NOT NULL DEFAULT 0;
+-- Counts of the audio queues (the progress log) without reading the table.
+CREATE INDEX messages_by_transcribe_status ON messages (transcribe_status) WHERE transcribe_status IS NOT NULL;
+`
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
   { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
   { version: 3, description: 'Digest runs', sql: SCHEMA_V3 },
   { version: 4, description: 'Audio transcription', sql: SCHEMA_V4 },
   { version: 5, description: 'Raw content and typed message details', sql: SCHEMA_V5 },
+  { version: 6, description: 'Audio queue claims and media re-upload', sql: SCHEMA_V6 },
 ]
 
 /** The highest migration version applied to this database, 0 for a database with none. */

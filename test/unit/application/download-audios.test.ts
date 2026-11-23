@@ -57,6 +57,7 @@ function setup(options: { maxAttempts?: number; repo?: InMemoryCaptureRepository
     queue: repo,
     downloader,
     clock,
+    wait: async () => {},
     ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),
     onDownloaded: () => {
       downloaded++
@@ -308,7 +309,7 @@ describe('the download worker over the durable queue (RF-15, RNF-08)', () => {
   it('a store that fails does not break the run: it ends and says so', async () => {
     const t = setup()
     await queued(t.repo, 'a', 1000)
-    t.repo.nextDownload = async (_now: number) => {
+    t.repo.claimDownload = async () => {
       throw new Error('database is closed')
     }
     t.worker.kick()

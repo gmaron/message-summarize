@@ -72,6 +72,9 @@ describe('parseConfig defaults', () => {
         timeoutMs: 300_000,
         historyAudioDays: 14,
         maxMediaMb: 500,
+        concurrency: 1,
+        threads: 1,
+        downloadConcurrency: 2,
       },
       web: { enabled: true, host: '127.0.0.1', port: 8787, allowedHosts: [] },
       logs: { maxBytes: 52_428_800 },
@@ -239,6 +242,9 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
       timeoutMs: 300_000,
       historyAudioDays: 14,
       maxMediaMb: 500,
+      concurrency: 1,
+      threads: 1,
+      downloadConcurrency: 2,
     })
   })
 
@@ -254,6 +260,9 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
           timeoutMs: 60_000,
           historyAudioDays: 30,
           maxMediaMb: 100,
+          concurrency: 10,
+          threads: 2,
+          downloadConcurrency: 6,
         },
       }),
     ).toEqual({
@@ -265,6 +274,9 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
       timeoutMs: 60_000,
       historyAudioDays: 30,
       maxMediaMb: 100,
+      concurrency: 10,
+      threads: 2,
+      downloadConcurrency: 6,
     })
     expect(transcriptionOf({ transcription: { enabled: true } })).toMatchObject({ enabled: true, language: 'auto' })
   })
@@ -308,8 +320,11 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
     expect(issuesOf({ transcription: { timeoutMs: 1.5 } })).toEqual([
       { option: 'transcription.timeoutMs', code: 'notInteger' },
     ])
-    expect(issuesOf({ transcription: { historyAudioDays: 0 } })).toEqual([
+    expect(issuesOf({ transcription: { historyAudioDays: -1 } })).toEqual([
       { option: 'transcription.historyAudioDays', code: 'notPositive' },
+    ])
+    expect(issuesOf({ transcription: { historyAudioDays: 2.5 } })).toEqual([
+      { option: 'transcription.historyAudioDays', code: 'notInteger' },
     ])
     expect(issuesOf({ transcription: { historyAudioDays: 'many' } })).toEqual([
       { option: 'transcription.historyAudioDays', code: 'notNumber' },
@@ -323,6 +338,53 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
     expect(issuesOf({ transcription: { enable: true } })).toEqual([
       { option: 'transcription.enable', code: 'unknownOption' },
     ])
+  })
+
+  it('historyAudioDays 0 means the whole history: it is accepted and kept as 0', () => {
+    expect(transcriptionOf({ transcription: { historyAudioDays: 0 } }).historyAudioDays).toBe(0)
+    expect(transcriptionOf({ transcription: { historyAudioDays: 3650 } }).historyAudioDays).toBe(3650)
+  })
+
+  describe('concurrency, threads and downloadConcurrency', () => {
+    const limits = [
+      ['concurrency', 1, 16],
+      ['threads', 1, 64],
+      ['downloadConcurrency', 1, 16],
+    ] as const
+
+    for (const [key, min, max] of limits) {
+      it(`${key} takes whole numbers from ${min} to ${max}`, () => {
+        expect(transcriptionOf({ transcription: { [key]: min } })[key]).toBe(min)
+        expect(transcriptionOf({ transcription: { [key]: max } })[key]).toBe(max)
+      })
+
+      it(`${key} refuses what is out of range, not a whole number or not a number, naming the option`, () => {
+        const option = `transcription.${key}`
+        expect(issuesOf({ transcription: { [key]: 0 } })).toEqual([
+          { option, code: 'outOfRange', allowed: [String(min), String(max)] },
+        ])
+        expect(issuesOf({ transcription: { [key]: max + 1 } })).toEqual([
+          { option, code: 'outOfRange', allowed: [String(min), String(max)] },
+        ])
+        expect(issuesOf({ transcription: { [key]: -3 } })).toEqual([{ option, code: 'notPositive' }])
+        expect(issuesOf({ transcription: { [key]: 1.5 } })).toEqual([{ option, code: 'notInteger' }])
+        expect(issuesOf({ transcription: { [key]: '4' } })).toEqual([{ option, code: 'notNumber' }])
+      })
+    }
+
+    it('explains an out-of-range value in both languages, with the limits', () => {
+      const issue: ConfigIssue = {
+        option: 'transcription.concurrency',
+        code: 'outOfRange',
+        allowed: ['1', '16'],
+      }
+      const en = describeConfigIssue(getCatalog('en'), issue)
+      expect(en).toContain('transcription.concurrency')
+      expect(en).toContain('between 1 and 16')
+      const es = describeConfigIssue(getCatalog('es'), issue)
+      expect(es).toContain('transcription.concurrency')
+      expect(es).toContain('entre 1 y 16')
+    })
   })
 
   it('explains an invalid language in both languages, naming the option', () => {

@@ -17,7 +17,7 @@ Nothing is sent anywhere except what this guide lists. There is no telemetry, an
 
 ### WhatsApp
 
-Through your own account's connection (including the download of the audio you receive, when transcription is on).
+Through your own account's connection (including the download of the audio you receive, when transcription is on). For an old audio that WhatsApp's servers no longer have, the program asks **your own phone** to upload it again (the standard media retry request of a linked device, addressed to your own account): nothing is sent to anyone else.
 
 With the `fullHistoryOnLink` option (off by default) the phone sends its **whole** history when the device is linked, instead of only the recent one. It is an exception that you choose to the platform-respect principle (RNF-17): it only changes how much history arrives at link time; the client still is not marked "online" and sends nothing. Everything is stored in the account's database, on your machine, including the original content of each message (`messages.raw`) with the data needed to download files again. More in [the web and accounts](web-and-accounts.md#full-history-on-link).
 

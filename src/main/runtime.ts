@@ -12,12 +12,17 @@ import type { OutboxRepository } from '../application/ports/outbox.js'
 import type { Renderers } from '../application/ports/rendering.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import type { Transcriber } from '../application/ports/transcriber.js'
+import type { AudioQueueStats } from '../application/ports/transcription-store.js'
 import {
   createTranscribeAudios,
   type TranscribeAudios,
   type TranscriptionOutcome,
 } from '../application/transcribe-audios.js'
-import { createTranscriptionSlot, type TranscriptionSlot } from '../application/transcription-slot.js'
+import {
+  createTranscriptionSlot,
+  type LimitedTranscriptionSlot,
+  type TranscriptionSlot,
+} from '../application/transcription-slot.js'
 import type { SummaryWindow } from '../domain/window.js'
 import { getCatalog } from '../infrastructure/i18n/index.js'
 import {
@@ -57,7 +62,7 @@ export const DIGEST_TRANSCRIPTION_WAIT_MS = 2 * 60_000
  * THE transcription slot of this process (RNF-09): every runtime uses it unless a test gives its own, so a daemon with N
  * accounts runs one whisper at a time, not N.
  */
-export const processTranscriptionSlot: TranscriptionSlot = createTranscriptionSlot()
+export const processTranscriptionSlot = createTranscriptionSlot()
 
 export interface RuntimeOptions {
   /** The paths of the account this runtime works on. */
@@ -118,6 +123,8 @@ export interface Runtime {
   readonly transcription: TranscribeAudios
   /** The durable queue of audio downloads (RF-15, RNF-08): the connection's download worker works through it. */
   readonly downloadQueue: DownloadQueue
+  /** Counts of the audio queues, for the progress log (counts only). */
+  audioQueueStats(): Promise<AudioQueueStats>
   /** Null when no provider was chosen. */
   readonly generateDigest: GenerateDigest | null
   /** The free requests over the chats (the "Ask" tab): read only, with the same providers as the digest. Null when no provider was chosen. */
@@ -163,17 +170,25 @@ export function createRuntime(options: RuntimeOptions): Runtime {
                   ? null
                   : resolveModelPath(layout.modelsDir, dirname(layout.modelsDir), settings.model),
               timeoutMs: settings.timeoutMs,
+              threads: settings.threads,
               env,
             })
           : null
     const queues = new SqliteTranscriptionStore(db)
+    // The process slot allows as many transcriptions at once as the most demanding account asks for.
+    const slot = options.transcriptionSlot ?? processTranscriptionSlot
+    if ('setLimit' in slot && 'limit' in slot) {
+      const limited = slot as LimitedTranscriptionSlot
+      limited.setLimit(Math.max(limited.limit, settings.concurrency))
+    }
     const transcription = createTranscribeAudios({
       store: queues,
       transcriber,
       language: settings.language,
       mediaPath: (mediaRef) => join(layout.mediaDir, mediaRef),
       startDeadline: options.startDeadline ?? systemDeadline,
-      slot: options.transcriptionSlot ?? processTranscriptionSlot,
+      slot,
+      concurrency: settings.concurrency,
       ...(options.daemonRunning === undefined || options.transcriptionMode === 'observe'
         ? {}
         : { mustObserve: options.daemonRunning }),
@@ -267,6 +282,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       ownIds,
       transcription,
       downloadQueue: queues,
+      audioQueueStats: () => queues.audioQueueStats(),
       get generateDigest() {
         return parts.generateDigest
       },

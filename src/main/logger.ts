@@ -68,6 +68,13 @@ const FIELDS = [
   'syncType',
   'isLatest',
   'progress',
+  // Progress of the audio queues (`transcription.stats`): counts only.
+  'pending',
+  'downloading',
+  'running',
+  'done',
+  'failed',
+  'reuploadRequested',
   // Where the local web listens: an address and a port, never a token.
   'host',
   'port',

@@ -143,8 +143,17 @@ export interface TranscriptionConfig {
   readonly language: string
   /** Total time for one audio. */
   readonly timeoutMs: number
-  /** RF-15: audios of the history sync from the last N days are downloaded too (older ones stay untranscribed). */
+  /**
+   * RF-15: audios of the history sync from the last N days are downloaded too (older ones stay untranscribed). 0 means no
+   * limit: every audio of the history is downloaded and transcribed.
+   */
   readonly historyAudioDays: number
+  /** Transcriptions that run at once, each one a separate whisper process (1..16, default 1). */
+  readonly concurrency: number
+  /** Threads (`-t`) of each whisper process (1..64, default 1). Together with `concurrency`: the CPUs used. */
+  readonly threads: number
+  /** Audio downloads that run at once (1..16, default 2). */
+  readonly downloadConcurrency: number
   /** The most the downloaded audios of an account may take together, in MB. Past it new downloads are refused. */
   readonly maxMediaMb: number
 }
@@ -215,6 +224,8 @@ export type ConfigIssueCode =
   | 'invalidHostName'
   /** A number under the smallest accepted (`logs.maxBytes`). */
   | 'belowMinimum'
+  /** A whole number outside its limits; `allowed` holds the smallest and the largest. */
+  | 'outOfRange'
   /** Not an absolute http(s) URL. */
   | 'invalidUrl'
   /** The account file changed while it was being updated (the writer gave up). */
@@ -267,6 +278,9 @@ const TRANSCRIPTION_KEYS = new Set([
   'timeoutMs',
   'historyAudioDays',
   'maxMediaMb',
+  'concurrency',
+  'threads',
+  'downloadConcurrency',
 ])
 const PROVIDER_KEYS = new Set([
   'primary',
@@ -298,6 +312,10 @@ const INSTALLATION_ONLY = ['web', 'logs'] as const
 
 /** Lists an account can only add to (see `mergeConfigJson`). */
 const UNIONED_LISTS = ['localOnlyPatterns', 'excludePatterns'] as const
+
+export const MAX_TRANSCRIPTION_CONCURRENCY = 16
+export const MAX_TRANSCRIPTION_THREADS = 64
+export const MAX_DOWNLOAD_CONCURRENCY = 16
 
 export type Obj = Record<string, unknown>
 function isHttpUrl(value: string): boolean {
@@ -609,7 +627,45 @@ export function parseConfig(
     'transcription.timeoutMs',
     DEFAULT_TRANSCRIPTION_TIMEOUT_MS,
   )
-  const historyAudioDays = positiveInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
+  const rangedInt = (
+    obj: Obj,
+    key: string,
+    path: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number | undefined => {
+    const v = nonNegativeInt(obj, key, path, fallback)
+    if (v === undefined) return undefined
+    if (v < min || v > max) return add(path, 'outOfRange', [String(min), String(max)])
+    return v
+  }
+  // 0: no limit, the whole history.
+  const historyAudioDays = nonNegativeInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
+  const transcriptionConcurrency = rangedInt(
+    transcriptionObj,
+    'concurrency',
+    'transcription.concurrency',
+    1,
+    1,
+    MAX_TRANSCRIPTION_CONCURRENCY,
+  )
+  const transcriptionThreads = rangedInt(
+    transcriptionObj,
+    'threads',
+    'transcription.threads',
+    1,
+    1,
+    MAX_TRANSCRIPTION_THREADS,
+  )
+  const downloadConcurrency = rangedInt(
+    transcriptionObj,
+    'downloadConcurrency',
+    'transcription.downloadConcurrency',
+    2,
+    1,
+    MAX_DOWNLOAD_CONCURRENCY,
+  )
   const maxMediaMb = positiveInt(transcriptionObj, 'maxMediaMb', 'transcription.maxMediaMb', 500)
 
   const webObj = section(input, 'web', 'web', WEB_KEYS)
@@ -711,6 +767,9 @@ export function parseConfig(
     transcriptionLanguage === undefined ||
     transcriptionTimeout === undefined ||
     historyAudioDays === undefined ||
+    transcriptionConcurrency === undefined ||
+    transcriptionThreads === undefined ||
+    downloadConcurrency === undefined ||
     maxMediaMb === undefined ||
     webEnabled === undefined ||
     webHost === undefined ||
@@ -768,6 +827,9 @@ export function parseConfig(
       timeoutMs: transcriptionTimeout,
       historyAudioDays,
       maxMediaMb,
+      concurrency: transcriptionConcurrency,
+      threads: transcriptionThreads,
+      downloadConcurrency,
     },
     web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort, allowedHosts: webAllowedHosts },
     logs: { maxBytes: logsMaxBytes },
@@ -991,6 +1053,8 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.invalidHostName(issue.option)
     case 'belowMinimum':
       return texts.belowMinimum(issue.option)
+    case 'outOfRange':
+      return texts.outOfRange(issue.option, issue.allowed?.[0] ?? '1', issue.allowed?.[1] ?? '')
     case 'installationOnly':
       return texts.installationOnly(issue.option)
     case 'invalidUrl':

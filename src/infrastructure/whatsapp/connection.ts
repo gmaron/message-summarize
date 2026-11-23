@@ -5,9 +5,9 @@ import type { CaptureMessages } from '../../application/capture-messages.js'
 import { createDownloadAudios, type DownloadAudios, type DownloadOutcome } from '../../application/download-audios.js'
 import type { Clock } from '../../application/ports/clock.js'
 import type { AudioDownloader, DownloadQueue } from '../../application/ports/download-queue.js'
-import { err } from '../../domain/result.js'
+import { err, ok } from '../../domain/result.js'
 import { getCatalog, type Language } from '../i18n/index.js'
-import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher } from './media.js'
+import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher, statusOf } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
 import { type CaptureCounters, createTranslator, type WarningDetail } from './translate.js'
 import type {
@@ -100,6 +100,12 @@ export interface WhatsAppSocket {
    * would be a message out (RNF-17): such an audio is an error.
    */
   openAudio(descriptor: AudioDescriptor): Promise<Readable>
+  /**
+   * Asks the owner's OWN phone to upload an audio again, because the server forgot it (RF-15). Answers with the new
+   * `directPath`. Sends nothing to a third party: see `requestAudioReupload` in baileys-socket.ts. Absent on a socket that
+   * cannot do it. Rejects with a Boom whose status is 404 when the phone does not have the file either.
+   */
+  requestAudioReupload?(request: AudioReuploadRequest): Promise<string>
   readonly signalRepository?: {
     readonly lidMapping?:
       | {
@@ -109,6 +115,17 @@ export interface WhatsAppSocket {
         }
       | undefined
   }
+}
+
+/** What it takes to ask the phone to upload a media again: the key of the message and the media it holds. */
+export interface AudioReuploadRequest {
+  readonly key: {
+    readonly remoteJid: string
+    readonly id: string
+    readonly fromMe: boolean
+    readonly participant: string | null
+  }
+  readonly descriptor: AudioDescriptor
 }
 
 export interface SocketSession {
@@ -209,6 +226,8 @@ export interface WhatsAppConnectionOptions {
     readonly maxDirBytes?: number
     /** Transient failures of one audio before it fails for good. Default 5. */
     readonly maxAttempts?: number
+    /** Downloads that run at once. Default 1. */
+    readonly concurrency?: number
     /** Called after a file was stored: the transcription queue can start. */
     readonly onDownloaded?: () => void
     /** Told about every download attempt (a fixed word), for logs. */
@@ -266,7 +285,7 @@ export class WhatsAppConnection {
   private readonly translator
   private fetcher: AudioFetcher | null = null
   private worker: DownloadAudios | null = null
-  private activeDownload: AbortController | null = null
+  private readonly activeDownloads = new Set<AbortController>()
   private session: SocketSession | null = null
   private detach: (() => void) | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -456,25 +475,55 @@ export class WhatsAppConnection {
         // Without a connection nothing can be downloaded: not the fault of the audio, so it is not counted.
         if (this.session === null) return err({ kind: 'unavailable', reason: 'not-connected' })
         const controller = new AbortController()
-        this.activeDownload = controller
+        this.activeDownloads.add(controller)
         try {
+          const { directPath, mediaKey, mimetype, fileLength } = item.descriptor
           const result = await fetcher.fetch(
-            item.descriptor,
+            { directPath, mediaKey, mimetype, fileLength },
             { conversationId: item.conversationId, messageId: item.messageId },
             controller.signal,
           )
           return result.ok ? result : err({ kind: classifyFailure(result.error), reason: result.error })
         } finally {
-          if (this.activeDownload === controller) this.activeDownload = null
+          this.activeDownloads.delete(controller)
         }
       },
-      abort: () => this.activeDownload?.abort(),
+      canRequestReupload: () => this.session?.socket.requestAudioReupload !== undefined,
+      requestReupload: async (item) => {
+        const session = this.session
+        const request = session?.socket.requestAudioReupload
+        const key = item.descriptor.reuploadKey
+        // Nothing to ask with: the audio fails as it did before this existed.
+        if (session === null || request === undefined) return err({ kind: 'unavailable', reason: 'not-connected' })
+        if (key === undefined) return err({ kind: 'permanent', reason: 'expired' })
+        try {
+          const directPath = await request.call(session.socket, {
+            key: { remoteJid: key.remoteJid, id: item.messageId, fromMe: key.fromMe, participant: key.participant },
+            descriptor: item.descriptor,
+          })
+          return ok(directPath)
+        } catch (error) {
+          // A connection that went away meanwhile is not the fault of the audio.
+          if (this.session === null) return err({ kind: 'unavailable', reason: 'not-connected' })
+          // The phone answered that it does not have the file either: it will not come back.
+          if (statusOf(error) === 404) return err({ kind: 'permanent', reason: 'expired' })
+          return err({
+            kind: 'transient',
+            reason: (error as Error).message === 'timeout' ? 'timeout' : 'reupload-failed',
+          })
+        }
+      },
+      abort: () => {
+        for (const controller of [...this.activeDownloads]) controller.abort()
+      },
     }
     return createDownloadAudios({
       queue: media.queue,
       downloader,
       clock: this.options.clock,
+      wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
       ...(media.maxAttempts === undefined ? {} : { maxAttempts: media.maxAttempts }),
+      ...(media.concurrency === undefined ? {} : { concurrency: media.concurrency }),
       ...(media.onDownloaded === undefined ? {} : { onDownloaded: media.onDownloaded }),
       ...(media.onOutcome === undefined ? {} : { onOutcome: media.onOutcome }),
     })
@@ -519,7 +568,7 @@ export class WhatsAppConnection {
     this.session = null
     // A download in progress belongs to the connection that is going away: it is aborted (stream destroyed, partial file
     // removed) and its audio stays in the durable queue.
-    this.activeDownload?.abort()
+    for (const controller of [...this.activeDownloads]) controller.abort()
     if (session === null) return
     this.settling.push(session.settle().catch(() => this.options.onWarning?.('settle-failed')))
     try {

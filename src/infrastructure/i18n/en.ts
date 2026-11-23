@@ -302,6 +302,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       invalidHostName: (option) =>
         `The option "${option}" must be a list of host names without a scheme, port or slash (for example "my-host").`,
       belowMinimum: (option) => `The option "${option}" is too small: the minimum is 1048576 (1 MB).`,
+      outOfRange: (option, min, max) => `The option "${option}" must be a whole number between ${min} and ${max}.`,
       invalidUrl: (option) =>
         `The option "${option}" must be an absolute http or https address (for example "http://127.0.0.1:11434")${
           option === 'provider.openai.baseUrl'
