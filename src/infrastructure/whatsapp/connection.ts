@@ -9,7 +9,7 @@ import { err } from '../../domain/result.js'
 import { getCatalog, type Language } from '../i18n/index.js'
 import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
-import { createTranslator } from './translate.js'
+import { type CaptureCounters, createTranslator, type WarningDetail } from './translate.js'
 import type {
   WaChat,
   WaContact,
@@ -125,6 +125,18 @@ export interface BackoffPolicy {
   readonly maxMs: number
 }
 
+/** A queued event that has not settled after this long is abandoned so the ones behind it are not held forever. */
+export const EVENT_TIMEOUT_MS = 30_000
+/** How often the capture counters are reported while connected (and only when they changed). */
+export const STATS_INTERVAL_MS = 60_000
+
+/** The counter of each event the connection listens to (fixed names, because the daemon logs them). */
+const EVENT_COUNTERS: Readonly<Record<string, string>> = {
+  'messages.upsert': 'evMessagesUpsert',
+  'messaging-history.set': 'evHistorySet',
+  'messages.update': 'evMessagesUpdate',
+}
+
 export const DEFAULT_BACKOFF: BackoffPolicy = { baseMs: 1_000, maxMs: 60_000 }
 
 export interface WhatsAppConnectionOptions {
@@ -138,7 +150,15 @@ export interface WhatsAppConnectionOptions {
   readonly storedConversationName?: (conversationId: string) => Promise<string | null | undefined>
   readonly backoff?: BackoffPolicy
   /** A fixed code for something that went wrong inside the adapter. Never chat content, never a secret. */
-  readonly onWarning?: (code: string) => void
+  readonly onWarning?: (code: string, detail?: WarningDetail) => void
+  /** Counts of what the adapter received, stored and dropped. Called while connected, only when they changed. */
+  readonly onStats?: (stats: CaptureCounters) => void
+  /** Default 30 s. Test seam. */
+  readonly eventTimeoutMs?: number
+  /** Default 10 s. Test seam. */
+  readonly slowStepMs?: number
+  /** Default 60 s. Test seam. */
+  readonly statsIntervalMs?: number
   /**
    * RF-15: download the audios the capture asks for (live ones, and those of the history within the configured days)
    * into `mediaDir`, from the DURABLE download queue `queue` (the database), one at a time. Without it no audio is
@@ -227,6 +247,9 @@ export class WhatsAppConnection {
   private readonly settling: Promise<void>[] = []
   private queue: Promise<void> = Promise.resolve()
   private readonly backoff: BackoffPolicy
+  private readonly counters: Record<string, number> = {}
+  private statsTimer: ReturnType<typeof setInterval> | null = null
+  private lastStats = '{}'
 
   constructor(private readonly options: WhatsAppConnectionOptions) {
     this.backoff = options.backoff ?? DEFAULT_BACKOFF
@@ -255,6 +278,7 @@ export class WhatsAppConnection {
       clock: options.clock,
       ownIds: options.ownIds,
       ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
+      ...(options.slowStepMs === undefined ? {} : { slowStepMs: options.slowStepMs }),
       resolvePhoneNumber: async (lid) => this.session?.socket.signalRepository?.lidMapping?.getPNForLID(lid),
       resolveLid: async (phone) => this.session?.socket.signalRepository?.lidMapping?.storedLidForPN?.(phone),
       onAlias: async (a, b) => {
@@ -436,6 +460,8 @@ export class WhatsAppConnection {
 
   private setStatus(status: WhatsAppStatus): void {
     this.current = status
+    if (status.state === 'connected') this.startStats()
+    else this.stopStats()
     for (const listener of [...this.listeners]) {
       try {
         listener(status)
@@ -504,7 +530,8 @@ export class WhatsAppConnection {
     const on = <T>(event: string, handler: (data: T) => void | Promise<void>): void => {
       const listener = (data: T): void => {
         if (generation !== this.generation) return
-        this.enqueue(() => handler(data))
+        this.count(EVENT_COUNTERS[event] ?? 'evOther')
+        this.enqueue(event, () => handler(data))
       }
       subscriptions.push([event, listener as (data: never) => void])
       ev.on(event, listener as (data: never) => void)
@@ -570,8 +597,67 @@ export class WhatsAppConnection {
     }
   }
 
-  private enqueue(work: () => void | Promise<void>): void {
-    this.queue = this.queue.then(work).catch(() => this.options.onWarning?.('event-failed'))
+  private count(name: string): void {
+    this.counters[name] = (this.counters[name] ?? 0) + 1
+  }
+
+  /**
+   * Events run one at a time. One that does not settle within the timeout is abandoned (not awaited any more) so it
+   * cannot hold every later event: the warning names the event and nothing else.
+   */
+  private enqueue(event: string, work: () => void | Promise<void>): void {
+    this.queue = this.queue
+      .then(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            let over = false
+            const timer = setTimeout(() => {
+              over = true
+              this.count('eventTimeout')
+              this.options.onWarning?.('event-timeout', { wsEvent: event })
+              resolve()
+            }, this.options.eventTimeoutMs ?? EVENT_TIMEOUT_MS)
+            timer.unref?.()
+            Promise.resolve()
+              .then(work)
+              .then(
+                () => {
+                  clearTimeout(timer)
+                  if (!over) resolve()
+                },
+                (error: unknown) => {
+                  clearTimeout(timer)
+                  if (!over) reject(error)
+                },
+              )
+          }),
+      )
+      .catch(() => {
+        this.count('eventFailed')
+        this.options.onWarning?.('event-failed')
+      })
+  }
+
+  /** The counters of the adapter and of its translator. Numbers only. */
+  stats(): CaptureCounters {
+    return { ...this.counters, ...this.translator.stats() }
+  }
+
+  private startStats(): void {
+    if (this.statsTimer !== null || this.options.onStats === undefined) return
+    this.statsTimer = setInterval(() => {
+      const snapshot = this.stats()
+      const text = JSON.stringify(snapshot)
+      if (text === this.lastStats) return
+      this.lastStats = text
+      this.options.onStats?.(snapshot)
+    }, this.options.statsIntervalMs ?? STATS_INTERVAL_MS)
+    this.statsTimer.unref?.()
+  }
+
+  private stopStats(): void {
+    if (this.statsTimer !== null) clearInterval(this.statsTimer)
+    this.statsTimer = null
   }
 
   private onConnectionUpdate(

@@ -12,7 +12,9 @@ export interface ManagedConnection extends DaemonConnection {
 
 export interface ConnectionHooks {
   /** A fixed code for something that went wrong inside the adapter. Never chat content (RNF-04). */
-  onWarning(code: string): void
+  onWarning(code: string, detail?: { readonly event?: string; readonly step?: string }): void
+  /** Counts of what the adapter received, stored and dropped (numbers only), while connected and only when they changed. */
+  readonly onStats?: (stats: Readonly<Record<string, number>>) => void
   /** Told about every audio download attempt (a fixed word), for logs. Never anything of the audio. */
   readonly onDownload?: (outcome: DownloadOutcome) => void
   /** Replaces the capture use case of the runtime (`link` counts events to know when the history is in). */
@@ -51,6 +53,7 @@ export const connectionFactoryWith =
       ownIds: runtime.ownIds,
       storedConversationName: async (id) => (await runtime.repository.findConversation(id))?.name,
       onWarning: hooks.onWarning,
+      ...(hooks.onStats === undefined ? {} : { onStats: hooks.onStats }),
       // Audios are downloaded only when something will transcribe them (RF-15, RF-21). The queue is the account database.
       ...(runtime.transcription.enabled
         ? {

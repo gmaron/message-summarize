@@ -634,6 +634,7 @@ describe('what the translator never does', () => {
         'learnLidMapping',
         'messagesUpdate',
         'messagesUpsert',
+        'stats',
       ].sort(),
     )
   })

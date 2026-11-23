@@ -28,7 +28,7 @@ import { Daemon, type DaemonConnection, type DigestEvent } from './daemon.js'
 import type { DaemonLock } from './daemon-lock.js'
 import { LinkFlow, type LinkFlowResult, type LinkPhase, type LinkSnapshot } from './link-flow.js'
 import { acquireLinkLock, LINK_HEARTBEAT_MS, linkLockHolder } from './link-lock.js'
-import { errorCode, scopedLogger } from './logger.js'
+import { errorCode, type LogFields, scopedLogger } from './logger.js'
 import { accountLayoutOf, ensureAccountDirs, unsafeAccountPath } from './paths.js'
 import { type AliasHost, coverAlias, purgeNow } from './privacy-aliases.js'
 import { retryBlock } from './retry.js'
@@ -1009,7 +1009,8 @@ export class DaemonHost {
       const connection =
         adopted?.connection ??
         (await this.ctx.connectionFactory(runtime, {
-          onWarning: (code) => logger.warn('adapter.warning', { code }),
+          onWarning: (code, detail) => logger.warn('adapter.warning', { code, ...detail }),
+          onStats: (stats) => logger.info('capture.stats', stats as LogFields),
           // Only a fixed word: never the audio, its key or its path.
           onDownload: this.onDownload(logger),
         }))
@@ -1316,7 +1317,7 @@ export class DaemonHost {
       // socket, with its worker, is handed over to the unit): one transcription at a time through the process slot.
       const connection = await this.ctx.connectionFactory(runtime, {
         capture: counted.capture,
-        onWarning: (code) => logger.warn('adapter.warning', { code }),
+        onWarning: (code, detail) => logger.warn('adapter.warning', { code, ...detail }),
         onDownload: this.onDownload(logger),
       })
       // The block is forgotten only now that the link has a connection: a start that fails before it keeps it.

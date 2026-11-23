@@ -101,7 +101,7 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           capture: counted.capture,
           // Link only captures: the audios stay queued for the daemon's worker (one whisper per installation, RNF-09).
           downloadAudios: false,
-          onWarning: (code) => logger.warn('adapter.warning', { code }),
+          onWarning: (code, detail) => logger.warn('adapter.warning', { code, ...detail }),
         })
         if (relinking) await connection.clearSession()
 
