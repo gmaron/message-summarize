@@ -4,9 +4,16 @@
  * pieces are pure (`parseRoute`, `hrefOf`) except `watchHash`, which only needs something shaped like `window`.
  */
 
-export type AccountTab = 'resumen' | 'conversaciones' | 'horarios' | 'historial' | 'ajustes'
+export type AccountTab = 'resumen' | 'pedir' | 'conversaciones' | 'horarios' | 'historial' | 'ajustes'
 
-export const ACCOUNT_TABS: readonly AccountTab[] = ['resumen', 'conversaciones', 'horarios', 'historial', 'ajustes']
+export const ACCOUNT_TABS: readonly AccountTab[] = [
+  'resumen',
+  'pedir',
+  'conversaciones',
+  'horarios',
+  'historial',
+  'ajustes',
+]
 
 export type Route =
   | { readonly name: 'home' }

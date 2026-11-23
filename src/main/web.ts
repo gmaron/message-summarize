@@ -11,6 +11,7 @@ import { isLoopbackHost } from '../interfaces/http/hosts.js'
 import type { Route } from '../interfaces/http/router.js'
 import { createWebServer, type WebServer } from '../interfaces/http/web-server.js'
 import type { Installation } from './accounts.js'
+import { type AskEvent, AskService } from './ask.js'
 import { readConfigObject, type WebConfig } from './config.js'
 import type { CommandContext } from './context.js'
 import type { DaemonHost } from './daemon-host.js'
@@ -19,6 +20,7 @@ import { errorCode } from './logger.js'
 import { PreviewService } from './preview.js'
 import { type AccountView, describeAccounts } from './web-accounts.js'
 import { removeWebAddress, writeWebAddress } from './web-address.js'
+import { askRoutes } from './web-ask.js'
 import { conversationRoutes } from './web-conversations.js'
 import { digestRoutes } from './web-digest.js'
 import { historyRoutes } from './web-history.js'
@@ -57,6 +59,8 @@ export interface WebEvents extends Record<string, unknown> {
     readonly parts?: number
     readonly error?: DigestErrorCode
   }
+  /** A free request of an account ended (the "Ask" tab). Says nothing of the answer: the page asks for it. */
+  readonly ask: AskEvent
   /** The history of an account has a new entry (RF-74). Says nothing of what it holds: the page asks for it. */
   readonly history: { readonly account: string }
   /** The daemon logged lines (RF-75). `seq` is the newest; the page asks for the lines. At most once a second. */
@@ -113,6 +117,12 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     accountStamp: (id) => installation.accounts().find((row) => row.id === id)?.createdAt ?? null,
     ...(options.previewTtlMs === undefined ? {} : { ttlMs: options.previewTtlMs }),
   })
+  const asks = new AskService({
+    ctx,
+    host,
+    onEvent: (event) => bus.publish('ask', event),
+    accountStamp: (id) => installation.accounts().find((row) => row.id === id)?.createdAt ?? null,
+  })
   let publishing = false
   let again = false
   const publishAccounts = async (): Promise<void> => {
@@ -160,20 +170,25 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ...keysRoutes(source),
     ...promptRoutes(source, () => void publishAccounts()),
     ...digestRoutes({ ...source, previews }),
+    ...askRoutes({ ...source, asks }),
     ...conversationRoutes(source),
     ...historyRoutes(source),
     ...(options.logs === undefined ? [] : logRoutes(options.logs)),
   ]
 
   const qrCount = new Map<string, number>()
-  const removeBusyCheck = host.addBusyCheck((id) => previews.isBusy(id))
+  const removeBusyCheck = host.addBusyCheck((id) => previews.isBusy(id) || asks.isBusy(id))
   const unsubscribeChange = host.onChange(() => {
     previews.prune()
+    asks.prune()
     void publishAccounts()
   })
   const unsubscribeLink = host.onLink((event) => {
     // A new link may bind another number: what was summarized before is not that account's any more.
-    if (event.type === 'link') previews.forget(event.account)
+    if (event.type === 'link') {
+      previews.forget(event.account)
+      asks.forget(event.account)
+    }
     if (event.type === 'qr') {
       const seq = (qrCount.get(event.account) ?? 0) + 1
       qrCount.set(event.account, seq)
@@ -239,6 +254,7 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     removeBusyCheck()
     // Previews are dropped and their temporary runtimes closed: private text does not outlive the web.
     previews.stop()
+    asks.stop()
   }
 
   let server: WebServer | null = null

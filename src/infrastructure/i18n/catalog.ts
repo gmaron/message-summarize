@@ -62,6 +62,9 @@ export type WebErrorCode =
   | 'invalidSecretsFile'
   | 'setupCompleted'
   | 'wrongStep'
+  | 'emptyQuestion'
+  | 'tooManyChats'
+  | 'questionTooLong'
 
 /** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
 export type WebConfigIssueCode =
@@ -207,6 +210,14 @@ export interface Catalog {
     /** The whole line that replaces the detail of the rest. */
     hiddenRest(count: number): string
     failedChats(count: number): string
+  }
+
+  /** The free requests of the owner over the chats (the "Ask" tab of the web). */
+  readonly ask: {
+    /** The system prompt of one conversation for a request: the cleaned question and the owner name. */
+    systemPrompt(question: string, ownerName: string): string
+    /** One line before the transcript of a chat: whether the contact is in the owner's address book, or that it is a group. */
+    contactStatus(status: 'saved' | 'unsaved' | 'group'): string
   }
 
   /** Texts of the local web: the page shown while it is not built, the errors of its API and the whole interface. */
@@ -852,6 +863,43 @@ export interface WebTexts {
       readonly schedules: string
       readonly history: string
       readonly settings: string
+      readonly ask: string
+    }
+    readonly ask: {
+      readonly title: string
+      readonly questionLabel: string
+      readonly placeholder: string
+      readonly periodLabel: string
+      readonly periods: { readonly today: string; readonly h24: string; readonly d3: string; readonly d7: string }
+      readonly chatsLabel: string
+      readonly chatsPlaceholder: string
+      readonly shortcutsLabel: string
+      readonly shortcuts: readonly { readonly label: string; readonly question: string }[]
+      readonly submit: string
+      readonly running: string
+      /** `{read}`, `{answered}`: the pieces below, already with their plural. */
+      readonly stats: string
+      /** `{read}`, `{answered}`, `{failed}`. */
+      readonly statsFailed: string
+      /** Pieces of the stats: `{count}` in the plural forms. */
+      readonly statsReadOne: string
+      readonly statsReadMany: string
+      readonly statsAnsweredOne: string
+      readonly statsAnsweredMany: string
+      readonly statsFailedOne: string
+      readonly statsFailedMany: string
+      readonly nothing: string
+      readonly needsReply: string
+      readonly copy: string
+      readonly copied: string
+      readonly remove: string
+      readonly historyTitle: string
+      readonly privateNote: string
+      readonly mic: string
+      readonly micListening: string
+      readonly micUnsupported: string
+      readonly micNote: string
+      readonly notRunning: string
     }
     readonly home: {
       readonly summaryOne: string

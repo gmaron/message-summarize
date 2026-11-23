@@ -25,5 +25,5 @@ Las dos guías se verificaron contra las páginas oficiales el 2026-11-20. Los p
 | [Elegir un modelo local (Ollama)](modelo-local-ollama.md) | Candidatos, evaluación y comandos `msum ollama`. |
 | [Importar desde la herramienta anterior](importar-herramienta-anterior.md) | `msum import`. |
 | [A qué se conecta el programa](red-y-privacidad.md) | Todos los destinos de red. |
-| [La página web, el asistente y las cuentas](web-y-cuentas.md) | La web, el asistente de primer uso, exclusiones y aceptaciones. |
+| [La página web, el asistente y las cuentas](web-y-cuentas.md) | La web, el asistente de primer uso, exclusiones, aceptaciones y pedidos sobre tus chats. |
 | [El daemon, las cuentas y los horarios](demonio-y-horarios.md) | `config.json`, el daemon, bloqueos, varias cuentas y `msum schedule`. |

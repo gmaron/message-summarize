@@ -115,8 +115,10 @@
 <style>
   .thread {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
     justify-items: start;
+    min-width: 0;
   }
 
   .day-chip {
@@ -137,11 +139,14 @@
     padding: 20px 22px 12px;
     max-width: 680px;
     width: 100%;
+    min-width: 0;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     line-height: 1.55;
     position: relative;
     overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .bubble.draft {
@@ -165,6 +170,7 @@
 
   .sec {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
   }
 
@@ -183,6 +189,7 @@
 
   .it {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 2px;
   }
 

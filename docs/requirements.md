@@ -142,6 +142,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-73 | Configuración | v1 | Todas las opciones editables (solo no leídos, ocultar el resto, sin agendar destacados, máximo de caracteres, días de audios del historial, idioma, zona horaria). La configuración se valida al cargarla y al guardarla: un valor inválido se rechaza con un mensaje que indica la opción y el motivo, y una opción que falta toma su valor por defecto |
 | RF-74 | Historial | v1 | Lista de digests anteriores con su contenido completo, proveedor usado, duración y errores de cada ejecución |
 | RF-75 | Logs | v1 | Ver los últimos logs del daemon, filtrables por cuenta y nivel |
+| RF-76 | Pedir algo sobre los chats | v1 | Una pestaña de la cuenta recibe un pedido escrito o dictado (resumen a medida, lista de pedidos, qué dijo alguien) sobre los chats de un período (hoy, 24 h, 3 o 7 días), con un filtro opcional de chats. Cada conversación se consulta por separado con el `Summarizer` y el pedido en el prompt; las que no tienen nada relevante se omiten y no se sintetiza entre chats. Respeta las exclusiones (el filtro no las pisa) y RF-43; más de 60 conversaciones se rechazan con un aviso, sin cortar en silencio. Solo lee: no envía nada a WhatsApp ni mueve el puntero. Las respuestas quedan en memoria (las últimas 20 por cuenta) y se pierden al reiniciar; corre un pedido a la vez por cuenta. El dictado usa el reconocimiento de voz del navegador, que puede enviar el audio a Google o Apple, y la web lo avisa |
 
 ### 4.9 CLI
 
@@ -209,6 +210,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-03, RF-06, RF-60 a RF-66 | Daemon, `CronerScheduler`, `ScheduleRepository`, `app.db`, `import` | 2 |
 | RF-20 a RF-23, RF-40 a RF-47, RF-81 | `infrastructure/llm/api/` (`OpenAISummarizer`, `AnthropicSummarizer`, `GeminiSummarizer`, `OllamaSummarizer`), `infrastructure/llm/cli/` (`CliSummarizer` con presets de Claude Code, Gemini CLI y Codex, más la plantilla genérica; `SandboxedProcessRunner`), `StructuredOutputValidator`, `FallbackSummarizer`, `LocalOnlyRouter`, `RateLimitRetry`, `WhisperCppTranscriber`, `ModelDownloader`, `doctor` | 3 |
 | RF-01, RF-02, RF-04, RF-70 a RF-75, RF-82 | API HTTP con node:http + SSE, SPA, autenticación con token | 4 |
+| RF-76 | `AskChats` (caso de uso sobre `Summarizer`), `AskService` en memoria, rutas `/api/accounts/:id/ask` y pestaña "Pedir" | Posterior a v0.1.0-rc1 |
 | RNF-05 a RNF-07, RF-80 (`service`) | Imagen Docker, `install.sh`, `install.ps1`, `ServiceInstaller` | 5 |
 | RNF-15, RNF-18, documentación | CI, licencia, aviso legal, README | 6 |
 

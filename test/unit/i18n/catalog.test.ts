@@ -20,6 +20,8 @@ const get = (root: object, path: string): unknown => path.split('.').reduce<unkn
 
 /** Arguments to call each function of the catalog with. A new function without an entry fails the test below. */
 const SAMPLES: Record<string, unknown[][]> = {
+  'ask.systemPrompt': [['What did Ana say?', 'Pao']],
+  'ask.contactStatus': [['saved'], ['unsaved'], ['group']],
   'transcript.header': [
     [true, 'N'],
     [false, 'N'],

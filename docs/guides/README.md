@@ -25,5 +25,5 @@ Both guides were checked against the official pages on 2026-11-20. Providers cha
 | [Choosing a local model (Ollama)](local-model-ollama.md) | Candidates, evaluation and the `msum ollama` commands. |
 | [Importing from the previous tool](import-previous-tool.md) | `msum import`. |
 | [What the program connects to](network-and-privacy.md) | Every network destination. |
-| [The web page, the wizard and accounts](web-and-accounts.md) | The web, the first-run wizard, exclusions and agreements. |
+| [The web page, the wizard and accounts](web-and-accounts.md) | The web, the first-run wizard, exclusions, agreements and asking about your chats. |
 | [The daemon, accounts and schedules](daemon-and-schedules.md) | `config.json`, the daemon, blocks, several accounts and `msum schedule`. |

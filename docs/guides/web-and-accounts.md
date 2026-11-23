@@ -11,12 +11,13 @@ While it runs, the daemon serves a local page. This guide explains what you can 
 
 ## What you can do
 
-The sections of each account are Summary, Conversations, Schedules, History and Settings.
+The sections of each account are Summary, Conversations, Ask, Schedules, History and Settings.
 
 - **Accounts.** Add an account and link it by scanning the QR, follow the history sync and see each account's state.
 - **Unblock.** Link again or retry. After a rejected or replaced connection, the page makes you wait 30 minutes.
 - **Schedules.** Edit them, use "summarize now" and see a preview that sends nothing and does not move the pointer.
 - **Conversations.** List and search an account's conversations and mark each one as excluded or local only (see [below](#excluding-and-local-only)).
+- **Ask.** Ask for something about your chats, by typing or dictating: a custom summary, a list of orders, what someone said (see [below](#ask-for-something-about-your-chats)).
 - **Prompt.** Edit each account's prompt and go back to the original, which saves your text in `prompt.previous.md`. The only variable is `{{name}}`; the response format is fixed and added automatically.
 - **Logs.** The "Logs" button shows the daemon's latest log lines, filterable by level and account; they never include messages, names or secrets.
   - The daemon also writes them to `logs/daemon.log` inside the data directory (it rotates to `daemon.log.1`).
@@ -30,6 +31,16 @@ The web does not configure transcription yet: it is turned on in `config.json` (
 - **Excluding a chat deletes the messages and the chat row stored so far.** It does not remove the summaries already inside past digests (the digest history is kept) nor the parts already waiting in the delivery queue. Removing the exclusion recovers nothing.
 - A mark covers the ids of that person that WhatsApp has told this computer about (a number and an internal id). If the same person shows up as a second chat, mark that one too.
 - **"Local only"** needs an Ollama model in the configuration (see [local model](local-model-ollama.md)).
+
+## Ask for something about your chats
+
+The "Ask" tab answers a request about the chats of a period (today, 24 hours, 3 or 7 days), for example "the list of orders I got this week, who asked for what and whether I answered". It only reads: it sends nothing to WhatsApp.
+
+- **How it answers.** It reads each conversation of the period on its own with your provider and shows only the ones that have something for your request, those waiting for your answer first. It does not combine several chats into one answer.
+- **Which chats.** The same ones a digest would summarize: excluded chats and your own chat are never read, even if you name them in the optional "Only these chats" filter (names or numbers, separated by commas). "Local only" chats are answered only by your local model, as in the digest. A period with more than 60 chats is rejected: choose fewer days or filter.
+- **Dictation.** The microphone button uses your browser's speech recognition, not this program: depending on the browser, the audio may go to Google (Chrome) or Apple (Safari). Typing sends nothing anywhere. Some browsers, such as Firefox, cannot dictate.
+- **Where answers are kept.** Only in the daemon's memory, the last 20 per account, and they are lost when it restarts. Each one can be copied or deleted. The account must be connected, and only one request runs at a time per account.
+- **Limits.** A request takes up to 1000 characters. It does not use your custom prompt: it has its own instructions. Nor does it transcribe pending audio first: an audio the digest has not transcribed yet shows as "audio not transcribed", and the answer may suggest listening to it.
 
 ## The first-run wizard
 

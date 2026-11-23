@@ -19,6 +19,7 @@
     back: [p('m14 6-6 6 6 6')],
     lock: [{ t: 'rect', x: 5, y: 11, w: 14, h: 9, rx: 2 }, p('M8 11V8a4 4 0 0 1 8 0v3')],
     trash: [p('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3')],
+    mic: [{ t: 'rect', x: 9, y: 3, w: 6, h: 11, rx: 3 }, p('M5 11a7 7 0 0 0 14 0M12 18v3')],
     search: [{ t: 'circle', cx: 11, cy: 11, r: 6 }, p('m20 20-4.5-4.5')],
   }
 

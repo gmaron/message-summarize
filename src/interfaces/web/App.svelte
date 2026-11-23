@@ -19,6 +19,7 @@
   import Link from './pages/Link.svelte'
   import Logs from './pages/Logs.svelte'
   import Overview from './pages/Overview.svelte'
+  import Ask from './pages/Ask.svelte'
   import Preview from './pages/Preview.svelte'
   import Prompt from './pages/Prompt.svelte'
   import RunDetail from './pages/RunDetail.svelte'
@@ -138,6 +139,8 @@
       {:else if account !== null}
         {#if route.name === 'account' && route.tab === 'resumen'}
           <Overview {app} {api} {texts} {controller} {account} {accounts} {now} />
+        {:else if route.name === 'account' && route.tab === 'pedir'}
+          <Ask {app} {api} {texts} {account} {now} />
         {:else if route.name === 'account' && route.tab === 'conversaciones'}
           <Conversations {app} {api} {texts} {account} {now} />
         {:else if route.name === 'account' && route.tab === 'horarios'}

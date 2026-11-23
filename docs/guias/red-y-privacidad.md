@@ -7,7 +7,7 @@ No se envía nada a ningún lado salvo lo que figura en esta guía. No hay telem
 | Destino | Cuándo | Qué se envía |
 |---|---|---|
 | WhatsApp | Siempre que una cuenta está conectada | Tu propia conexión; la descarga de audios que recibís, si la transcripción está activa. |
-| El proveedor de LLM que elegiste | Al resumir | El texto de las conversaciones que no son "solo locales" y tu prompt. |
+| El proveedor de LLM que elegiste | Al resumir o al responder un pedido de "Pedir" | El texto de las conversaciones que no son "solo locales" y tu prompt (o tu pedido). |
 | Lo que contacta Claude Code | Con `claude-cli` | Lo decide la propia CLI (ver abajo). |
 | La lista de modelos del proveedor | Al abrir el asistente o Ajustes para elegir modelo | Un `GET` sin texto de chats. |
 | Tu servidor de Ollama | `msum ollama pull`, `msum doctor` o el selector de modelos | El tag, o un pedido de la lista de modelos; sin texto de chats. |
@@ -24,6 +24,7 @@ Por la conexión de tu propia cuenta (incluida la descarga de los audios que rec
 Y nada más: con Ollama, la URL que configuraste; con un proveedor por API, exactamente uno entre `api.openai.com` (o tu `provider.openai.baseUrl`), `api.anthropic.com` o `generativelanguage.googleapis.com`.
 
 - **El texto de las conversaciones que no son solo locales se envía ahí**, junto con tu prompt de resumen.
+- Un pedido de la pestaña "Pedir" de la web envía lo mismo, de a una conversación, con tu pedido en lugar del prompt de resumen.
 - Las claves viajan solo en los encabezados del pedido.
 
 ### Con `claude-cli`: lo que contacta el propio Claude Code
@@ -35,6 +36,10 @@ Son los servidores de su fabricante, según [su documentación de red](https://c
 - `http-intake.logs.us5.datadoghq.com` y `browser-intake-us5-datadoghq.com`: telemetría opcional de la CLI, que su configuración puede apagar (`DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`).
 
 Ese tráfico es de la CLI, no de este programa, y el programa no le pasa esas variables: definilas en el archivo de configuración de Claude Code. `gemini-cli` y `codex-cli` están deshabilitados y no contactan nada. Un comando de `generic-cli` contacta lo que haga.
+
+### El dictado de la pestaña "Pedir": lo que contacta tu navegador
+
+El botón del micrófono usa el reconocimiento de voz del navegador (la Web Speech API). El programa recibe solo el texto que resulta, nunca el audio. Adónde va el audio lo decide el navegador: Chrome lo envía a los servidores de Google, y Safari a los de Apple. Si escribís el pedido, no se envía nada.
 
 ### La lista de modelos
 

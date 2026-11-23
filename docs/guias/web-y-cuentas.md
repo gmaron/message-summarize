@@ -11,12 +11,13 @@ Mientras corre, el daemon sirve una página local. Esta guía explica qué se pu
 
 ## Qué se puede hacer
 
-Las secciones de cada cuenta son Resumen, Conversaciones, Horarios, Historial y Ajustes.
+Las secciones de cada cuenta son Resumen, Conversaciones, Pedir, Horarios, Historial y Ajustes.
 
 - **Cuentas.** Agregar una cuenta y vincularla escaneando el QR, seguir la sincronización del historial y ver el estado de cada cuenta.
 - **Destrabar un bloqueo.** Vincular de nuevo o reintentar. Después de una conexión rechazada o reemplazada, la página hace esperar 30 minutos.
 - **Horarios.** Editarlos, usar "resumir ahora" y ver una vista previa que no envía nada ni mueve el puntero.
 - **Conversaciones.** Listar y buscar las conversaciones de una cuenta y marcar cada una como excluida o solo local (ver [abajo](#excluir-y-solo-local)).
+- **Pedir.** Pedir algo sobre tus chats, escribiendo o dictando: un resumen a medida, una lista de pedidos, qué dijo alguien (ver [abajo](#pedir-algo-sobre-tus-chats)).
 - **Prompt.** Editar el prompt de cada cuenta y volver al original, que guarda tu texto en `prompt.previous.md`. La única variable es `{{name}}`; el formato de la respuesta es fijo y se agrega solo.
 - **Logs.** El botón "Logs" muestra las últimas líneas de log del daemon, filtrables por nivel y cuenta; nunca incluyen mensajes, nombres ni secretos.
   - El daemon además las escribe en `logs/daemon.log` dentro del directorio de datos (rota a `daemon.log.1`).
@@ -30,6 +31,16 @@ La web todavía no configura la transcripción: se activa en `config.json` (ver 
 - **Excluir un chat borra los mensajes y la fila del chat guardados hasta ese momento.** No quita los resúmenes que ya están dentro de digests pasados (el historial de digests se conserva) ni las partes que ya esperan en la cola de envío. Quitar la exclusión no recupera nada.
 - Una marca cubre los ids de esa persona que WhatsApp le contó a esta computadora (un número y un id interno). Si la misma persona aparece como un segundo chat, marcá también ese.
 - **"Solo local"** necesita un modelo de Ollama en la configuración (ver [modelo local](modelo-local-ollama.md)).
+
+## Pedir algo sobre tus chats
+
+La pestaña "Pedir" responde un pedido sobre los chats de un período (hoy, 24 horas, 3 o 7 días), por ejemplo "la lista de pedidos que me hicieron esta semana, quién pidió qué y si ya respondí". Solo lee: no envía nada a WhatsApp.
+
+- **Cómo responde.** Lee cada conversación del período por separado con tu proveedor y muestra solo las que tienen algo para tu pedido, primero las que esperan tu respuesta. No junta varios chats en una sola respuesta.
+- **Qué chats.** Los mismos que resumiría un digest: los chats excluidos y tu propio chat nunca se leen, aunque los nombres en el filtro opcional "Solo estos chats" (nombres o números, separados por comas). Los chats "solo locales" los responde solo tu modelo local, igual que en el digest. Un período con más de 60 chats se rechaza: elegí menos días o filtrá.
+- **Dictado.** El botón del micrófono usa el reconocimiento de voz de tu navegador, no este programa: según el navegador, el audio puede ir a Google (Chrome) o a Apple (Safari). Escribir no envía nada a ningún lado. Algunos navegadores, como Firefox, no pueden dictar.
+- **Dónde quedan las respuestas.** Solo en la memoria del daemon, las últimas 20 por cuenta, y se pierden al reiniciarlo. Cada una se puede copiar o borrar. La cuenta tiene que estar conectada y corre un pedido a la vez por cuenta.
+- **Límites.** El pedido admite hasta 1000 caracteres. No usa tu prompt personalizado: tiene sus propias instrucciones. Tampoco transcribe antes los audios pendientes: un audio que el digest todavía no transcribió figura como "audio sin transcribir", y la respuesta puede sugerir escucharlo.
 
 ## El asistente de primer uso
 

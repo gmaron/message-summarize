@@ -181,6 +181,8 @@ The daemon serves the local page at `http://127.0.0.1:8787`; `msum open` opens i
 
   ![Conversations tab](docs/images/screenshots/conversations.png)
 
+- **Ask:** ask for something about the chats of a period, by typing or dictating (a custom summary, a list of orders, what someone said). It reads each chat with your provider and sends nothing to WhatsApp; answers stay only in memory. Dictation is done by your browser, which may send the audio to Google or Apple. See the [web guide](docs/guides/web-and-accounts.md#ask-for-something-about-your-chats).
+
 - **Settings:** provider, model, keys, name, language and time zone.
 
   ![Settings tab](docs/images/screenshots/settings.png)
@@ -207,13 +209,15 @@ Nothing is sent anywhere except what follows. There is no telemetry, and transcr
 | Destination | When | What is sent |
 |---|---|---|
 | WhatsApp | With a connected account | Your own connection and the download of audio you receive, if transcription is on. |
-| The LLM provider you chose | When summarizing | The text of the conversations that are not local only, with your prompt. With Ollama, the URL you configured; with an API, `api.openai.com` (or your `baseUrl`), `api.anthropic.com` or `generativelanguage.googleapis.com`. |
+| The LLM provider you chose | When summarizing or answering a request from the "Ask" tab | The text of the conversations that are not local only, with your prompt (or your request). With Ollama, the URL you configured; with an API, `api.openai.com` (or your `baseUrl`), `api.anthropic.com` or `generativelanguage.googleapis.com`. |
 | Claude Code's servers | With `claude-cli` | The chat text goes to `api.anthropic.com`; the rest is decided by the CLI itself, not by this program (see the guide). |
 | The provider's model list | When choosing a model in the wizard or Settings | A request with no chat text. |
 | Your Ollama server | `msum ollama pull`, `msum doctor`, the web model picker | The tag or a request for the model list, no chat text. |
 | Hugging Face | Only with `msum whisper download` | The request for the model file, with a pinned checksum. |
 
 ![What data leaves your machine and where it goes, depending on the provider](docs/images/diagrams/privacy.svg)
+
+Dictation in the "Ask" tab is done by your browser, not by this program: depending on the browser, the audio may go to Google or Apple. Typing the request sends nothing.
 
 The host-by-host detail is in [What the program connects to](docs/guides/network-and-privacy.md); what each provider does with your data is in the [providers guide](docs/guides/providers.md#privacy-what-each-provider-does-with-your-data).
 
@@ -272,7 +276,7 @@ The reference detail is in [docs/guides](docs/guides/README.md) (English) and [d
 | [Local model (Ollama)](docs/guides/local-model-ollama.md) | Candidates, evaluation and the `msum ollama` commands. |
 | [Import the previous tool](docs/guides/import-previous-tool.md) | `msum import`. |
 | [Network and privacy](docs/guides/network-and-privacy.md) | Every network destination. |
-| [The web and accounts](docs/guides/web-and-accounts.md) | The page, the wizard, exclusions and agreements. |
+| [The web and accounts](docs/guides/web-and-accounts.md) | The page, the wizard, exclusions, agreements and asking about your chats. |
 | [The daemon and schedules](docs/guides/daemon-and-schedules.md) | `config.json`, blocks, several accounts and `msum schedule`. |
 | [Google API key (Gemini)](docs/guides/get-google-api-key.md) | Step by step. |
 | [Installing Claude Code and signing in](docs/guides/install-claude-and-login.md) | Step by step. |
