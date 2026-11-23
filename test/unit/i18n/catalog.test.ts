@@ -287,6 +287,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   'cli.blockedReasons.mismatch': [['x']],
   'cli.blockedReasons.noAccount': [['x']],
   'cli.link.alreadyLinked': [['x', 'a']],
+  'cli.link.fullHistoryNeedsDaemon': [['x']],
   'cli.link.scanQr': [['q']],
   'cli.link.done': [['a']],
   'cli.link.failed': [['r']],

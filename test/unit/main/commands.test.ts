@@ -560,6 +560,14 @@ describe('msum link', () => {
     expect((await stateOf(h)).account).toBe(OTHER)
   })
 
+  it('refuses to link from the CLI an account with fullHistoryOnLink: the full history needs the daemon', async () => {
+    const h = await makeHarness({ config: { fullHistoryOnLink: true } })
+    h.connection.onStart = () => h.connection.emit({ state: 'connected' })
+    expect(await run(h, 'link')).toBe(1)
+    expect(h.err.join('\n')).toContain('fullHistoryOnLink')
+    expect(h.connection.calls).not.toContain('start')
+  })
+
   it('on a session with no phone number it deletes the session and fails', async () => {
     const h = await makeHarness()
     h.connection.user = undefined

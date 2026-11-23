@@ -543,6 +543,8 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
     link: {
       alreadyLinked: (id, account) =>
         `The account "${id}" (${account}) is already linked. To link it again, run "msum unlink --account ${id}" first; to add another account, use "msum link --account <other-id>".`,
+      fullHistoryNeedsDaemon: (id) =>
+        `The account "${id}" has fullHistoryOnLink turned on: the full history can take many minutes and this command would stop before receiving it. Link it from the daemon's web page (run msum daemon and open the account page), which keeps the connection until it finishes.`,
       scanQr: (qrFile) =>
         `Scan the QR code with WhatsApp (Settings > Linked devices). It is also saved at ${qrFile}; it is deleted when done.`,
       connected: 'Connected.',

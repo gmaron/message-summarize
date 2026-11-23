@@ -449,6 +449,7 @@ export interface Catalog {
     }
     readonly link: {
       alreadyLinked(id: string, account: string): string
+      fullHistoryNeedsDaemon(id: string): string
       scanQr(qrFile: string): string
       readonly connected: string
       readonly receivingHistory: string

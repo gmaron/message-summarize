@@ -543,6 +543,8 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
     link: {
       alreadyLinked: (id, account) =>
         `La cuenta "${id}" (${account}) ya está vinculada. Para vincularla de nuevo, corré antes "msum unlink --account ${id}"; para agregar otra cuenta, usá "msum link --account <otro-id>".`,
+      fullHistoryNeedsDaemon: (id) =>
+        `La cuenta "${id}" tiene activado fullHistoryOnLink: el historial completo puede tardar muchos minutos y este comando se cortaría antes de recibirlo. Vinculala desde la web del daemon (msum daemon, y abrí la página de la cuenta), que mantiene la conexión hasta terminar.`,
       scanQr: (qrFile) =>
         `Escaneá el QR con WhatsApp (Ajustes > Dispositivos vinculados). También quedó en ${qrFile}; se borra al terminar.`,
       connected: 'Conectado.',

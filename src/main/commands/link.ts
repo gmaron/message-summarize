@@ -69,6 +69,12 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
   const heartbeat = setInterval(() => void lock.heartbeat(), LINK_HEARTBEAT_MS)
   heartbeat.unref()
   try {
+    // A full history can take many minutes and `maxAfterConnectMs` would cut it (what is not captured then is lost for
+    // good): that link is made from the daemon (web), which keeps the connection after the QR is scanned.
+    if (config.fullHistoryOnLink) {
+      io.err(texts.link.fullHistoryNeedsDaemon(account.id))
+      return EXIT_FAILURE
+    }
     await ctx.afterLock?.()
     // The authoritative check: once the lock is held nothing can change between it and the work.
     const daemonPid = await daemonUsing(ctx.layout, account)

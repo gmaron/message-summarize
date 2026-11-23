@@ -85,6 +85,58 @@ describe('event queue timeout', () => {
     expect(JSON.stringify(t.warnings)).not.toContain(ANA)
   })
 
+  it('a history chunk longer than the timeout is not abandoned: it is awaited and warned about once', async () => {
+    let finish: () => void = () => {}
+    const slow = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const stored: string[] = []
+    const t = connectionSetup({
+      receiveMessage: async (event) => {
+        if (event.message.id === 'H1') await slow
+        stored.push(event.message.id)
+        return recordingCapture().capture.receiveMessage(event)
+      },
+    })
+    await t.connection.start()
+    t.socket().ev.emit('messaging-history.set', { chats: [], contacts: [], messages: [message('H1'), message('H2')] })
+    t.socket().ev.emit('messages.upsert', { type: 'notify', messages: [message('LIVE')] })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(t.warnings).toEqual([{ code: 'event-slow', detail: { wsEvent: 'messaging-history.set' } }])
+    // the live event waits behind the chunk: nothing was abandoned
+    expect(stored).toEqual([])
+    finish()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(stored).toEqual(['H1', 'H2', 'LIVE'])
+  })
+
+  it('stop() waits for abandoned work before returning', async () => {
+    let finish: () => void = () => {}
+    const slow = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const t = connectionSetup({
+      receiveMessage: async () => {
+        await slow
+        return { stored: true, isNew: true, downloadAudio: false }
+      },
+    })
+    await t.connection.start()
+    t.socket().ev.emit('messages.upsert', { type: 'notify', messages: [message('SLOW')] })
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(t.warnings.map((w) => w.code)).toEqual(['event-timeout'])
+    let stopped = false
+    const stopping = t.connection.stop().then(() => {
+      stopped = true
+    })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(stopped).toBe(false)
+    finish()
+    await vi.advanceTimersByTimeAsync(100)
+    await stopping
+    expect(stopped).toBe(true)
+  })
+
   it('an event that settles in time does not warn', async () => {
     const t = connectionSetup()
     await t.connection.start()

@@ -166,6 +166,7 @@ export interface BackoffPolicy {
 
 /** A queued event that has not settled after this long is abandoned so the ones behind it are not held forever. */
 export const EVENT_TIMEOUT_MS = 30_000
+const HISTORY_SET_EVENT = 'messaging-history.set'
 /** How often the capture counters are reported while connected (and only when they changed). */
 export const STATS_INTERVAL_MS = 60_000
 
@@ -294,6 +295,8 @@ export class WhatsAppConnection {
   private running = false
   private loggedOut = false
   private readonly settling: Promise<void>[] = []
+  /** Events past the timeout whose work is still running. `stop()` waits for them. */
+  private readonly abandoned = new Set<Promise<void>>()
   private queue: Promise<void> = Promise.resolve()
   private readonly backoff: BackoffPolicy
   private readonly counters: Record<string, number> = {}
@@ -446,6 +449,9 @@ export class WhatsAppConnection {
     this.release()
     this.setStatus({ state: 'stopped' })
     await this.queue
+    // Work abandoned by the event timeout is still running: wait for all of it (no timeout), so the database is not
+    // closed under it.
+    while (this.abandoned.size > 0) await Promise.all([...this.abandoned])
     // The download in progress is aborted (stream destroyed, partial file removed) and its audio stays in the durable
     // queue, to be downloaded after the next start. When this returns nothing of the account is open and nothing will
     // write to its database (it is closed next). A fresh worker is ready if the connection is started again.
@@ -690,36 +696,53 @@ export class WhatsAppConnection {
   }
 
   /**
-   * Events run one at a time. One that does not settle within the timeout is abandoned (not awaited any more) so it
-   * cannot hold every later event: the warning names the event and nothing else.
+   * Events run one at a time. One that does not settle within the timeout is abandoned from the queue (it no longer
+   * holds the later events) but NOT forgotten: its promise is kept in `abandoned` and `stop()` waits for it, so the
+   * database is never closed under work that is still writing. The warning names the event and nothing else.
+   *
+   * `messaging-history.set` is exempt from the timeout: a chunk of a full history can hold tens of thousands of messages
+   * and take minutes, and abandoning it would let stop() close the database under it and lose the rest of the chunk. It
+   * is awaited as long as it takes; after the timeout it only warns once (`event-slow`) so that it is visible.
    */
   private enqueue(event: string, work: () => void | Promise<void>): void {
+    const limit = this.options.eventTimeoutMs ?? EVENT_TIMEOUT_MS
+    const exempt = event === HISTORY_SET_EVENT
     this.queue = this.queue
-      .then(
-        () =>
-          new Promise<void>((resolve, reject) => {
-            let over = false
-            const timer = setTimeout(() => {
-              over = true
-              this.count('eventTimeout')
-              this.options.onWarning?.('event-timeout', { wsEvent: event })
-              resolve()
-            }, this.options.eventTimeoutMs ?? EVENT_TIMEOUT_MS)
-            timer.unref?.()
-            Promise.resolve()
-              .then(work)
+      .then(() => {
+        const running = Promise.resolve().then(work)
+        return new Promise<void>((resolve, reject) => {
+          let over = false
+          const timer = setTimeout(() => {
+            over = true
+            if (exempt) {
+              this.options.onWarning?.('event-slow', { wsEvent: event })
+              return
+            }
+            this.count('eventTimeout')
+            this.options.onWarning?.('event-timeout', { wsEvent: event })
+            const tracked: Promise<void> = running
               .then(
-                () => {
-                  clearTimeout(timer)
-                  if (!over) resolve()
-                },
-                (error: unknown) => {
-                  clearTimeout(timer)
-                  if (!over) reject(error)
-                },
+                () => undefined,
+                () => undefined,
               )
-          }),
-      )
+              .finally(() => this.abandoned.delete(tracked))
+            this.abandoned.add(tracked)
+            resolve()
+          }, limit)
+          timer.unref?.()
+          running.then(
+            () => {
+              clearTimeout(timer)
+              resolve()
+            },
+            (error: unknown) => {
+              clearTimeout(timer)
+              if (over && !exempt) return
+              reject(error)
+            },
+          )
+        })
+      })
       .catch(() => {
         this.count('eventFailed')
         this.options.onWarning?.('event-failed')
