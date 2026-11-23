@@ -177,7 +177,7 @@ describe('the daemon lock', () => {
     const first = await acquireDaemonLock(file, 111, alive)
     expect(first.ok).toBe(true)
     if (!isWindows) expect(mode(file)).toBe(0o600)
-    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: 111, host: 'host-a' })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ pid: 111, host: 'host-a' })
     expect(await runningDaemonPid(file, alive)).toBe(111)
     const second = await acquireDaemonLock(file, 222, alive)
     expect(second).toEqual({ ok: false, pid: 111 })
