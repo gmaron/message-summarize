@@ -1,3 +1,4 @@
+import { type AskHint, matchAskHints } from '../domain/ask-hints.js'
 import { isExcluded } from '../domain/exclusion.js'
 import { findMassTexts, isMassMessage } from '../domain/mass.js'
 import type { Message, Participant } from '../domain/model.js'
@@ -27,8 +28,11 @@ export interface AskChatsDeps {
   /** The same composed summarizer of the digest: its fallback, retries and local-only routing (RF-43) apply as they are. */
   readonly summarizer: Summarizer
   readonly renderers: Renderers
-  /** The system prompt of a request, in the language of the installation. Gets the cleaned question and the owner name. */
-  readonly systemPrompt: (question: string, ownerName: string | null) => string
+  /**
+   * The system prompt of a request, in the language of the installation. Gets the cleaned question, the owner name and
+   * the texts of the owner's hints that apply to the question (empty: none).
+   */
+  readonly systemPrompt: (question: string, ownerName: string | null, hints: readonly string[]) => string
   /** One line placed before each chat: saved or unsaved contact (individual chats) or a group. */
   readonly contactStatus: (status: 'saved' | 'unsaved' | 'group') => string
   /** Ids of the owner's own chat(s): never read (the same fallback filter as the digest). Default: none. */
@@ -41,6 +45,8 @@ export interface AskChatsRequest {
   /** Only conversations that match one of these patterns (a name, a phone number or `id:<id>`). Empty: all of them. */
   readonly chats?: readonly string[]
   readonly settings: DigestSettings
+  /** The owner's context for questions that mention certain words. Only a request uses it, never the digest. */
+  readonly askHints?: readonly AskHint[]
   readonly concurrency?: number
   /** How many of the ranked conversations were already read by earlier pages. Default 0. */
   readonly offset?: number
@@ -175,7 +181,11 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
     const candidates = named.length
     const page = named.slice(offset, offset + MAX_ASK_CONVERSATIONS)
 
-    const systemPrompt = deps.systemPrompt(question, settings.ownerName)
+    const systemPrompt = deps.systemPrompt(
+      question,
+      settings.ownerName,
+      matchAskHints(request.askHints ?? [], question),
+    )
     const outcomes = await mapWithConcurrency(page, concurrency, async (item) => {
       try {
         const entries: TranscriptEntry[] = item.messages.map((m) => ({

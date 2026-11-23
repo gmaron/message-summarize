@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
+import { type AskHint, MAX_ASK_HINT_TERMS, MAX_ASK_HINT_TEXT_CHARS, MAX_ASK_HINTS } from '../domain/ask-hints.js'
 import { exactIdOf } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
@@ -179,6 +180,8 @@ export interface AppConfig {
   readonly timezone: string
   readonly digest: DigestSettings
   readonly localOnlyPatterns: readonly string[]
+  /** Context of the owner added to the prompt of an Ask when the question mentions its words (never to the digest). */
+  readonly askHints: readonly AskHint[]
   /** Path of a custom prompt template, read on every digest (RF-38). */
   readonly promptFile: string | null
   readonly concurrency: number
@@ -240,6 +243,7 @@ const TOP_LEVEL = new Set([
   'flagUnsaved',
   'hideRest',
   'localOnlyPatterns',
+  'askHints',
   'promptFile',
   'concurrency',
   'schedules',
@@ -358,6 +362,37 @@ export function parseConfig(
     if (v.some((p: string) => exactIdOf(p) === '')) return add(key, 'emptyIdPattern')
     return [...(v as string[])]
   }
+  /** `askHints`: a list of `{ when: [words], text }`. Each problem names the entry, e.g. `askHints[1].when`. */
+  const parseAskHints = (): readonly AskHint[] | undefined => {
+    const v = input.askHints
+    if (v === undefined) return []
+    if (!Array.isArray(v)) return add('askHints', 'notArray')
+    if (v.length > MAX_ASK_HINTS) return add('askHints', 'tooManyHints')
+    const hints: AskHint[] = []
+    let valid = true
+    v.forEach((entry: unknown, index) => {
+      const path = `askHints[${index}]`
+      if (!isObject(entry) || Object.keys(entry).some((key) => key !== 'when' && key !== 'text')) {
+        valid = false
+        add(path, 'invalidHint')
+        return
+      }
+      const { when, text } = entry
+      let whenOk = false
+      if (!Array.isArray(when) || when.some((t) => typeof t !== 'string')) add(`${path}.when`, 'notStringList')
+      else if (when.length === 0 || when.some((t: string) => t.trim() === '')) add(`${path}.when`, 'emptyHintWhen')
+      else if (when.length > MAX_ASK_HINT_TERMS) add(`${path}.when`, 'tooManyHintTerms')
+      else whenOk = true
+      let textOk = false
+      if (typeof text !== 'string') add(`${path}.text`, 'notString')
+      else if (text.trim() === '') add(`${path}.text`, 'emptyHintText')
+      else if (text.length > MAX_ASK_HINT_TEXT_CHARS) add(`${path}.text`, 'hintTextTooLong')
+      else textOk = true
+      if (whenOk && textOk) hints.push({ when: [...(when as string[])], text: text as string })
+      else valid = false
+    })
+    return valid ? hints : undefined
+  }
   const choice = (obj: Obj, key: string, path: string, allowed: readonly string[]): string | null | undefined => {
     const v = obj[key]
     // Absent or null: not chosen (`msum init` writes null for the provider, which has no default).
@@ -412,6 +447,7 @@ export function parseConfig(
   })()
 
   const localOnlyPatterns = patterns('localOnlyPatterns')
+  const askHints = parseAskHints()
   const promptFile = text(input, 'promptFile', 'promptFile')
   const concurrency = positiveInt(input, 'concurrency', 'concurrency', DEFAULT_CONCURRENCY)
 
@@ -619,6 +655,7 @@ export function parseConfig(
     language === undefined ||
     timezone === undefined ||
     localOnlyPatterns === undefined ||
+    askHints === undefined ||
     promptFile === undefined ||
     concurrency === undefined ||
     schedules === undefined ||
@@ -675,6 +712,7 @@ export function parseConfig(
     timezone,
     digest: settings.value,
     localOnlyPatterns,
+    askHints,
     promptFile,
     concurrency,
     schedules,
@@ -957,6 +995,7 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
     timezone,
     excludePatterns: [],
     localOnlyPatterns: [],
+    askHints: [],
     defaultWindowHours: 24,
     maxCharsPerConversation: 24000,
     unreadOnly: false,

@@ -40,6 +40,7 @@ describe('parseConfig defaults', () => {
         hideRest: false,
       },
       localOnlyPatterns: [],
+      askHints: [],
       promptFile: null,
       concurrency: 4,
       schedules: [],
@@ -707,5 +708,69 @@ describe('loadEffectiveConfig', () => {
     expect(await languageHint(two.rootFile, two.accountFile)).toBe('en')
     const three = setup('{nope', '{nope')
     expect(await languageHint(three.rootFile, three.accountFile)).toBe('es')
+  })
+})
+
+describe('askHints', () => {
+  const hint = { when: ['encargo', 'encargos'], text: 'An encargo is a custom cake order.' }
+
+  it('is empty by default and accepts valid hints', () => {
+    const empty = parse({})
+    expect(empty.ok && empty.value.askHints).toEqual([])
+    const result = parse({ askHints: [hint, { when: ['turno'], text: 'A turno is a pickup slot.' }] })
+    expect(result.ok && result.value.askHints).toEqual([hint, { when: ['turno'], text: 'A turno is a pickup slot.' }])
+  })
+
+  it('is part of the written default config only as an empty list', () => {
+    expect(JSON.parse(defaultConfigJson(BA)).askHints).toEqual([])
+  })
+
+  it.each([
+    ['not a list', 'x', [{ option: 'askHints', code: 'notArray' }]],
+    ['an entry that is not an object', ['x'], [{ option: 'askHints[0]', code: 'invalidHint' }]],
+    ['an extra key', [{ ...hint, extra: 1 }], [{ option: 'askHints[0]', code: 'invalidHint' }]],
+    ['when missing', [{ text: 'a' }], [{ option: 'askHints[0].when', code: 'notStringList' }]],
+    ['when not texts', [{ when: [1], text: 'a' }], [{ option: 'askHints[0].when', code: 'notStringList' }]],
+    ['when empty', [{ when: [], text: 'a' }], [{ option: 'askHints[0].when', code: 'emptyHintWhen' }]],
+    ['an empty term', [{ when: ['a', ' '], text: 'a' }], [{ option: 'askHints[0].when', code: 'emptyHintWhen' }]],
+    [
+      'too many terms',
+      [{ when: Array.from({ length: 21 }, (_, i) => `t${i}`), text: 'a' }],
+      [{ option: 'askHints[0].when', code: 'tooManyHintTerms' }],
+    ],
+    ['text missing', [{ when: ['a'] }], [{ option: 'askHints[0].text', code: 'notString' }]],
+    ['text empty', [{ when: ['a'], text: '  ' }], [{ option: 'askHints[0].text', code: 'emptyHintText' }]],
+    [
+      'text too long',
+      [{ when: ['a'], text: 'x'.repeat(2001) }],
+      [{ option: 'askHints[0].text', code: 'hintTextTooLong' }],
+    ],
+    ['too many hints', Array.from({ length: 21 }, () => hint), [{ option: 'askHints', code: 'tooManyHints' }]],
+    [
+      'the index of the bad entry',
+      [hint, { when: [], text: 'a' }],
+      [{ option: 'askHints[1].when', code: 'emptyHintWhen' }],
+    ],
+  ])('refuses %s', (_name, askHints, expected) => {
+    expect(issuesOf({ askHints })).toEqual(expected)
+  })
+
+  it('accepts a text of exactly the limit and 20 hints and 20 terms', () => {
+    const edge = { when: Array.from({ length: 20 }, (_, i) => `t${i}`), text: 'x'.repeat(2000) }
+    expect(parse({ askHints: Array.from({ length: 20 }, () => edge) }).ok).toBe(true)
+  })
+
+  it('has messages in both languages that name the entry', () => {
+    const issue: ConfigIssue = { option: 'askHints[2].when', code: 'emptyHintWhen' }
+    expect(describeConfigIssue(getCatalog('es'), issue)).toContain('askHints[2].when')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('askHints[2].when')
+  })
+
+  it('of an account replaces the installation hints instead of adding to them', () => {
+    const base = { askHints: [hint] }
+    const account = { askHints: [{ when: ['turno'], text: 'A turno is a pickup slot.' }] }
+    expect(mergeConfigJson(base, account).askHints).toEqual(account.askHints)
+    expect(mergeConfigJson(base, {}).askHints).toEqual(base.askHints)
+    expect(mergeConfigJson(base, { askHints: [] }).askHints).toEqual([])
   })
 })

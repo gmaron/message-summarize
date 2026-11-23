@@ -19,6 +19,12 @@ const settingsCodes: SettingsIssueCode[] = [
   'notInteger',
   'notBoolean',
   'notObject',
+  'invalidHint',
+  'emptyHintWhen',
+  'emptyHintText',
+  'tooManyHints',
+  'tooManyHintTerms',
+  'hintTextTooLong',
 ]
 const windowCodes: WindowError[] = [
   'invalidEnd',

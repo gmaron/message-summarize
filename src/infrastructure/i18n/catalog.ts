@@ -214,8 +214,11 @@ export interface Catalog {
 
   /** The free requests of the owner over the chats (the "Ask" tab of the web). */
   readonly ask: {
-    /** The system prompt of one conversation for a request: the cleaned question and the owner name. */
-    systemPrompt(question: string, ownerName: string): string
+    /**
+     * The system prompt of one conversation for a request: the cleaned question, the owner name and the texts of the
+     * owner's hints that apply to the question (none: the prompt has no section for them).
+     */
+    systemPrompt(question: string, ownerName: string, hints: readonly string[]): string
     /** One line before the transcript of a chat: whether the contact is in the owner's address book, or that it is a group. */
     contactStatus(status: 'saved' | 'unsaved' | 'group'): string
   }

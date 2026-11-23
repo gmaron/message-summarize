@@ -214,8 +214,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
                 source,
                 summarizer,
                 renderers,
-                systemPrompt: (question, ownerName) =>
-                  catalog.ask.systemPrompt(question, ownerName ?? catalog.promptOwnerName),
+                systemPrompt: (question, ownerName, hints) =>
+                  catalog.ask.systemPrompt(question, ownerName ?? catalog.promptOwnerName, hints),
                 contactStatus: catalog.ask.contactStatus,
                 ownConversationIds: () => ownIds.get(),
               }),
