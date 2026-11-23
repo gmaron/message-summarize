@@ -76,6 +76,14 @@ describe('CaptureMessages: receiving (RF-10)', () => {
     expect(stored.map((m) => [m.kind, m.text])).toEqual([...kinds.map((k) => [k, `[${k}]`]), ['sticker', null]])
   })
 
+  it('a message of kind other moves no unread counter: not incoming, and not as a sign the owner read', async () => {
+    const { capture, source } = setup()
+    await capture.receiveMessage(received({ id: 'a' }))
+    await capture.receiveMessage(received({ id: 'pin', kind: 'other', text: '[other]' }))
+    await capture.receiveMessage(received({ id: 'own-pin', kind: 'other', text: '[other]', fromMe: true }))
+    expect(await source.unreadState('c1')).toEqual({ kind: 'count', count: 1 })
+  })
+
   it('a replay is idempotent: nothing is duplicated and the counter does not move again', async () => {
     const { capture, source } = setup()
     const first = await capture.receiveMessage(received({ id: 'a' }))

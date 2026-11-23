@@ -137,6 +137,9 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
   /** What a message that was not stored before does to the unread state (RF-12, RF-33). */
   async function newMessageEffect(message: Message, origin: MessageOrigin): Promise<UnreadEffect> {
     if (origin !== 'live') return 'none'
+    // A type the capture keeps only for its raw content (a pin, a call log, a bot's buttons) does not show as unread on
+    // the phone, and an own one is not a sign that the owner read the chat.
+    if (message.kind === 'other') return 'none'
     if (!message.fromMe) return 'increment'
     const mass =
       message.text !== null &&
