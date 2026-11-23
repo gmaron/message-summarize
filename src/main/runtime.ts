@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { type AskChats, createAskChats } from '../application/ask-chats.js'
 import { type CaptureMessages, createCaptureMessages } from '../application/capture-messages.js'
 import { createGenerateDigest, type GenerateDigest } from '../application/generate-digest.js'
 import type { AccountIdentity } from '../application/ports/account-identity.js'
@@ -18,6 +19,7 @@ import {
 } from '../application/transcribe-audios.js'
 import { createTranscriptionSlot, type TranscriptionSlot } from '../application/transcription-slot.js'
 import type { SummaryWindow } from '../domain/window.js'
+import { getCatalog } from '../infrastructure/i18n/index.js'
 import {
   type Database,
   openDatabase,
@@ -118,6 +120,8 @@ export interface Runtime {
   readonly downloadQueue: DownloadQueue
   /** Null when no provider was chosen. */
   readonly generateDigest: GenerateDigest | null
+  /** The free requests over the chats (the "Ask" tab): read only, with the same providers as the digest. Null when no provider was chosen. */
+  readonly askChats: AskChats | null
   /**
    * Applies another configuration to the running account without touching the connection or the database: the
    * renderers (language, time zone), the summarizer and the digest use case are built again from it (the summarizer by
@@ -192,14 +196,29 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
     // A summarizer given in the options (tests) is fixed: a reconfiguration does not replace it. The audio wait is not
     // part of the configuration that changes live: it is wired the same way for every rebuilt digest use case.
-    const makeParts = (next: AppConfig): { renderers: Renderers; generateDigest: GenerateDigest | null } => {
+    const makeParts = (
+      next: AppConfig,
+    ): { renderers: Renderers; generateDigest: GenerateDigest | null; askChats: AskChats | null } => {
       const renderers = createRenderers(next.language, next.timezone)
       const summarizer =
         options.summarizer === undefined
           ? buildSummarizer(next, env, layout, () => config.localOnlyPatterns)
           : options.summarizer
+      const catalog = getCatalog(next.language)
       return {
         renderers,
+        askChats:
+          summarizer === null
+            ? null
+            : createAskChats({
+                source,
+                summarizer,
+                renderers,
+                systemPrompt: (question, ownerName) =>
+                  catalog.ask.systemPrompt(question, ownerName ?? catalog.promptOwnerName),
+                contactStatus: catalog.ask.contactStatus,
+                ownConversationIds: () => ownIds.get(),
+              }),
         generateDigest:
           summarizer === null
             ? null
@@ -250,6 +269,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       downloadQueue: queues,
       get generateDigest() {
         return parts.generateDigest
+      },
+      get askChats() {
+        return parts.askChats
       },
       reconfigure: (next) => {
         // Built before anything is swapped: if it throws, the runtime keeps the configuration it had.

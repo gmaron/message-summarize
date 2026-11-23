@@ -227,6 +227,7 @@
       <button type="button" class="btn primary block" disabled={!actions.digest || running || queued} onclick={() => controller.digestNow(id)}>
         <Icon name="send" />{ui.actions.digestNow}
       </button>
+      <a class="btn block" href={hrefOf({ name: 'account', id, tab: 'pedir' })}><Icon name="mic" />{texts.ui.tabs.ask}</a>
       {#if actions.preview}
         <a class="btn block" href={hrefOf({ name: 'preview', id })}><Icon name="eye" />{ui.actions.preview}</a>
       {:else}

@@ -17,14 +17,22 @@ function files(dir: string, base = dir): string[] {
   )
 }
 
-// One build for the whole file (about a second).
+// One build for the whole file (about a second). Vitest sets NODE_ENV=test, and with any NODE_ENV other than production
+// Vite does not make a production build and Svelte compiles in dev mode (about 14 KB more): measure what ships.
 beforeAll(async () => {
   out = mkdtempSync(join(tmpdir(), 'msum-web-'))
-  await build({
-    configFile: config,
-    logLevel: 'silent',
-    build: { outDir: out, emptyOutDir: true, reportCompressedSize: false },
-  })
+  const nodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  try {
+    await build({
+      configFile: config,
+      logLevel: 'silent',
+      build: { outDir: out, emptyOutDir: true, reportCompressedSize: false },
+    })
+  } finally {
+    if (nodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = nodeEnv
+  }
 }, 60_000)
 
 afterAll(() => rmSync(out, { recursive: true, force: true }))
@@ -33,6 +41,10 @@ const read = (name: string) => readFileSync(join(out, name), 'utf8')
 const scriptNames = () => files(out).filter((name) => name.endsWith('.js'))
 
 describe('the built web (RNF-19 and the CSP)', () => {
+  it('is a production build (Svelte in dev mode tags every component with its file name)', () => {
+    expect(scriptNames().map(read).join('\n')).not.toMatch(/Symbol\(["'`]filename["'`]\)/)
+  })
+
   it('is under 100 KB of JavaScript gzipped', () => {
     expect(scriptNames().length).toBeGreaterThan(0)
     const total = scriptNames().reduce((sum, name) => sum + gzipSync(readFileSync(join(out, name))).length, 0)

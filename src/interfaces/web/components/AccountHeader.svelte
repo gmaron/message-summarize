@@ -14,6 +14,7 @@
 
   const labels = $derived<Record<AccountTab, string>>({
     resumen: texts.ui.tabs.summary,
+    pedir: texts.ui.tabs.ask,
     conversaciones: texts.ui.tabs.conversations,
     horarios: texts.ui.tabs.schedules,
     historial: texts.ui.tabs.history,

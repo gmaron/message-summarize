@@ -7,7 +7,7 @@ Nothing is sent anywhere except what this guide lists. There is no telemetry, an
 | Destination | When | What is sent |
 |---|---|---|
 | WhatsApp | Whenever an account is connected | Your own account's connection; the download of audio you receive, if transcription is on. |
-| The LLM provider you chose | When summarizing | The text of the conversations that are not "local only" and your prompt. |
+| The LLM provider you chose | When summarizing or answering an "Ask" request | The text of the conversations that are not "local only" and your prompt (or your request). |
 | What Claude Code contacts | With `claude-cli` | Decided by the CLI itself (see below). |
 | The provider's model list | When opening the wizard or Settings to choose a model | A `GET` with no chat text. |
 | Your Ollama server | `msum ollama pull`, `msum doctor` or the model picker | The tag, or a request for the model list; no chat text. |
@@ -24,6 +24,7 @@ Through your own account's connection (including the download of the audio you r
 And nothing else: with Ollama, the URL you configured; with an API provider, exactly one of `api.openai.com` (or your `provider.openai.baseUrl`), `api.anthropic.com` or `generativelanguage.googleapis.com`.
 
 - **The text of the conversations that are not local only is sent there**, together with your digest prompt.
+- A request from the web's "Ask" tab sends the same thing, one conversation at a time, with your request instead of the digest prompt.
 - Keys travel only in the request headers.
 
 ### With `claude-cli`: what Claude Code itself contacts
@@ -35,6 +36,10 @@ These are its maker's servers, according to [its network documentation](https://
 - `http-intake.logs.us5.datadoghq.com` and `browser-intake-us5-datadoghq.com`: the CLI's optional telemetry, which its configuration can turn off (`DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`).
 
 That traffic is the CLI's, not this program's, and the program does not pass it those variables: set them in Claude Code's configuration file. `gemini-cli` and `codex-cli` are disabled and contact nothing. A `generic-cli` command contacts whatever it does.
+
+### Dictation in the "Ask" tab: what your browser contacts
+
+The microphone button uses the browser's speech recognition (the Web Speech API). The program receives only the resulting text, and never the audio. Where the audio goes is decided by the browser: Chrome sends it to Google's servers, and Safari to Apple's. Typing the request instead sends nothing.
 
 ### The model list
 

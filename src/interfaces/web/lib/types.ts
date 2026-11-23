@@ -156,6 +156,29 @@ export interface LinkSnapshot {
   readonly error?: LinkErrorCode
 }
 
+/** One request of the "Ask" tab. `items` and `question` are text written from chats of third parties or the user: render as text only. */
+export interface AskView {
+  readonly id: number
+  readonly question: string
+  readonly period: 'today' | 'h24' | 'd3' | 'd7'
+  readonly chats: readonly string[]
+  readonly state: 'running' | 'done' | 'failed'
+  readonly createdAt: number
+  readonly finishedAt?: number
+  readonly since: number
+  readonly until: number
+  readonly consulted?: number
+  readonly failedChats?: number
+  readonly items?: readonly {
+    readonly name: string
+    readonly answer: string
+    readonly todos: readonly string[]
+    readonly needsReply: boolean
+    readonly messageCount: number
+  }[]
+  readonly error?: string
+}
+
 export type DigestEventState = 'started' | 'deferred' | 'done' | 'empty' | 'failed' | 'busy'
 
 /** `GET /api/accounts/:id/preview`. `parts` is text written from chats of third parties: render it as text only. */

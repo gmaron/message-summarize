@@ -181,6 +181,8 @@ El daemon sirve la página local en `http://127.0.0.1:8787`; `msum open` la abre
 
   ![Pestaña Conversaciones](docs/images/screenshots/conversations.png)
 
+- **Pedir:** pedir algo sobre los chats de un período, escribiendo o dictando (un resumen a medida, una lista de pedidos, qué dijo alguien). Lee cada chat con tu proveedor y no envía nada a WhatsApp; las respuestas quedan solo en memoria. El dictado lo hace tu navegador, que puede enviar el audio a Google o Apple. Ver la [guía de la web](docs/guias/web-y-cuentas.md#pedir-algo-sobre-tus-chats).
+
 - **Ajustes:** proveedor, modelo, claves, nombre, idioma y zona horaria.
 
   ![Pestaña Ajustes](docs/images/screenshots/settings.png)
@@ -207,13 +209,15 @@ No se envía nada a ningún lado salvo lo que sigue. No hay telemetría, y la tr
 | Destino | Cuándo | Qué se envía |
 |---|---|---|
 | WhatsApp | Con una cuenta conectada | Tu propia conexión y la descarga de los audios que recibís, si la transcripción está activa. |
-| El proveedor de LLM que elegiste | Al resumir | El texto de las conversaciones que no son solo locales, con tu prompt. Con Ollama, la URL que configuraste; con una API, `api.openai.com` (o tu `baseUrl`), `api.anthropic.com` o `generativelanguage.googleapis.com`. |
+| El proveedor de LLM que elegiste | Al resumir o al responder un pedido de la pestaña "Pedir" | El texto de las conversaciones que no son solo locales, con tu prompt (o tu pedido). Con Ollama, la URL que configuraste; con una API, `api.openai.com` (o tu `baseUrl`), `api.anthropic.com` o `generativelanguage.googleapis.com`. |
 | Servidores de Claude Code | Con `claude-cli` | El texto de los chats va a `api.anthropic.com`; el resto lo decide la propia CLI, no este programa (ver la guía). |
 | Lista de modelos del proveedor | Al elegir un modelo en el asistente o en Ajustes | Un pedido sin texto de chats. |
 | Tu servidor de Ollama | `msum ollama pull`, `msum doctor`, el selector de modelos de la web | El tag o un pedido de la lista de modelos, sin texto de chats. |
 | Hugging Face | Solo con `msum whisper download` | El pedido del archivo del modelo, con checksum fijado. |
 
 ![Qué datos salen de tu máquina y hacia dónde, según el proveedor](docs/images/diagrams/privacy.svg)
+
+El dictado de la pestaña "Pedir" lo hace tu navegador, no este programa: según el navegador, el audio puede ir a Google o a Apple. Escribir el pedido no envía nada.
 
 El detalle, host por host, en [A qué se conecta el programa](docs/guias/red-y-privacidad.md); qué hace cada proveedor con tus datos, en la [guía de proveedores](docs/guias/proveedores.md#privacidad-qué-hace-cada-proveedor-con-tus-datos).
 
@@ -272,7 +276,7 @@ El detalle de referencia está en [docs/guias](docs/guias/README.md) (español) 
 | [Modelo local (Ollama)](docs/guias/modelo-local-ollama.md) | Candidatos, evaluación y comandos `msum ollama`. |
 | [Importar la herramienta anterior](docs/guias/importar-herramienta-anterior.md) | `msum import`. |
 | [Red y privacidad](docs/guias/red-y-privacidad.md) | Todos los destinos de red. |
-| [La web y las cuentas](docs/guias/web-y-cuentas.md) | La página, el asistente, exclusiones y aceptaciones. |
+| [La web y las cuentas](docs/guias/web-y-cuentas.md) | La página, el asistente, exclusiones, aceptaciones y pedidos sobre tus chats. |
 | [El daemon y los horarios](docs/guias/demonio-y-horarios.md) | `config.json`, bloqueos, varias cuentas y `msum schedule`. |
 | [Clave de API de Google (Gemini)](docs/guias/sacar-clave-api-google.md) | Paso a paso. |
 | [Instalar Claude Code e iniciar sesión](docs/guias/instalar-claude-y-login.md) | Paso a paso. |

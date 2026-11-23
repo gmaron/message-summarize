@@ -1,6 +1,7 @@
 import type { KeyName, KeyRemoved, KeyStatuses, KeyStored } from './api-providers.js'
 import type {
   AccountView,
+  AskView,
   ConversationsView,
   HistoryDetail,
   HistoryView,
@@ -162,6 +163,10 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     cancelLink: (id: string) => request<{ ok: boolean }>('DELETE', `${account(id)}/link`),
     retry: (id: string) => request<{ ok: boolean }>('POST', `${account(id)}/retry`),
     digestNow: (id: string) => request<{ state: 'started' | 'deferred' }>('POST', `${account(id)}/digest`),
+    ask: (id: string, body: { question: string; period: string; chats: string[] }) =>
+      request<{ id: number }>('POST', `${account(id)}/ask`, body),
+    asks: async (id: string) => (await request<{ asks: AskView[] }>('GET', `${account(id)}/asks`)).asks,
+    deleteAsk: (id: string, askId: number) => request<undefined>('DELETE', `${account(id)}/asks/${askId}`),
     startPreview: (id: string) => request<{ state: string }>('POST', `${account(id)}/preview`),
     preview: (id: string) => request<PreviewView>('GET', `${account(id)}/preview`),
     schedules: (id: string) => request<SchedulesView>('GET', `${account(id)}/schedules`),
