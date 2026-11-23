@@ -43,6 +43,7 @@ describe('parseConfig defaults', () => {
       askHints: [],
       promptFile: null,
       concurrency: 4,
+      fullHistoryOnLink: false,
       schedules: [],
       provider: {
         primary: null,
@@ -772,5 +773,28 @@ describe('askHints', () => {
     expect(mergeConfigJson(base, account).askHints).toEqual(account.askHints)
     expect(mergeConfigJson(base, {}).askHints).toEqual(base.askHints)
     expect(mergeConfigJson(base, { askHints: [] }).askHints).toEqual([])
+  })
+})
+
+describe('fullHistoryOnLink', () => {
+  it('is false by default and can be turned on per account', () => {
+    const off = parse({})
+    const on = parse({ fullHistoryOnLink: true })
+    expect(off.ok && off.value.fullHistoryOnLink).toBe(false)
+    expect(on.ok && on.value.fullHistoryOnLink).toBe(true)
+  })
+
+  it('must be true or false, with the message in both languages', () => {
+    const issues = issuesOf({ fullHistoryOnLink: 'yes' })
+    expect(issues).toEqual([{ option: 'fullHistoryOnLink', code: 'notBoolean' }])
+    const [issue] = issues
+    if (issue === undefined) throw new Error('no issue')
+    expect(describeConfigIssue(getCatalog('es'), issue)).toContain('fullHistoryOnLink')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('fullHistoryOnLink')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('true or false')
+  })
+
+  it('is written with its default by `msum init`', () => {
+    expect(JSON.parse(defaultConfigJson(BA)).fullHistoryOnLink).toBe(false)
   })
 })

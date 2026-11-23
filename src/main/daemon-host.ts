@@ -1011,6 +1011,8 @@ export class DaemonHost {
         (await this.ctx.connectionFactory(runtime, {
           onWarning: (code, detail) => logger.warn('adapter.warning', { code, ...detail }),
           onStats: (stats) => logger.info('capture.stats', stats as LogFields),
+          onHistoryProgress: (report) => logger.info('history.progress', { ...report }),
+          onUndecryptable: (count) => logger.warn('capture.undecryptable', { count }),
           // Only a fixed word: never the audio, its key or its path.
           onDownload: this.onDownload(logger),
         }))
@@ -1318,6 +1320,8 @@ export class DaemonHost {
       const connection = await this.ctx.connectionFactory(runtime, {
         capture: counted.capture,
         onWarning: (code, detail) => logger.warn('adapter.warning', { code, ...detail }),
+        onHistoryProgress: (report) => logger.info('history.progress', { ...report }),
+        onUndecryptable: (count) => logger.warn('capture.undecryptable', { count }),
         onDownload: this.onDownload(logger),
       })
       // The block is forgotten only now that the link has a connection: a start that fails before it keeps it.

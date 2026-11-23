@@ -174,11 +174,117 @@ CREATE INDEX messages_pending_audio ON messages (timestamp, seq) WHERE transcrib
 CREATE INDEX messages_download_queue ON messages (timestamp, seq) WHERE transcribe_status = 'download_pending';
 `
 
+/**
+ * Migration 5: everything a message carries beyond its text, kept for rules built later ("parametría") over every type
+ * of message. NON-DESTRUCTIVE and fast: only ADD COLUMN (constant defaults, so no table rewrite) and new tables; rows
+ * already stored keep NULL / 0 (they have no raw content to read these from).
+ * - `raw`: the decoded content of the message as JSON text (media descriptors kept, binary noise and keys dropped). It is
+ *   the safety net: whatever the typed columns miss can be read from it later.
+ * - `quoted_*`: what the message replies to (`quoted_from_status` 1: a reply to a status). `forwarded`, `is_view_once`: 0/1.
+ * - Side tables, one per kind of content, tied to the message by `seq` (they go with it when it is deleted).
+ * - `reactions` and `poll_votes` are not messages: they point at the target message by its platform id and are tied to
+ *   the conversation (deleted with it, see `SqliteConversationPurge`).
+ */
+const SCHEMA_V5 = `
+ALTER TABLE messages ADD COLUMN raw TEXT;
+ALTER TABLE messages ADD COLUMN quoted_id TEXT;
+ALTER TABLE messages ADD COLUMN quoted_kind TEXT;
+ALTER TABLE messages ADD COLUMN quoted_text TEXT;
+ALTER TABLE messages ADD COLUMN quoted_from_status INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN forwarded INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN is_view_once INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE media (
+  message_seq INTEGER PRIMARY KEY REFERENCES messages (seq) ON DELETE CASCADE,
+  kind        TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio', 'document', 'sticker')),
+  mimetype    TEXT,
+  seconds     INTEGER,
+  file_length INTEGER,
+  file_name   TEXT,
+  page_count  INTEGER,
+  width       INTEGER,
+  height      INTEGER,
+  caption     TEXT
+);
+CREATE INDEX media_by_kind ON media (kind);
+
+CREATE TABLE locations (
+  message_seq INTEGER PRIMARY KEY REFERENCES messages (seq) ON DELETE CASCADE,
+  lat         REAL,
+  lng         REAL,
+  name        TEXT,
+  address     TEXT,
+  live        INTEGER NOT NULL DEFAULT 0 CHECK (live IN (0, 1))
+);
+
+-- One row per shared contact (a contactsArrayMessage has several). phones: JSON array of the numbers of the vCard.
+CREATE TABLE shared_contacts (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_seq  INTEGER NOT NULL REFERENCES messages (seq) ON DELETE CASCADE,
+  display_name TEXT,
+  phone        TEXT,
+  phones       TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX shared_contacts_by_message ON shared_contacts (message_seq);
+
+CREATE TABLE polls (
+  message_seq      INTEGER PRIMARY KEY REFERENCES messages (seq) ON DELETE CASCADE,
+  question         TEXT,
+  options          TEXT NOT NULL DEFAULT '[]',
+  selectable_count INTEGER
+);
+
+-- Votes arrive encrypted (the key is the poll's own secret): stored as received. TODO: decrypt them with the poll's
+-- messageSecret when a rule needs the results; the raw payload is kept so nothing is lost until then.
+CREATE TABLE poll_votes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id TEXT NOT NULL REFERENCES conversations (id),
+  poll_id         TEXT NOT NULL,
+  sender_id       TEXT NOT NULL DEFAULT '',
+  from_me         INTEGER NOT NULL CHECK (from_me IN (0, 1)),
+  timestamp       INTEGER NOT NULL,
+  raw             TEXT NOT NULL,
+  UNIQUE (conversation_id, poll_id, from_me, sender_id, timestamp)
+);
+
+-- WhatsApp Business: an order (orderMessage) and a product (productMessage). Amounts in currency units.
+CREATE TABLE orders (
+  message_seq  INTEGER PRIMARY KEY REFERENCES messages (seq) ON DELETE CASCADE,
+  order_id     TEXT,
+  item_count   INTEGER,
+  total_amount REAL,
+  currency     TEXT,
+  title        TEXT,
+  message      TEXT
+);
+CREATE TABLE products (
+  message_seq INTEGER PRIMARY KEY REFERENCES messages (seq) ON DELETE CASCADE,
+  product_id  TEXT,
+  title       TEXT,
+  price       REAL,
+  currency    TEXT,
+  retailer_id TEXT
+);
+
+-- One reaction per sender and target message (a newer one replaces it; removing it deletes the row).
+-- sender_id is '' for the owner's own reactions (from_me = 1).
+CREATE TABLE reactions (
+  conversation_id TEXT NOT NULL REFERENCES conversations (id),
+  target_id       TEXT NOT NULL,
+  from_me         INTEGER NOT NULL CHECK (from_me IN (0, 1)),
+  sender_id       TEXT NOT NULL DEFAULT '',
+  emoji           TEXT NOT NULL,
+  timestamp       INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, target_id, from_me, sender_id)
+);
+`
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
   { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
   { version: 3, description: 'Digest runs', sql: SCHEMA_V3 },
   { version: 4, description: 'Audio transcription', sql: SCHEMA_V4 },
+  { version: 5, description: 'Raw content and typed message details', sql: SCHEMA_V5 },
 ]
 
 /** The highest migration version applied to this database, 0 for a database with none. */

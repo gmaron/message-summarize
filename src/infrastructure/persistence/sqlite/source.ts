@@ -1,6 +1,13 @@
 import type { DigestSource } from '../../../application/ports/digest-source.js'
 import type { OwnMessageText } from '../../../domain/mass.js'
-import type { Conversation, Message, MessageKind, Participant, UnreadState } from '../../../domain/model.js'
+import type {
+  Conversation,
+  Message,
+  MessageKind,
+  Participant,
+  ReplyContext,
+  UnreadState,
+} from '../../../domain/model.js'
 import type { IncomingMessage } from '../../../domain/unread.js'
 import type { SummaryWindow } from '../../../domain/window.js'
 import type { Database } from './database.js'
@@ -25,10 +32,15 @@ interface MessageRow {
   text: string | null
   transcript: string | null
   read: number
+  quoted_kind: string | null
+  quoted_text: string | null
+  quoted_from_status: number
+  quoted_id: string | null
 }
 
 const MESSAGE_COLUMNS =
-  'conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read'
+  'conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read, ' +
+  'quoted_kind, quoted_text, quoted_from_status, quoted_id'
 
 const toConversation = (row: ConversationRow): Conversation => ({
   id: row.id,
@@ -50,7 +62,22 @@ const toMessage = (row: MessageRow): Message => ({
   text: row.text,
   transcript: row.transcript,
   read: row.read !== 0,
+  ...replyOf(row),
 })
+
+/** The reply context of a row, or nothing for a message that is not a reply (so the Message has no `reply` key). */
+function replyOf(row: MessageRow): { reply: ReplyContext } | Record<string, never> {
+  if (row.quoted_id === null && row.quoted_kind === null && row.quoted_text === null && row.quoted_from_status === 0) {
+    return {}
+  }
+  return {
+    reply: {
+      kind: row.quoted_kind as MessageKind | null,
+      text: row.quoted_text,
+      fromStatus: row.quoted_from_status !== 0,
+    },
+  }
+}
 
 /**
  * Read side of the SQLite database: implements the DigestSource port.

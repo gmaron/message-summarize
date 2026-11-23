@@ -103,3 +103,18 @@ See [The daemon, accounts and schedules](daemon-and-schedules.md#several-account
 ---
 
 Back to the [README](../../README.md) · [Guides index](README.md)
+
+## Full history on link
+
+By default WhatsApp sends only the recent history when you link a device. To keep everything, set this in the account's `config.json`:
+
+```json
+{ "fullHistoryOnLink": true }
+```
+
+and link the account again (in the web, "Link again"; WhatsApp only sends history when a new device is linked). What is not stored at that moment cannot be recovered later.
+
+- It is an **approved exception** to RNF-17 (platform respect): it only changes how much history the phone sends at link time. The client is still not marked "online" and sends nothing.
+- The sync can take a while and arrives in chunks; its progress shows in the logs as `history.progress` (only counts of chunks, messages and chats). Keep the daemon connected until it ends: link from the web or the daemon, because `msum link` waits a bounded time.
+- Every message also keeps its original content (`messages.raw`, JSON), and replies (also to statuses), forwards, files, locations, contacts, polls, WhatsApp Business orders and products and reactions are modeled apart. Reactions do not show in digests.
+- Messages that WhatsApp delivers without being able to decrypt them are counted; a warning is logged at most once a minute (`capture.undecryptable`).

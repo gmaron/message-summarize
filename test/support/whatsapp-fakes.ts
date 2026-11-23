@@ -37,6 +37,8 @@ export function recordingCapture(): { capture: CaptureMessages; calls: RecordedC
     transcriptReady: record('transcriptReady'),
     queueMedia: record('queueMedia'),
     mediaFailed: record('mediaFailed'),
+    receiveReaction: record('receiveReaction'),
+    receivePollVote: record('receivePollVote'),
   }
   return { capture, calls }
 }
@@ -194,11 +196,11 @@ export function fakeSocketFactory(
   factory: SocketFactory
   sockets: FakeSocket[]
   saved: { count: number }
-  calls: { authDir: string }[]
+  calls: Parameters<SocketFactory>[0][]
 } {
   const sockets: FakeSocket[] = []
   const saved = { count: 0 }
-  const calls: { authDir: string }[] = []
+  const calls: Parameters<SocketFactory>[0][] = []
   const factory: SocketFactory = async (factoryOptions) => {
     calls.push(factoryOptions)
     if (options.fail) throw new Error('disk on fire')

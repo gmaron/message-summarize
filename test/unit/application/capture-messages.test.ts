@@ -893,3 +893,50 @@ describe('capture to digest, on SQLite', () => {
     }
   })
 })
+
+describe('CaptureMessages: extras, reactions and poll votes', () => {
+  const reaction = (conversationId = 'c1') => ({
+    conversationId,
+    targetId: 'm1',
+    senderId: 'p1',
+    fromMe: false,
+    emoji: '👍',
+    timestamp: 1_000,
+  })
+  const vote = (conversationId = 'c1') => ({
+    conversationId,
+    pollId: 'P',
+    senderId: 'p1',
+    fromMe: false,
+    timestamp: 1_000,
+    raw: '{}',
+  })
+
+  it('stores the extras of a message with it', async () => {
+    const { capture, repository } = setup()
+    await capture.receiveMessage(received({}, { extras: { raw: '{"a":1}', forwarded: true } }))
+    expect(repository.extras.get(JSON.stringify(['c1', 'm1']))).toEqual({ raw: '{"a":1}', forwarded: true })
+  })
+
+  it('stores a reaction and a vote, and never as a message', async () => {
+    const { capture, repository, source } = setup()
+    await capture.receiveReaction({ reaction: reaction(), isGroup: false })
+    await capture.receivePollVote({ vote: vote(), isGroup: false })
+    expect(repository.reactions).toHaveLength(1)
+    expect(repository.pollVotes).toHaveLength(1)
+    expect(await source.messagesInWindow('c1', all)).toEqual([])
+  })
+
+  it('applies the exclusion (RF-14) and the own-chat filter to reactions and votes', async () => {
+    const excluded = setup(['spam-chat'])
+    await excluded.capture.receiveReaction({ reaction: reaction('spam-chat@g.us'), isGroup: true })
+    await excluded.capture.receivePollVote({ vote: vote('spam-chat@g.us'), isGroup: true })
+    expect(excluded.repository.reactions).toEqual([])
+    expect(excluded.repository.pollVotes).toEqual([])
+    expect(await excluded.repository.findConversation('spam-chat@g.us')).toBeNull()
+
+    const ownChat = setup([], { ownConversationIds: () => ['me'] })
+    await ownChat.capture.receiveReaction({ reaction: reaction('me'), isGroup: false })
+    expect(ownChat.repository.reactions).toEqual([])
+  })
+})

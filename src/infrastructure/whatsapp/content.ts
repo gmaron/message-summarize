@@ -1,6 +1,7 @@
 import type { MessageKind } from '../../domain/model.js'
 import type { Catalog } from '../i18n/index.js'
-import type { WaContent, WaNumber } from './wa-types.js'
+import { moneyText, orderOf, productOf } from './commerce.js'
+import type { WaContent } from './wa-types.js'
 
 /** `ProtocolMessage.Type.MESSAGE_EDIT` of the WhatsApp protocol. */
 const PROTOCOL_MESSAGE_EDIT = 14
@@ -79,6 +80,16 @@ export function parseContent(content: WaContent, catalog: Catalog): ParsedConten
     const options = (poll.options ?? []).map((o) => o?.optionName ?? '').join(' / ')
     return { kind: 'poll', text: labelled(label.poll, `${poll.name ?? ''}: ${options}`) }
   }
+  if (content.orderMessage) {
+    const order = orderOf(content.orderMessage)
+    const total = order === null ? null : moneyText(order.totalAmount, order.currency, catalog.dateLocale)
+    return { kind: 'order', text: catalog.capture.order(order?.itemCount ?? null, total) }
+  }
+  if (content.productMessage?.product) {
+    const product = productOf(content.productMessage.product)
+    const price = product === null ? null : moneyText(product.price, product.currency, catalog.dateLocale)
+    return { kind: 'product', text: catalog.capture.product(product?.title ?? null, price) }
+  }
   if (content.eventMessage) {
     const event = content.eventMessage
     return { kind: 'event', text: labelled(label.event, `${event.name ?? ''} ${event.description ?? ''}`.trim()) }
@@ -112,9 +123,4 @@ export function parseEditedBody(originalId: string, edited: WaContent, catalog: 
   return { originalId, parsed: { kind: parsed.kind, text: `${catalog.capture.editedPrefix}${parsed.text}` } }
 }
 
-/** Epoch seconds (or ms) of a protobuf number, or null when it is missing or not finite. */
-export function toNumber(value: WaNumber): number | null {
-  if (value === null || value === undefined) return null
-  const n = typeof value === 'object' ? value.toNumber() : Number(value)
-  return Number.isFinite(n) ? n : null
-}
+export { toNumber } from './numbers.js'

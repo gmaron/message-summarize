@@ -11,6 +11,8 @@ import type {
   MessageReceived,
   MessagesRead,
   ParticipantInfo,
+  PollVoteReceived,
+  ReactionReceived,
   ReceiveOutcome,
   TranscriptReady,
   UnreadChanged,
@@ -59,6 +61,10 @@ export interface CaptureMessages {
   queueMedia(event: MediaQueued): Promise<void>
   /** RF-15. Recorded on the message; the audio shows as not transcribed. */
   mediaFailed(event: MediaFailed): Promise<void>
+  /** A reaction to a message: stored in its own table, never a message. */
+  receiveReaction(event: ReactionReceived): Promise<void>
+  /** A vote on a poll, stored as received. */
+  receivePollVote(event: PollVoteReceived): Promise<void>
 }
 
 /**
@@ -142,7 +148,7 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
   }
 
   return {
-    async receiveMessage({ message, isGroup, origin, conversationName, sender }) {
+    async receiveMessage({ message, isGroup, origin, conversationName, sender, extras }) {
       const id = message.conversationId
       if (deps.ownConversationIds().includes(id)) return { stored: false, isNew: false, downloadAudio: false }
       if (sender !== undefined) await repository.upsertParticipant(sender)
@@ -155,7 +161,12 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       if (excludedNow(facts, id, conversationName) || deps.ownConversationIds().includes(id)) {
         return { stored: false, isNew: false, downloadAudio: false }
       }
-      const { isNew, hasTranscript, mediaHandled } = await repository.insertMessage(message, { isGroup }, effect)
+      const { isNew, hasTranscript, mediaHandled } = await repository.insertMessage(
+        message,
+        { isGroup },
+        effect,
+        extras,
+      )
 
       const recent = origin === 'live' || message.timestamp >= clock.now() - audioHistoryDays * DAY_MS
       return {
@@ -220,6 +231,18 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
     async queueMedia({ conversationId, isGroup, conversationName, messageId, descriptor }) {
       if (await dropped(conversationId, isGroup, conversationName)) return
       await repository.queueDownload(conversationId, messageId, descriptor)
+    },
+
+    async receiveReaction({ reaction, isGroup, conversationName, sender }) {
+      if (await dropped(reaction.conversationId, isGroup, conversationName)) return
+      if (sender !== undefined) await repository.upsertParticipant(sender)
+      await repository.recordReaction(reaction, { isGroup })
+    },
+
+    async receivePollVote({ vote, isGroup, conversationName, sender }) {
+      if (await dropped(vote.conversationId, isGroup, conversationName)) return
+      if (sender !== undefined) await repository.upsertParticipant(sender)
+      await repository.recordPollVote(vote, { isGroup })
     },
 
     async mediaFailed({ conversationId, isGroup, conversationName, messageId, reason }) {

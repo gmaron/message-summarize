@@ -103,3 +103,18 @@ Ver [El daemon, las cuentas y los horarios](demonio-y-horarios.md#varias-cuentas
 ---
 
 Volver al [README](../../README.es.md) · [Índice de guías](README.md)
+
+## Historial completo al vincular
+
+Por defecto WhatsApp manda solo el historial reciente cuando vinculás un dispositivo. Para guardar todo, poné en el `config.json` de la cuenta:
+
+```json
+{ "fullHistoryOnLink": true }
+```
+
+y volvé a vincular la cuenta (en la web, "Volver a vincular"; WhatsApp solo manda el historial al vincular un dispositivo nuevo). Lo que no se guarda en ese momento no se puede recuperar después.
+
+- Es una **excepción aprobada** a RNF-17 (respeto a la plataforma): solo cambia cuánto historial manda el celular al vincular. El cliente sigue sin marcarse "en línea" y no envía nada.
+- La sincronización puede tardar y llegar en bloques; el progreso se ve en los logs como `history.progress` (solo cantidades de bloques, mensajes y chats). Dejá el daemon conectado hasta que termine: usá la web o el daemon para vincular, porque `msum link` espera un tiempo acotado.
+- Cada mensaje guarda también su contenido original (`messages.raw`, JSON) y se modelan aparte las respuestas (también a estados), reenvíos, archivos, ubicaciones, contactos, encuestas, pedidos y productos de WhatsApp Business y reacciones. Las reacciones no aparecen en los digests.
+- Los mensajes que WhatsApp entrega sin poder descifrarlos se cuentan; se avisa como máximo una vez por minuto (`capture.undecryptable`).

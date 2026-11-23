@@ -3,12 +3,15 @@ import type { Clock } from '../../application/ports/clock.js'
 import type { Message, UnreadState } from '../../domain/model.js'
 import type { Catalog } from '../i18n/index.js'
 import { type ParsedContent, parseContent, parseEdit, parseEditedBody, toNumber, unwrap } from './content.js'
+import { parseExtras } from './details.js'
 import { addressOf, isBroadcastJid, isGroupJid, isLid, isNewsletterJid, normalizeJid } from './jid.js'
 import { extensionForMimetype, isSafeDirectPath } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
+import { rawValueJson } from './raw.js'
 import type {
   WaChat,
   WaContact,
+  WaContent,
   WaGroup,
   WaHistorySet,
   WaKey,
@@ -61,6 +64,13 @@ export interface TranslatorPorts {
    * downloads anything itself and holds no audio in memory: the queue is the database.
    */
   readonly audio?: { kick(): void }
+  /**
+   * Messages that arrived with no content (the platform could not decrypt them) are counted (`droppedNoMessage`) and
+   * reported through this, at most once per `undecryptableWindowMs`, with how many there were. Never an id.
+   */
+  readonly onUndecryptable?: (count: number) => void
+  /** Default 60 s. Test seam. */
+  readonly undecryptableWindowMs?: number
   /** A failure inside the translation, as a fixed code. It never carries chat content. */
   readonly onWarning?: (code: 'event-failed' | 'item-failed' | 'slow-step', detail?: WarningDetail) => void
   /** A step that awaits the platform or the capture and takes longer than this is reported as `slow-step`. */
@@ -75,6 +85,8 @@ export interface WarningDetail {
 
 /** Default time after which an awaited step is reported as slow. */
 export const SLOW_STEP_MS = 10_000
+/** Default window of the report of undecryptable messages. */
+export const UNDECRYPTABLE_WINDOW_MS = 60_000
 
 /** Counts of what the translator saw and did: numbers only, never content or ids. Keys appear once they are counted. */
 export type CaptureCounters = Readonly<Record<string, number>>
@@ -399,16 +411,102 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     count(`dropped${reason[0]?.toUpperCase()}${reason.slice(1)}`)
   }
 
+  // A message with no content could not be decrypted. It is still counted as dropped; the count is also reported, once
+  // per window, so a stream of them is visible in the log without one line each.
+  let undecryptable = 0
+  let undecryptableTimer: ReturnType<typeof setTimeout> | null = null
+  function noteUndecryptable(): void {
+    undecryptable++
+    if (undecryptableTimer !== null || ports.onUndecryptable === undefined) return
+    undecryptableTimer = setTimeout(() => {
+      undecryptableTimer = null
+      const n = undecryptable
+      undecryptable = 0
+      if (n > 0) ports.onUndecryptable?.(n)
+    }, ports.undecryptableWindowMs ?? UNDECRYPTABLE_WINDOW_MS)
+    undecryptableTimer.unref?.()
+  }
+
+  /** A reaction (not a message): stored apart, never shown in a digest. */
+  async function handleReaction(
+    msg: WaMessage,
+    content: WaContent,
+    located: Located,
+    timestamp: number,
+  ): Promise<void> {
+    const reaction = content.reactionMessage
+    const targetId = reaction?.key?.id
+    if (!reaction || !targetId || !msg.key) return dropped('notParsed')
+    const author = await authorOf(msg.key, located, msg.pushName)
+    const conversationName = await conversationNameOf(located, false)
+    await announce(located, conversationName)
+    await timed(
+      'capture.receiveReaction',
+      capture.receiveReaction({
+        isGroup: located.isGroup,
+        conversationName,
+        ...(author.sender === undefined ? {} : { sender: author.sender }),
+        reaction: {
+          conversationId: located.chatJid,
+          targetId,
+          senderId: author.senderId,
+          fromMe: author.fromMe,
+          emoji: reaction.text ?? '',
+          timestamp: toNumber(reaction.senderTimestampMs) ?? timestamp,
+        },
+      }),
+    )
+    count('reactions')
+  }
+
+  /** A vote on a poll: stored as received (encrypted), see the TODO of the `poll_votes` table. */
+  async function handlePollVote(
+    msg: WaMessage,
+    content: WaContent,
+    located: Located,
+    timestamp: number,
+  ): Promise<void> {
+    const update = content.pollUpdateMessage
+    const pollId = update?.pollCreationMessageKey?.id
+    if (!update || !pollId || !msg.key) return dropped('notParsed')
+    const author = await authorOf(msg.key, located, msg.pushName)
+    const conversationName = await conversationNameOf(located, false)
+    await announce(located, conversationName)
+    await timed(
+      'capture.receivePollVote',
+      capture.receivePollVote({
+        isGroup: located.isGroup,
+        conversationName,
+        ...(author.sender === undefined ? {} : { sender: author.sender }),
+        vote: {
+          conversationId: located.chatJid,
+          pollId,
+          senderId: author.senderId,
+          fromMe: author.fromMe,
+          timestamp: toNumber(update.senderTimestampMs) ?? timestamp,
+          raw: rawValueJson(update),
+        },
+      }),
+    )
+    count('pollVotes')
+  }
+
   async function handleMessage(msg: WaMessage, origin: 'live' | 'history'): Promise<void> {
     const key = msg.key
     if (!key?.remoteJid || !key.id) return dropped('noKey')
-    if (!msg.message) return dropped('noMessage')
+    if (!msg.message) {
+      noteUndecryptable()
+      return dropped('noMessage')
+    }
     const located = await locate(key.remoteJid, key.remoteJidAlt)
     if (located === null) return dropped('notLocated')
     const content = unwrap(msg.message)
     if (content === null) return dropped('noContent')
     const timestamp = timestampMs(msg.messageTimestamp)
     if (timestamp === null) return dropped('noTimestamp')
+
+    if (content.reactionMessage) return handleReaction(msg, content, located, timestamp)
+    if (content.pollUpdateMessage) return handlePollVote(msg, content, located, timestamp)
 
     const edit = parseEdit(content, catalog)
     const parsed = edit?.parsed ?? parseContent(content, catalog)
@@ -445,6 +543,7 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
         ...context,
         message: buildMessage(key.id, located, author, timestamp, parsed),
         origin,
+        extras: parseExtras(msg.message, content, catalog),
       }),
     )
     count('stored')

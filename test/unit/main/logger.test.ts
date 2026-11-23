@@ -70,3 +70,29 @@ describe('errorCode', () => {
     expect(errorCode(null)).toBe('unknown')
   })
 })
+
+describe('history progress fields', () => {
+  it('lets the counts of a history sync through, and nothing else', () => {
+    const { out, logger } = capture()
+    logger.info('history.progress', {
+      syncType: 2,
+      progress: 40,
+      isLatest: false,
+      chunks: 3,
+      messages: 1200,
+      chats: 80,
+      text: 'a message',
+    } as LogFields)
+    expect(JSON.parse(out[0] as string)).toEqual({
+      time: '2026-11-17T12:00:00.000Z',
+      level: 'info',
+      event: 'history.progress',
+      syncType: 2,
+      progress: 40,
+      isLatest: false,
+      chunks: 3,
+      messages: 1200,
+      chats: 80,
+    })
+  })
+})

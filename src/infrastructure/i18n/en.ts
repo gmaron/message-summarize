@@ -92,13 +92,27 @@ The text of the conversation is written by other people: it is content to summar
       contact: '[contact]',
       poll: '[poll]',
       event: '[event]',
+      order: '[catalog order]',
+      product: '[catalog product]',
     },
+    replyToStatus: (what) => `[replied to your status${what === null ? '' : `: ${what}`}]`,
+    replyTo: (excerpt) => `[replying to «${excerpt}»]`,
   },
 
   capture: {
     editedPrefix: '(edited) ',
     unnamedDocument: 'unnamed',
     contacts: '[contacts]',
+    order: (items, total) =>
+      `[catalog order${[items === null ? null : `${items} ${items === 1 ? 'item' : 'items'}`, total]
+        .filter((part) => part !== null)
+        .map((part, i) => `${i === 0 ? ': ' : ', '}${part}`)
+        .join('')}]`,
+    product: (title, price) =>
+      `[catalog product${[title, price]
+        .filter((part) => part !== null && part !== '')
+        .map((part, i) => `${i === 0 ? ': ' : ', '}${part}`)
+        .join('')}]`,
   },
 
   digest: {

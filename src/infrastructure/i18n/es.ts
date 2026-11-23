@@ -91,13 +91,27 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
       contact: '[contacto]',
       poll: '[encuesta]',
       event: '[evento]',
+      order: '[pedido de catálogo]',
+      product: '[producto de catálogo]',
     },
+    replyToStatus: (what) => `[respondió a tu estado${what === null ? '' : `: ${what}`}]`,
+    replyTo: (excerpt) => `[en respuesta a «${excerpt}»]`,
   },
 
   capture: {
     editedPrefix: '(editado) ',
     unnamedDocument: 'sin nombre',
     contacts: '[contactos]',
+    order: (items, total) =>
+      `[pedido de catálogo${[items === null ? null : `${items} ${items === 1 ? 'artículo' : 'artículos'}`, total]
+        .filter((part) => part !== null)
+        .map((part, i) => `${i === 0 ? ': ' : ', '}${part}`)
+        .join('')}]`,
+    product: (title, price) =>
+      `[producto de catálogo${[title, price]
+        .filter((part) => part !== null && part !== '')
+        .map((part, i) => `${i === 0 ? ': ' : ', '}${part}`)
+        .join('')}]`,
   },
 
   digest: {

@@ -58,6 +58,10 @@ export interface HistorySyncProgress {
 export type HistorySyncListener = (progress: HistorySyncProgress) => void
 
 /**
+ * NOTE: this constant only decides when the LINK wait is over (the progress and completion events below). The capture of
+ * the history is NOT filtered by it: `messaging-history.set` of every sync type goes through the translator, so a full
+ * history (`fullHistoryOnLink`) is stored whole.
+ *
  * Baileys' `HistorySyncType.RECENT` (3): the history that WhatsApp sends when a device is linked (`syncFullHistory` is
  * off). It is the only type that counts for the progress: in `Socket/chats.js` Baileys emits `messaging-history.status`
  * `complete` for RECENT when progress 100 arrives (explicit) or `paused` after 120 s without chunks (inferred), and
@@ -118,7 +122,25 @@ export interface SocketSession {
 }
 
 /** Creates a socket (and its authentication state) for one connection attempt. Baileys lives behind it. */
-export type SocketFactory = (options: { readonly authDir: string }) => Promise<SocketSession>
+export type SocketFactory = (options: {
+  readonly authDir: string
+  /** Ask the phone for its whole history when the device is linked (`fullHistoryOnLink`). Default false. */
+  readonly fullHistory?: boolean
+}) => Promise<SocketSession>
+
+/**
+ * How the history sync goes, in counts only (never content or ids). One per `messaging-history.set` chunk, whatever its
+ * `syncType` (INITIAL_BOOTSTRAP, RECENT, FULL, ON_DEMAND, PUSH_NAME...): nothing is filtered out of the capture.
+ * `chunks`, `messages` and `chats` are totals since the connection object was made.
+ */
+export interface HistoryProgressReport {
+  readonly syncType: number | null
+  readonly progress: number | null
+  readonly isLatest: boolean | null
+  readonly chunks: number
+  readonly messages: number
+  readonly chats: number
+}
 
 export interface BackoffPolicy {
   readonly baseMs: number
@@ -146,6 +168,14 @@ export interface WhatsAppConnectionOptions {
   readonly clock: Clock
   readonly ownIds: OwnConversationIds
   readonly socketFactory: SocketFactory
+  /** `fullHistoryOnLink` of the account: the socket is made with `syncFullHistory: true`. Default false. */
+  readonly fullHistory?: boolean
+  /** Told after every stored chunk of history, with counts only. */
+  readonly onHistoryProgress?: (report: HistoryProgressReport) => void
+  /** Messages that arrived without content (could not be decrypted), at most once per `undecryptableWindowMs`: the count. */
+  readonly onUndecryptable?: (count: number) => void
+  /** Default 60 s. Test seam. */
+  readonly undecryptableWindowMs?: number
   /** The stored name of a conversation (from the capture repository), so a group is asked about only if unnamed. */
   readonly storedConversationName?: (conversationId: string) => Promise<string | null | undefined>
   readonly backoff?: BackoffPolicy
@@ -250,6 +280,9 @@ export class WhatsAppConnection {
   private readonly counters: Record<string, number> = {}
   private statsTimer: ReturnType<typeof setInterval> | null = null
   private lastStats = '{}'
+  private historyChunks = 0
+  private historyMessageTotal = 0
+  private historyChatTotal = 0
 
   constructor(private readonly options: WhatsAppConnectionOptions) {
     this.backoff = options.backoff ?? DEFAULT_BACKOFF
@@ -279,6 +312,8 @@ export class WhatsAppConnection {
       ownIds: options.ownIds,
       ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
       ...(options.slowStepMs === undefined ? {} : { slowStepMs: options.slowStepMs }),
+      ...(options.onUndecryptable === undefined ? {} : { onUndecryptable: options.onUndecryptable }),
+      ...(options.undecryptableWindowMs === undefined ? {} : { undecryptableWindowMs: options.undecryptableWindowMs }),
       resolvePhoneNumber: async (lid) => this.session?.socket.signalRepository?.lidMapping?.getPNForLID(lid),
       resolveLid: async (phone) => this.session?.socket.signalRepository?.lidMapping?.storedLidForPN?.(phone),
       onAlias: async (a, b) => {
@@ -500,7 +535,10 @@ export class WhatsAppConnection {
     this.setStatus({ state: 'connecting' })
     let session: SocketSession
     try {
-      session = await this.options.socketFactory({ authDir: this.options.authDir })
+      session = await this.options.socketFactory({
+        authDir: this.options.authDir,
+        ...(this.options.fullHistory === true ? { fullHistory: true } : {}),
+      })
     } catch {
       if (generation !== this.generation) return
       this.running = false
@@ -560,6 +598,7 @@ export class WhatsAppConnection {
     on<WaHistorySet>('messaging-history.set', async (data) => {
       await translator.historySet(data)
       const { syncType, progress } = data
+      this.reportHistory(data)
       if (syncType === HISTORY_SYNC_RECENT && typeof progress === 'number' && Number.isFinite(progress)) {
         const percent = Math.min(100, Math.max(0, Math.round(progress)))
         // Only the percent of a chunk that is stored is shown. At 100 the last chunk is in: that is half of "complete".
@@ -636,6 +675,25 @@ export class WhatsAppConnection {
         this.count('eventFailed')
         this.options.onWarning?.('event-failed')
       })
+  }
+
+  /** Counts of a stored chunk of history (every sync type), for the log. Never content. */
+  private reportHistory({ syncType, progress, isLatest, messages, chats }: WaHistorySet): void {
+    this.historyChunks++
+    this.historyMessageTotal += messages?.length ?? 0
+    this.historyChatTotal += chats?.length ?? 0
+    try {
+      this.options.onHistoryProgress?.({
+        syncType: typeof syncType === 'number' ? syncType : null,
+        progress: typeof progress === 'number' && Number.isFinite(progress) ? progress : null,
+        isLatest: typeof isLatest === 'boolean' ? isLatest : null,
+        chunks: this.historyChunks,
+        messages: this.historyMessageTotal,
+        chats: this.historyChatTotal,
+      })
+    } catch {
+      this.options.onWarning?.('history-listener-failed')
+    }
   }
 
   /** The counters of the adapter and of its translator. Numbers only. */

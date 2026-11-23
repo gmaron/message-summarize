@@ -185,6 +185,11 @@ export interface AppConfig {
   /** Path of a custom prompt template, read on every digest (RF-38). */
   readonly promptFile: string | null
   readonly concurrency: number
+  /**
+   * Opt-in, owner-approved exception to RNF-17: link with `syncFullHistory: true`, so the phone sends its whole history
+   * when the device is linked (it only affects what history arrives at link time). Default false.
+   */
+  readonly fullHistoryOnLink: boolean
   /** Cron expressions (RF-60). */
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
@@ -246,6 +251,7 @@ const TOP_LEVEL = new Set([
   'askHints',
   'promptFile',
   'concurrency',
+  'fullHistoryOnLink',
   'schedules',
   'provider',
   'transcription',
@@ -450,6 +456,12 @@ export function parseConfig(
   const askHints = parseAskHints()
   const promptFile = text(input, 'promptFile', 'promptFile')
   const concurrency = positiveInt(input, 'concurrency', 'concurrency', DEFAULT_CONCURRENCY)
+
+  const fullHistoryOnLink = ((): boolean | undefined => {
+    const v = input.fullHistoryOnLink
+    if (v === undefined) return false
+    return typeof v === 'boolean' ? v : add('fullHistoryOnLink', 'notBoolean')
+  })()
 
   const schedules = ((): readonly string[] | undefined => {
     const v = input.schedules
@@ -691,6 +703,7 @@ export function parseConfig(
     genericTimeout === undefined ||
     genericAcknowledged === undefined ||
     genericCommand === undefined ||
+    fullHistoryOnLink === undefined ||
     transcriptionEnabled === undefined ||
     whisperCommand === undefined ||
     ffmpegCommand === undefined ||
@@ -715,6 +728,7 @@ export function parseConfig(
     askHints,
     promptFile,
     concurrency,
+    fullHistoryOnLink,
     schedules,
     provider: {
       primary,
@@ -1002,6 +1016,8 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
     flagUnsaved: false,
     hideRest: false,
     concurrency: DEFAULT_CONCURRENCY,
+    // Opt-in (RNF-17 exception): ask the phone for its whole history when the account is linked. See docs/guides.
+    fullHistoryOnLink: false,
     // No "schedules": the times of the digests are set with `msum schedule add` (they live in the database).
     provider: {
       // RF-41: there is no default provider. Set "claude-cli", "ollama", "openai", "anthropic" or "gemini" here. The

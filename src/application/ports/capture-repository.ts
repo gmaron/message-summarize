@@ -1,4 +1,12 @@
-import type { Conversation, Message, Participant, UnreadState } from '../../domain/model.js'
+import type {
+  Conversation,
+  Message,
+  MessageExtras,
+  Participant,
+  PollVote,
+  Reaction,
+  UnreadState,
+} from '../../domain/model.js'
 
 /** What the caller knows about a chat the repository has no row for yet (only the adapter knows its id format). */
 export interface ConversationHint {
@@ -62,6 +70,8 @@ export interface InsertResult {
  *
  * Every write is idempotent, because platforms replay history and events:
  * - Names arrive from the adapter and are cleaned here (masked names are null). A null name never erases a known one.
+ * - The `extras` of a message (raw content, reply, media, ...) are written with it; on a replay a value that is already
+ *   stored is kept and a missing one is filled in.
  * - A message that already exists is updated in place and keeps its position among equal timestamps. Its text and
  *   transcript only change when the new value is not null, a replay never undoes an edit, and `read` only goes from
  *   unread to read.
@@ -92,7 +102,21 @@ export interface CaptureRepository {
    * Stores a message, or updates the existing one. When it is new, applies `effectIfNew` to the unread state of its
    * conversation atomically with the insert (default none).
    */
-  insertMessage(message: Message, hint?: ConversationHint, effectIfNew?: UnreadEffect): Promise<InsertResult>
+  insertMessage(
+    message: Message,
+    hint?: ConversationHint,
+    effectIfNew?: UnreadEffect,
+    extras?: MessageExtras,
+  ): Promise<InsertResult>
+
+  /**
+   * Stores a reaction (one per sender and target message; a newer one replaces it, an empty emoji removes it). A reaction
+   * is not a message: it never has an effect on the unread state and is never read by the digest.
+   */
+  recordReaction(reaction: Reaction, hint?: ConversationHint): Promise<void>
+
+  /** Stores a vote on a poll as received (one row per vote). */
+  recordPollVote(vote: PollVote, hint?: ConversationHint): Promise<void>
 
   /**
    * RF-11: `message` is the edited message under the id of the original, with the edited text. It replaces the text

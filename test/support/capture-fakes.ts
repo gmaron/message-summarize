@@ -12,7 +12,10 @@ import {
   type Conversation,
   MESSAGE_KINDS,
   type Message,
+  type MessageExtras,
   type Participant,
+  type PollVote,
+  type Reaction,
   type UnreadState,
 } from '../../src/domain/model.js'
 import { unmaskedName } from '../../src/domain/names.js'
@@ -117,12 +120,52 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
     return true
   }
 
+  /** What was stored next to each message (by conversation and id), reactions and poll votes. */
+  readonly extras = new Map<string, MessageExtras>()
+  readonly reactions: Reaction[] = []
+  readonly pollVotes: PollVote[] = []
+
+  async recordReaction(reaction: Reaction, hint: ConversationHint = {}): Promise<void> {
+    this.ensureConversation(reaction.conversationId, hint)
+    const same = (r: Reaction): boolean =>
+      r.conversationId === reaction.conversationId &&
+      r.targetId === reaction.targetId &&
+      r.fromMe === reaction.fromMe &&
+      r.senderId === reaction.senderId
+    const index = this.reactions.findIndex(same)
+    const old = this.reactions[index]
+    if (old !== undefined && old.timestamp > reaction.timestamp) return
+    if (index >= 0) this.reactions.splice(index, 1)
+    if (reaction.emoji !== '') this.reactions.push(reaction)
+  }
+
+  async recordPollVote(vote: PollVote, hint: ConversationHint = {}): Promise<void> {
+    this.ensureConversation(vote.conversationId, hint)
+    this.pollVotes.push(vote)
+  }
+
   async insertMessage(
     message: Message,
     hint: ConversationHint = {},
     effectIfNew: UnreadEffect = 'none',
+    extras?: MessageExtras,
   ): Promise<InsertResult> {
     const isNew = this.upsertRow(message, hint, null)
+    if (extras !== undefined) {
+      const key = this.key(message.conversationId, message.id)
+      this.extras.set(key, { ...this.extras.get(key), ...extras })
+      const quoted = extras.quoted
+      if (quoted != null) {
+        const index = this.indexOf(message.conversationId, message.id)
+        const stored = this.messages[index]
+        if (stored !== undefined) {
+          this.setAt(index, {
+            ...stored,
+            reply: { kind: quoted.kind, text: quoted.text, fromStatus: quoted.fromStatus },
+          })
+        }
+      }
+    }
     if (isNew) await this.applyEffect(message.conversationId, effectIfNew, hint)
     const stored = this.messages[this.indexOf(message.conversationId, message.id)]
     return {

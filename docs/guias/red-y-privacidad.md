@@ -19,6 +19,8 @@ No se envía nada a ningún lado salvo lo que figura en esta guía. No hay telem
 
 Por la conexión de tu propia cuenta (incluida la descarga de los audios que recibís, cuando la transcripción está activada).
 
+Con la opción `fullHistoryOnLink` (apagada por defecto) el celular manda **todo** su historial al vincular el dispositivo, en lugar de solo el reciente. Es una excepción elegida por vos al principio de respeto a la plataforma (RNF-17): solo cambia cuánto historial llega al vincular; el cliente sigue sin marcarse "en línea" y sin enviar nada. Todo se guarda en la base de la cuenta, en tu máquina, incluido el contenido original de cada mensaje (`messages.raw`) con los datos para volver a descargar archivos. Más en [la web y las cuentas](web-y-cuentas.md#historial-completo-al-vincular).
+
 ### El proveedor de LLM que elegiste
 
 Y nada más: con Ollama, la URL que configuraste; con un proveedor por API, exactamente uno entre `api.openai.com` (o tu `provider.openai.baseUrl`), `api.anthropic.com` o `generativelanguage.googleapis.com`.

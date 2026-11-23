@@ -677,3 +677,87 @@ describe('the ids of one person (aliases)', () => {
     expect(t.connection.knownAliases()).toEqual([[ANA_LID, ANA]])
   })
 })
+
+describe('full history on link', () => {
+  it('asks the socket factory for the full history only when the account opted in', async () => {
+    for (const fullHistory of [undefined, false, true]) {
+      const fake = fakeSocketFactory()
+      const connection = createWhatsAppConnection({
+        authDir: authDir(),
+        language: 'es',
+        capture: recordingCapture().capture,
+        clock: new FixedClock(1),
+        ownIds: new OwnConversationIds(),
+        socketFactory: fake.factory,
+        ...(fullHistory === undefined ? {} : { fullHistory }),
+      })
+      await connection.start()
+      expect(fake.calls[0]?.fullHistory === true).toBe(fullHistory === true)
+      await connection.stop()
+    }
+  })
+
+  it('reports the progress of every chunk of history, of any sync type, with counts only', async () => {
+    const reports: unknown[] = []
+    const fake = fakeSocketFactory()
+    const { capture, calls } = recordingCapture()
+    const connection = createWhatsAppConnection({
+      authDir: authDir(),
+      language: 'es',
+      capture,
+      clock: new FixedClock(1),
+      ownIds: new OwnConversationIds(),
+      socketFactory: fake.factory,
+      onHistoryProgress: (report) => reports.push(report),
+    })
+    await connection.start()
+    const message = (id: string) => ({
+      key: { remoteJid: ANA, id, fromMe: false },
+      message: { conversation: `secret ${id}` },
+      messageTimestamp: 5,
+    })
+    const socket = fake.sockets[0]
+    socket?.ev.emit('messaging-history.set', {
+      syncType: 2,
+      progress: 30,
+      isLatest: false,
+      chats: [{ id: ANA }],
+      contacts: [],
+      messages: [message('A'), message('B')],
+    })
+    socket?.ev.emit('messaging-history.set', { syncType: 6, chats: [], contacts: [], messages: [message('C')] })
+    await vi.advanceTimersByTimeAsync(0)
+    await connection.stop()
+    expect(reports).toEqual([
+      { syncType: 2, progress: 30, isLatest: false, chunks: 1, messages: 2, chats: 1 },
+      { syncType: 6, progress: null, isLatest: null, chunks: 2, messages: 3, chats: 1 },
+    ])
+    expect(JSON.stringify(reports)).not.toContain('secret')
+    // Every chunk reached the capture, whatever its type.
+    expect(calls.filter((c) => c.method === 'receiveMessage')).toHaveLength(3)
+  })
+
+  it('reports messages that arrive undecryptable, at most once per window', async () => {
+    const counts: number[] = []
+    const fake = fakeSocketFactory()
+    const connection = createWhatsAppConnection({
+      authDir: authDir(),
+      language: 'es',
+      capture: recordingCapture().capture,
+      clock: new FixedClock(1),
+      ownIds: new OwnConversationIds(),
+      socketFactory: fake.factory,
+      onUndecryptable: (count) => counts.push(count),
+      undecryptableWindowMs: 1_000,
+    })
+    await connection.start()
+    fake.sockets[0]?.ev.emit('messages.upsert', {
+      type: 'notify',
+      messages: [1, 2].map((n) => ({ key: { remoteJid: ANA, id: `U${n}` }, messageStubType: 2, messageTimestamp: 5 })),
+    })
+    await vi.advanceTimersByTimeAsync(1_500)
+    await connection.stop()
+    expect(counts).toEqual([2])
+    expect(connection.stats().droppedNoMessage).toBe(2)
+  })
+})

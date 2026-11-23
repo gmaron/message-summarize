@@ -5,8 +5,16 @@ import type {
   InsertResult,
   UnreadEffect,
 } from '../../../application/ports/capture-repository.js'
-import type { Conversation, Message, Participant, UnreadState } from '../../../domain/model.js'
-import { MESSAGE_KINDS } from '../../../domain/model.js'
+import type {
+  Conversation,
+  Message,
+  MessageExtras,
+  Participant,
+  PollVote,
+  Reaction,
+  UnreadState,
+} from '../../../domain/model.js'
+import { MESSAGE_KINDS, QUOTED_TEXT_MAX } from '../../../domain/model.js'
 import { unmaskedName } from '../../../domain/names.js'
 import type { Database } from './database.js'
 import { inTransaction } from './transaction.js'
@@ -90,17 +98,137 @@ export class SqliteCaptureWriter {
    * A message stored by `recordEdit` (its original never arrived, or arrives later) keeps the edited text and takes
    * the earliest of the two timestamps: the original is older than its edit.
    */
-  insertMessage(message: Message, hint: ConversationHint = {}, effectIfNew: UnreadEffect = 'none'): InsertResult {
+  insertMessage(
+    message: Message,
+    hint: ConversationHint = {},
+    effectIfNew: UnreadEffect = 'none',
+    extras?: MessageExtras,
+  ): InsertResult {
     return inTransaction(this.db, () => {
-      const isNew = this.upsertMessageRow(message, hint, null)
+      const isNew = this.upsertMessageRow(message, hint, null, extras)
       if (isNew) this.applyEffect(message.conversationId, effectIfNew, hint)
       const row = this.db
         .prepare(
-          `SELECT transcript IS NOT NULL AS has, transcribe_status IS NOT NULL AS handled
+          `SELECT seq, transcript IS NOT NULL AS has, transcribe_status IS NOT NULL AS handled
            FROM messages WHERE conversation_id = ? AND id = ?`,
         )
-        .get(message.conversationId, message.id) as { has: number; handled: number }
+        .get(message.conversationId, message.id) as { seq: number; has: number; handled: number }
+      if (extras !== undefined) this.writeDetails(Number(row.seq), extras)
       return { isNew, hasTranscript: row.has === 1, mediaHandled: row.handled === 1 }
+    })
+  }
+
+  /**
+   * The typed details of a message (media, location, contacts, poll, order, product), replaced as a whole: a replay of
+   * the same message rewrites the same rows. Only called when the message came with extras.
+   */
+  private writeDetails(seq: number, extras: MessageExtras): void {
+    for (const table of ['media', 'locations', 'shared_contacts', 'polls', 'orders', 'products']) {
+      this.db.prepare(`DELETE FROM ${table} WHERE message_seq = ?`).run(seq)
+    }
+    const { media, location, poll, order, product } = extras
+    if (media != null) {
+      this.db
+        .prepare(
+          `INSERT INTO media (message_seq, kind, mimetype, seconds, file_length, file_name, page_count, width, height, caption)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          seq,
+          media.kind,
+          media.mimetype,
+          media.seconds,
+          media.fileLength,
+          media.fileName,
+          media.pageCount,
+          media.width,
+          media.height,
+          media.caption,
+        )
+    }
+    if (location != null) {
+      this.db
+        .prepare('INSERT INTO locations (message_seq, lat, lng, name, address, live) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(seq, location.lat, location.lng, location.name, location.address, location.live ? 1 : 0)
+    }
+    for (const contact of extras.contacts ?? []) {
+      this.db
+        .prepare('INSERT INTO shared_contacts (message_seq, display_name, phone, phones) VALUES (?, ?, ?, ?)')
+        .run(seq, contact.displayName, contact.phones[0] ?? null, JSON.stringify(contact.phones))
+    }
+    if (poll != null) {
+      this.db
+        .prepare('INSERT INTO polls (message_seq, question, options, selectable_count) VALUES (?, ?, ?, ?)')
+        .run(seq, poll.question, JSON.stringify(poll.options), poll.selectableCount)
+    }
+    if (order != null) {
+      this.db
+        .prepare(
+          `INSERT INTO orders (message_seq, order_id, item_count, total_amount, currency, title, message)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(seq, order.orderId, order.itemCount, order.totalAmount, order.currency, order.title, order.message)
+    }
+    if (product != null) {
+      this.db
+        .prepare(
+          'INSERT INTO products (message_seq, product_id, title, price, currency, retailer_id) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .run(seq, product.productId, product.title, product.price, product.currency, product.retailerId)
+    }
+  }
+
+  /**
+   * One reaction per (target message, sender): a newer one replaces it, an older one is ignored, an empty emoji removes
+   * it. The target does not need to be stored (reactions to messages older than the history are kept anyway).
+   */
+  recordReaction(reaction: Reaction, hint: ConversationHint = {}): void {
+    inTransaction(this.db, () => {
+      this.ensureConversation(reaction.conversationId, hint)
+      const sender = reaction.fromMe ? '' : (reaction.senderId ?? '')
+      const key = [reaction.conversationId, reaction.targetId, reaction.fromMe ? 1 : 0, sender] as const
+      const stored = this.db
+        .prepare(
+          'SELECT timestamp FROM reactions WHERE conversation_id = ? AND target_id = ? AND from_me = ? AND sender_id = ?',
+        )
+        .get(...key) as { timestamp: number } | undefined
+      if (stored !== undefined && stored.timestamp > reaction.timestamp) return
+      if (reaction.emoji === '') {
+        this.db
+          .prepare(
+            'DELETE FROM reactions WHERE conversation_id = ? AND target_id = ? AND from_me = ? AND sender_id = ?',
+          )
+          .run(...key)
+        return
+      }
+      this.db
+        .prepare(
+          `INSERT INTO reactions (conversation_id, target_id, from_me, sender_id, emoji, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (conversation_id, target_id, from_me, sender_id) DO UPDATE SET
+             emoji = excluded.emoji, timestamp = excluded.timestamp`,
+        )
+        .run(...key, reaction.emoji, reaction.timestamp)
+    })
+  }
+
+  /** A vote on a poll, as received (see the TODO of the `poll_votes` table). A replay of the same vote adds nothing. */
+  recordPollVote(vote: PollVote, hint: ConversationHint = {}): void {
+    inTransaction(this.db, () => {
+      this.ensureConversation(vote.conversationId, hint)
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO poll_votes (conversation_id, poll_id, sender_id, from_me, timestamp, raw)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          vote.conversationId,
+          vote.pollId,
+          vote.fromMe ? '' : (vote.senderId ?? ''),
+          vote.fromMe ? 1 : 0,
+          vote.timestamp,
+          vote.raw,
+        )
     })
   }
 
@@ -113,7 +241,12 @@ export class SqliteCaptureWriter {
   }
 
   /** Writes the row and returns true when it is new. `editedAt` is set for a message that is stored by an edit. */
-  private upsertMessageRow(message: Message, hint: ConversationHint, editedAt: number | null): boolean {
+  private upsertMessageRow(
+    message: Message,
+    hint: ConversationHint,
+    editedAt: number | null,
+    extras?: MessageExtras,
+  ): boolean {
     if (!(MESSAGE_KINDS as readonly string[]).includes(message.kind)) {
       throw new Error(`Unknown message kind: ${String(message.kind)}`)
     }
@@ -125,8 +258,9 @@ export class SqliteCaptureWriter {
     this.db
       .prepare(
         `INSERT INTO messages
-           (conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read, edited_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read,
+            edited_at, raw, quoted_id, quoted_kind, quoted_text, quoted_from_status, forwarded, is_view_once)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (conversation_id, id) DO UPDATE SET
            sender_id = CASE WHEN ${FORGED} THEN excluded.sender_id ELSE messages.sender_id END,
            sender_address = CASE WHEN ${FORGED} THEN excluded.sender_address ELSE messages.sender_address END,
@@ -142,7 +276,18 @@ export class SqliteCaptureWriter {
                        ELSE COALESCE(excluded.text, messages.text) END,
            edited_at = CASE WHEN ${FORGED} THEN NULL ELSE messages.edited_at END,
            transcript = COALESCE(excluded.transcript, messages.transcript),
-           read = MAX(messages.read, excluded.read)`,
+           read = MAX(messages.read, excluded.read),
+           raw = CASE WHEN ${FORGED} THEN excluded.raw ELSE COALESCE(messages.raw, excluded.raw) END,
+           quoted_id = CASE WHEN ${FORGED} THEN excluded.quoted_id ELSE COALESCE(messages.quoted_id, excluded.quoted_id) END,
+           quoted_kind = CASE WHEN ${FORGED} THEN excluded.quoted_kind
+                              ELSE COALESCE(messages.quoted_kind, excluded.quoted_kind) END,
+           quoted_text = CASE WHEN ${FORGED} THEN excluded.quoted_text
+                              ELSE COALESCE(messages.quoted_text, excluded.quoted_text) END,
+           quoted_from_status = CASE WHEN ${FORGED} THEN excluded.quoted_from_status
+                                     ELSE MAX(messages.quoted_from_status, excluded.quoted_from_status) END,
+           forwarded = CASE WHEN ${FORGED} THEN excluded.forwarded ELSE MAX(messages.forwarded, excluded.forwarded) END,
+           is_view_once = CASE WHEN ${FORGED} THEN excluded.is_view_once
+                               ELSE MAX(messages.is_view_once, excluded.is_view_once) END`,
       )
       .run(
         message.conversationId,
@@ -157,6 +302,13 @@ export class SqliteCaptureWriter {
         message.transcript,
         message.read ? 1 : 0,
         editedAt,
+        extras?.raw ?? null,
+        extras?.quoted?.id ?? null,
+        extras?.quoted?.kind ?? null,
+        extras?.quoted?.text == null ? null : extras.quoted.text.slice(0, QUOTED_TEXT_MAX),
+        extras?.quoted?.fromStatus ? 1 : 0,
+        extras?.forwarded ? 1 : 0,
+        extras?.viewOnce ? 1 : 0,
       )
     return isNew
   }

@@ -25,7 +25,10 @@ import type {
  * The ONE place that creates a Baileys socket, and so the place where its configuration is fixed (RNF-17, RNF-04).
  *
  * - `markOnlineOnConnect: false`: the client is not shown as online, so the phone keeps getting notifications.
- * - `syncFullHistory: false`: only what WhatsApp sends on linking (the recent history), as the previous tool did.
+ * - `syncFullHistory: false`: only what WhatsApp sends on linking (the recent history), as the previous tool did. The ONE
+ *   exception is the opt-in `fullHistoryOnLink` of an account (approved by the owner as an exception to RNF-17, see
+ *   docs/requirements.md): the socket is then made with `syncFullHistory: true`, which only changes how much history the
+ *   phone sends when the device is linked. The browser stays a desktop one, which WhatsApp requires to send it.
  * - The logger is silent. Baileys logs message content, keys and session data at several levels; none of it may reach
  *   a log (RNF-04), so it all goes nowhere.
  *
@@ -92,13 +95,15 @@ async function storedLid(state: AuthenticationState, pn: string): Promise<string
   return typeof lidUser === 'string' && lidUser !== '' ? `${lidUser}@lid` : null
 }
 
-export const baileysSocketFactory: SocketFactory = async ({ authDir }) => {
+export const baileysSocketFactory: SocketFactory = async ({ authDir, fullHistory }) => {
   const { state, saveCreds, settle } = await loadSecureAuthState(authDir)
   const socket = makeWASocket({
     auth: state,
     logger: silentLogger,
     browser: BROWSER,
     ...BAILEYS_SOCKET_OPTIONS,
+    // Only the opt-in of the account (`fullHistoryOnLink`) turns this on.
+    ...(fullHistory === true ? { syncFullHistory: true } : {}),
   })
   // A real wrapper, not a cast: the full Baileys socket (with its send methods) never leaves this function.
   const narrow: WhatsAppSocket = {

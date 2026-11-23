@@ -188,6 +188,13 @@ export interface Catalog {
     copies(count: number): string
     /** Shown instead of the text of a message that has none (RF-10). */
     readonly kinds: Readonly<Record<MessageKind, string>>
+    /**
+     * Prefix of the line of a reply to a status of the owner. `what` is the kind of the status and its text, already put
+     * together ("image «holiday»"), or null when nothing of it is known.
+     */
+    replyToStatus(what: string | null): string
+    /** Prefix of the line of a reply to a message; `excerpt` is the short quoted text. */
+    replyTo(excerpt: string): string
   }
 
   /** Texts the capture adapters put into stored messages (RF-10, RF-11). */
@@ -198,6 +205,10 @@ export interface Catalog {
     readonly unnamedDocument: string
     /** Label of a message that shares several contacts (the singular is `transcript.kinds.contact`). */
     readonly contacts: string
+    /** Text of a WhatsApp Business order; `total` is already formatted with its currency, null when unknown. */
+    order(items: number | null, total: string | null): string
+    /** Text of a WhatsApp Business product; `price` is already formatted with its currency, null when unknown. */
+    product(title: string | null, price: string | null): string
   }
 
   readonly digest: {

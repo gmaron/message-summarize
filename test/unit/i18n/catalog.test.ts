@@ -33,6 +33,17 @@ const SAMPLES: Record<string, unknown[][]> = {
   'transcript.massMessage': [['E']],
   'transcript.audio': [['T']],
   'transcript.copies': [[1], [2]],
+  'transcript.replyToStatus': [['image «x»'], [null]],
+  'transcript.replyTo': [['x']],
+  'capture.order': [
+    [3, '12.000'],
+    [1, null],
+    [null, null],
+  ],
+  'capture.product': [
+    ['Cake', '5.000'],
+    [null, null],
+  ],
   'digest.title': [['P', 'D']],
   'digest.headline': [
     [{ total: 1, unreadOnly: false, since: 'D', needsReply: 1, unsaved: 0 }],
@@ -421,7 +432,20 @@ describe('catalogs', () => {
   })
 
   it('have a label for every kind of message', () => {
-    const kinds = ['text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'poll', 'event']
+    const kinds = [
+      'text',
+      'image',
+      'video',
+      'audio',
+      'document',
+      'sticker',
+      'location',
+      'contact',
+      'poll',
+      'event',
+      'order',
+      'product',
+    ]
     for (const catalog of [es, en]) {
       expect(Object.keys(catalog.transcript.kinds).sort()).toEqual([...kinds].sort())
       for (const label of Object.values(catalog.transcript.kinds)) expect(label).toMatch(/^\[.+\]$/)

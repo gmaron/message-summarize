@@ -360,3 +360,50 @@ describe('english', () => {
     expect(out).toBe('Chat with: Ana Gómez\n\n(…earlier messages cut…)\nxxxxxxxxxx')
   })
 })
+
+describe('replies', () => {
+  const reply = (r: { kind: MessageKind | null; text: string | null; fromStatus: boolean }) => ({ reply: r })
+
+  it('shows a reply to a status of the owner compactly, with what the status was', () => {
+    const messages = [
+      from('Ana Gómez', ba(4, 21, 8, 5), 'qué lindo!', reply({ kind: 'image', text: 'mi torta', fromStatus: true })),
+    ]
+    expect(body({ messages })).toBe('[08:05] Ana Gómez: [respondió a tu estado: imagen «mi torta»] qué lindo!')
+    expect(en.render(transcript({ messages }))).toBe(
+      'Chat with: Ana Gómez\n\n[08:05] Ana Gómez: [replied to your status: image «mi torta»] qué lindo!',
+    )
+  })
+
+  it('says only "reply to your status" when nothing of the status is known, or it was a text', () => {
+    const none = from('Ana Gómez', T, 'ok', reply({ kind: null, text: null, fromStatus: true }))
+    expect(body({ messages: [none] })).toBe('[09:05] Ana Gómez: [respondió a tu estado] ok')
+    const text = from('Ana Gómez', T, 'ok', reply({ kind: 'text', text: 'feliz día', fromStatus: true }))
+    expect(body({ messages: [text] })).toBe('[09:05] Ana Gómez: [respondió a tu estado: «feliz día»] ok')
+    const video = from('Ana Gómez', T, 'ok', reply({ kind: 'video', text: null, fromStatus: true }))
+    expect(body({ messages: [video] })).toBe('[09:05] Ana Gómez: [respondió a tu estado: video] ok')
+  })
+
+  it('shows the quoted message of a normal reply only when it is short', () => {
+    const short = from('Ana Gómez', T, 'sí', reply({ kind: 'text', text: '¿venís?', fromStatus: false }))
+    expect(body({ messages: [short] })).toBe('[09:05] Ana Gómez: [en respuesta a «¿venís?»] sí')
+    const long = from('Ana Gómez', T, 'sí', reply({ kind: 'text', text: 'x'.repeat(81), fromStatus: false }))
+    expect(body({ messages: [long] })).toBe('[09:05] Ana Gómez: sí')
+    const noText = from('Ana Gómez', T, 'sí', reply({ kind: 'audio', text: null, fromStatus: false }))
+    expect(body({ messages: [noText] })).toBe('[09:05] Ana Gómez: sí')
+  })
+
+  it('collapses whitespace of the quote and leaves messages without a reply as they were', () => {
+    const spaced = from('Ana Gómez', T, 'sí', reply({ kind: 'text', text: 'a\n  b', fromStatus: false }))
+    expect(body({ messages: [spaced, from('Ana Gómez', T, 'x')] })).toBe(
+      '[09:05] Ana Gómez: [en respuesta a «a b»] sí\n[09:05] Ana Gómez: x',
+    )
+  })
+
+  it('shows an order and a product by their stored text', () => {
+    const order = from('Ana Gómez', T, '[pedido de catálogo: 3 artículos, $ 12.000]', { kind: 'order' })
+    expect(body({ messages: [order] })).toBe('[09:05] Ana Gómez: [pedido de catálogo: 3 artículos, $ 12.000]')
+    expect(body({ messages: [from('Ana Gómez', T, null, { kind: 'product' })] })).toBe(
+      '[09:05] Ana Gómez: [producto de catálogo]',
+    )
+  })
+})

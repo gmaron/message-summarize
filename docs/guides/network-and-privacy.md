@@ -19,6 +19,8 @@ Nothing is sent anywhere except what this guide lists. There is no telemetry, an
 
 Through your own account's connection (including the download of the audio you receive, when transcription is on).
 
+With the `fullHistoryOnLink` option (off by default) the phone sends its **whole** history when the device is linked, instead of only the recent one. It is an exception that you choose to the platform-respect principle (RNF-17): it only changes how much history arrives at link time; the client still is not marked "online" and sends nothing. Everything is stored in the account's database, on your machine, including the original content of each message (`messages.raw`) with the data needed to download files again. More in [the web and accounts](web-and-accounts.md#full-history-on-link).
+
 ### The LLM provider you chose
 
 And nothing else: with Ollama, the URL you configured; with an API provider, exactly one of `api.openai.com` (or your `provider.openai.baseUrl`), `api.anthropic.com` or `generativelanguage.googleapis.com`.

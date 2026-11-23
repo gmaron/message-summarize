@@ -6,7 +6,15 @@ import type {
   InsertResult,
   UnreadEffect,
 } from '../../../application/ports/capture-repository.js'
-import type { Conversation, Message, Participant, UnreadState } from '../../../domain/model.js'
+import type {
+  Conversation,
+  Message,
+  MessageExtras,
+  Participant,
+  PollVote,
+  Reaction,
+  UnreadState,
+} from '../../../domain/model.js'
 import type { SqliteCaptureWriter } from './capture-writer.js'
 
 /**
@@ -31,8 +39,19 @@ export class SqliteCaptureRepository implements CaptureRepository {
   async upsertParticipant(participant: Participant): Promise<void> {
     this.writer.upsertParticipant(participant)
   }
-  async insertMessage(message: Message, hint?: ConversationHint, effectIfNew?: UnreadEffect): Promise<InsertResult> {
-    return this.writer.insertMessage(message, hint, effectIfNew)
+  async insertMessage(
+    message: Message,
+    hint?: ConversationHint,
+    effectIfNew?: UnreadEffect,
+    extras?: MessageExtras,
+  ): Promise<InsertResult> {
+    return this.writer.insertMessage(message, hint, effectIfNew, extras)
+  }
+  async recordReaction(reaction: Reaction, hint?: ConversationHint): Promise<void> {
+    this.writer.recordReaction(reaction, hint)
+  }
+  async recordPollVote(vote: PollVote, hint?: ConversationHint): Promise<void> {
+    this.writer.recordPollVote(vote, hint)
   }
   async recordEdit(message: Message, editedAt: number, hint?: ConversationHint): Promise<EditOutcome> {
     return this.writer.recordEdit(message, editedAt, hint)
