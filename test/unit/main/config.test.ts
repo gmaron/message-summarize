@@ -71,7 +71,7 @@ describe('parseConfig defaults', () => {
         historyAudioDays: 14,
         maxMediaMb: 500,
       },
-      web: { enabled: true, host: '127.0.0.1', port: 8787 },
+      web: { enabled: true, host: '127.0.0.1', port: 8787, allowedHosts: [] },
       logs: { maxBytes: 52_428_800 },
     })
   })
@@ -350,9 +350,23 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
 describe('the web section (RNF-03)', () => {
   it('is on, on 127.0.0.1:8787, unless the file says otherwise', () => {
     const result = parse({ web: { enabled: false, host: '0.0.0.0', port: 9000 } })
-    expect(result.ok && result.value.web).toEqual({ enabled: false, host: '0.0.0.0', port: 9000 })
+    expect(result.ok && result.value.web).toEqual({ enabled: false, host: '0.0.0.0', port: 9000, allowedHosts: [] })
     const partial = parse({ web: { port: 1 } })
-    expect(partial.ok && partial.value.web).toEqual({ enabled: true, host: '127.0.0.1', port: 1 })
+    expect(partial.ok && partial.value.web).toEqual({ enabled: true, host: '127.0.0.1', port: 1, allowedHosts: [] })
+  })
+
+  it('reads web.allowedHosts as lowercase bare host names, and refuses anything else', () => {
+    const result = parse({ web: { allowedHosts: [' Resumenes-Pao ', 'pao.tail57a9c5.ts.net'] } })
+    expect(result.ok && result.value.web.allowedHosts).toEqual(['resumenes-pao', 'pao.tail57a9c5.ts.net'])
+    expect(issuesOf({ web: { allowedHosts: 'resumenes-pao' } })).toEqual([
+      { option: 'web.allowedHosts', code: 'notArray' },
+    ])
+    expect(issuesOf({ web: { allowedHosts: [1] } })).toEqual([{ option: 'web.allowedHosts', code: 'notStringList' }])
+    for (const bad of ['https://resumenes-pao', 'resumenes-pao:8788', 'a/b', 'a b', '']) {
+      expect(issuesOf({ web: { allowedHosts: [bad] } })).toEqual([
+        { option: 'web.allowedHosts', code: 'invalidHostName' },
+      ])
+    }
   })
 
   it('refuses a port that is not an integer between 1 and 65535', () => {

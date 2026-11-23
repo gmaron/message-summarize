@@ -144,7 +144,7 @@ export async function world(
     ctx: h.ctx,
     installation,
     host,
-    web: { enabled: true, host: '127.0.0.1', port: 0 },
+    web: { enabled: true, host: '127.0.0.1', port: 0, allowedHosts: [] },
     language: 'en',
     ...(options.previewTtlMs === undefined ? {} : { previewTtlMs: options.previewTtlMs }),
     ...(options.logs === undefined ? {} : { logs: options.logs }),

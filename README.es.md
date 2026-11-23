@@ -258,7 +258,7 @@ test/
 - La publicación en npm está bloqueada a propósito hasta resolverlo.
 - Gemini CLI y Codex están deshabilitados: no documentan una forma verificable de apagar sus herramientas (ver [usar una CLI como proveedor](docs/guias/cli-como-proveedor.md)). La CLI genérica puede ejecutarlos, bajo tu propio riesgo.
 - Solo hay textos en español y en inglés.
-- Por defecto la web escucha solo en esta máquina; `web.host` puede cambiarlo, y es una elección explícita.
+- Por defecto la web escucha solo en esta máquina; `web.host` puede cambiarlo, y es una elección explícita; `web.allowedHosts` nombra los hosts de un proxy que pueden llegar a ella.
 
 ## Guías
 

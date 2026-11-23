@@ -72,6 +72,7 @@ export type WebConfigIssueCode =
   | 'required'
   | 'invalidTimezone'
   | 'invalidPort'
+  | 'invalidHostName'
   | 'belowMinimum'
   | 'invalidUrl'
   | 'concurrentEdit'
@@ -252,6 +253,7 @@ export interface Catalog {
       /** A transcription language that is neither "auto" nor an ISO 639 code (RF-23). */
       invalidLanguage(option: string): string
       invalidPort(option: string): string
+      invalidHostName(option: string): string
       belowMinimum(option: string): string
       invalidUrl(option: string): string
       readonly concurrentEdit: string

@@ -154,9 +154,14 @@ export interface WebConfig {
   /** "127.0.0.1" by default. Any other address is the explicit opt-in to expose the web beyond this machine. */
   readonly host: string
   readonly port: number
+  /**
+   * Names a reverse proxy reaches the web by (a Tailscale name, for example), accepted as the `Host` even without a
+   * port. Empty by default: only IP addresses and the loopback names are accepted. The token is still required.
+   */
+  readonly allowedHosts: readonly string[]
 }
 
-export const DEFAULT_WEB: WebConfig = { enabled: true, host: '127.0.0.1', port: 8787 }
+export const DEFAULT_WEB: WebConfig = { enabled: true, host: '127.0.0.1', port: 8787, allowedHosts: [] }
 
 /** The daemon's log files (RNF-12). Only the installation's config.json sets it: an account cannot. */
 export interface LogsConfig {
@@ -198,6 +203,8 @@ export type ConfigIssueCode =
   /** `provider.genericCli.command` has no program, a placeholder as the program, or one inside an element. */
   | 'invalidCommandTemplate'
   | 'invalidPort'
+  /** An entry of `web.allowedHosts` that is not a bare host name (a scheme, a port, a path or a space). */
+  | 'invalidHostName'
   /** A number under the smallest accepted (`logs.maxBytes`). */
   | 'belowMinimum'
   /** Not an absolute http(s) URL. */
@@ -266,7 +273,7 @@ const PROVIDER_KEYS = new Set([
 ])
 const GENERIC_CLI_KEYS = new Set(['command', 'timeoutMs', 'acknowledgeRisk'])
 const CLAUDE_CLI_KEYS = new Set(['command', 'model', 'timeoutMs'])
-const WEB_KEYS = new Set(['enabled', 'host', 'port'])
+const WEB_KEYS = new Set(['enabled', 'host', 'port', 'allowedHosts'])
 const LOGS_KEYS = new Set(['maxBytes'])
 const OLLAMA_KEYS = new Set(['baseUrl', 'model', 'numCtx', 'keepAlive', 'timeoutMs'])
 const OPENAI_KEYS = new Set(['baseUrl', 'model', 'timeoutMs', 'structuredOutput'])
@@ -573,6 +580,17 @@ export function parseConfig(
     return v
   })()
 
+  const webAllowedHosts = ((): readonly string[] | undefined => {
+    const v = webObj.allowedHosts
+    if (v === undefined) return DEFAULT_WEB.allowedHosts
+    if (!Array.isArray(v)) return add('web.allowedHosts', 'notArray')
+    if (!v.every((h) => typeof h === 'string')) return add('web.allowedHosts', 'notStringList')
+    if (!v.every((h: string) => /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(h.trim()))) {
+      return add('web.allowedHosts', 'invalidHostName')
+    }
+    return (v as string[]).map((h) => h.trim().toLowerCase())
+  })()
+
   const logsObj = section(input, 'logs', 'logs', LOGS_KEYS)
   const logsMaxBytes = ((): number | undefined => {
     const v = logsObj.maxBytes
@@ -647,6 +665,7 @@ export function parseConfig(
     webEnabled === undefined ||
     webHost === undefined ||
     webPort === undefined ||
+    webAllowedHosts === undefined ||
     logsMaxBytes === undefined
   ) {
     return err(issues)
@@ -698,7 +717,7 @@ export function parseConfig(
       historyAudioDays,
       maxMediaMb,
     },
-    web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort },
+    web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort, allowedHosts: webAllowedHosts },
     logs: { maxBytes: logsMaxBytes },
   })
 }
@@ -916,6 +935,8 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.invalidCommandTemplate(issue.option)
     case 'invalidPort':
       return texts.invalidPort(issue.option)
+    case 'invalidHostName':
+      return texts.invalidHostName(issue.option)
     case 'belowMinimum':
       return texts.belowMinimum(issue.option)
     case 'installationOnly':

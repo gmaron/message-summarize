@@ -7,6 +7,7 @@ Mientras corre, el daemon sirve una página local. Esta guía explica qué se pu
 - Por defecto está en `http://127.0.0.1:8787`. Se configura con la opción `web` del `config.json` de la instalación: `port`, `host`, `enabled`.
 - `msum open` la abre con la sesión ya iniciada. La dirección lleva un token de acceso, generado una sola vez en el directorio de datos (`web-token`): no la compartas.
 - Escucha solo en esta máquina. Otro `host` (por ejemplo `0.0.0.0` dentro de Docker, publicando el puerto solo en `127.0.0.1`) es una elección explícita.
+- Detrás de un proxy inverso que reenvía el nombre por el que se llegó (por ejemplo `tailscale serve`), la web responde 403 a ese nombre, porque solo acepta IPs y los nombres de loopback. `web.allowedHosts` en el `config.json` de la instalación (vacío por defecto) lista los nombres que sí acepta, sin esquema ni puerto: `"allowedHosts": ["mi-equipo", "mi-equipo.mi-red.ts.net"]`. Un nombre listado se acepta sin puerto y su `Origin` también por `https`; el token sigue siendo obligatorio y cualquier otro nombre sigue dando 403.
 
 ## Qué se puede hacer
 
