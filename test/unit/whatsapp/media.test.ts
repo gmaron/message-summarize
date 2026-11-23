@@ -176,10 +176,11 @@ describe('what the sender writes is checked before anything is requested', () =>
     expect(existsSync(dir)).toBe(false)
   })
 
-  it('tells expired media (HTTP 404 or 410, as Baileys throws it) from a network failure', async () => {
+  it('tells expired media (HTTP 403, 404 or 410, as Baileys throws it) from a network failure', async () => {
     for (const [status, expected] of [
       [410, 'expired'],
       [404, 'expired'],
+      [403, 'expired'],
       [500, 'download-failed'],
       [undefined, 'download-failed'],
     ] as const) {

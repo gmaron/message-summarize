@@ -13,6 +13,9 @@ export const DEFAULT_AUDIO_DOWNLOAD_TIMEOUT_MS = 60_000
 /** What the audio files of one account may take together, downloaded and not yet transcribed (`transcription.maxMediaMb`). */
 export const DEFAULT_MAX_MEDIA_DIR_BYTES = 500 * 1024 * 1024
 
+/** HTTP answers of the media host that mean the file cannot be fetched at this address any more (see `expired`). */
+const EXPIRED_STATUSES: readonly number[] = [403, 404, 410]
+
 /**
  * Why a download did not happen or failed. Fixed words, recorded on the message; never an error message.
  * - invalid-media-path: the message has no `directPath`, or it is not a plain WhatsApp media path. Nothing is requested
@@ -21,8 +24,9 @@ export const DEFAULT_MAX_MEDIA_DIR_BYTES = 500 * 1024 * 1024
  * - media-cap: the account's media directory is full (`transcription.maxMediaMb`). Not the fault of the audio: it is
  *   `unavailable` (claim released, nothing counted, descriptor kept) and downloads go on when transcription frees space.
  * - invalid-media: no usable decryption key.
- * - expired: the server no longer has the file (HTTP 404 or 410). The download worker then asks the owner's own phone to
- *   upload it again (never the sender: that would be a message out, RNF-17).
+ * - expired: the server no longer has the file (HTTP 404 or 410) or refuses its old address (HTTP 403: the signed path of
+ *   an old message has expired, which is what every audio of a full history older than a few weeks gets). The download
+ *   worker then asks the owner's own phone to upload it again (never the sender: that would be a message out, RNF-17).
  * - aborted: not a failure of the audio (the connection was closed or dropped): it is asked for again.
  */
 export type AudioFetchFailure =
@@ -260,8 +264,8 @@ export function createAudioFetcher(options: AudioFetcherOptions): AudioFetcher {
       } catch (error) {
         if (gone() || (error as Error).message === 'aborted') return err('aborted')
         if ((error as Error).message === 'timeout') return err('timeout')
-        // The server answered that the file is gone: it will not come back.
-        if (stream === null && [404, 410].includes(statusOf(error) ?? 0)) return err('expired')
+        // The server answered that the file is gone (or that its signed address expired): only the phone can bring it back.
+        if (stream === null && EXPIRED_STATUSES.includes(statusOf(error) ?? 0)) return err('expired')
         return err(failure)
       } finally {
         clearTimeout(timer)
