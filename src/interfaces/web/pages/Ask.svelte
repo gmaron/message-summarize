@@ -73,6 +73,22 @@
     }
   }
 
+  // The daemon says what is left and how many the next page reads; the page only draws it.
+
+  async function more(askId: number): Promise<void> {
+    if (running) return
+    error = null
+    submitting = true
+    try {
+      await api.ask(id, { continueFrom: askId })
+      await load()
+    } catch (e) {
+      error = errorText(e instanceof ApiError ? e.code : null, texts)
+    } finally {
+      submitting = false
+    }
+  }
+
   async function remove(askId: number): Promise<void> {
     try {
       await api.deleteAsk(id, askId)
@@ -237,6 +253,16 @@
           <p class="small muted">{statsOf(ask)}</p>
           {#if (ask.items ?? []).length === 0}
             <p>{t.nothing}</p>
+          {/if}
+          {#if (ask.remaining ?? 0) > 0 && ask.candidates !== undefined}
+            <div class="notice" role="status">{fmt(t.partial, { from: (ask.offset ?? 0) + 1, to: (ask.offset ?? 0) + (ask.consulted ?? 0), total: ask.candidates, left: ask.remaining ?? 0 })}</div>
+            {#if ask.next !== undefined && ask.continuedBy === undefined}
+              <div class="cluster">
+                <button type="button" class="btn sm" disabled={!usable || running} onclick={() => more(ask.id)}>
+                  {fmt(t.continue, { count: ask.next })}
+                </button>
+              </div>
+            {/if}
           {/if}
           {#each ask.items ?? [] as item, index (index)}
             <div class="stack-sm">

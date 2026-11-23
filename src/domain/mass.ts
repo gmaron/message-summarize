@@ -39,3 +39,9 @@ export function findMassTexts(ownMessages: Iterable<OwnMessageText>): Set<string
  */
 export const isMassAtReceipt = (text: string, otherConversationsWithSameText: number): boolean =>
   codePointLength(text) >= MASS_MIN_LENGTH && otherConversationsWithSameText >= MASS_MIN_CONVERSATIONS - 1
+
+/** Whether an own message is a mass one: its text is one of `mass` (from `findMassTexts`). */
+export const isMassMessage = (
+  mass: ReadonlySet<string>,
+  m: { readonly fromMe: boolean; readonly text: string | null },
+): boolean => m.fromMe && m.text !== null && mass.has(m.text)

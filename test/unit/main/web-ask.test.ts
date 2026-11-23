@@ -124,6 +124,22 @@ describe('POST /api/accounts/:id/ask', () => {
     expect((await w.api('DELETE', '/api/accounts/nope/asks/1')).status).toBe(404)
   })
 
+  it('validates continueFrom, rejects it next to a question, and answers 409 when there is nothing to continue', async () => {
+    const w = await world({ accounts: ['alpha'], linked: ['alpha'] })
+    await seed(w, 'alpha')
+    await running(w, 'alpha')
+    await w.api('POST', '/api/accounts/alpha/ask', body)
+    await until(() => w.eventsOf('ask').length === 1, 'the ask event')
+    const post = (b: unknown) => w.api('POST', '/api/accounts/alpha/ask', b)
+    for (const bad of [1.5, 0, -1, '1', null, Number.NaN, {}, [1]]) {
+      expect(await post({ continueFrom: bad })).toEqual({ status: 400, body: { error: 'invalidRequest' } })
+    }
+    expect(await post({ ...body, continueFrom: 1 })).toEqual({ status: 400, body: { error: 'invalidRequest' } })
+    // a missing source and a complete one (1 chat, all read) both have nothing to continue
+    expect(await post({ continueFrom: 99 })).toEqual({ status: 409, body: { error: 'nothingToContinue' } })
+    expect(await post({ continueFrom: 1 })).toEqual({ status: 409, body: { error: 'nothingToContinue' } })
+  })
+
   it('validates the body', async () => {
     const w = await world({ accounts: ['alpha'], linked: ['alpha'] })
     await running(w, 'alpha')

@@ -1,4 +1,4 @@
-import { type AskItem, cleanQuestion } from '../application/ask-chats.js'
+import { type AskItem, cleanQuestion, MAX_ASK_CONVERSATIONS } from '../application/ask-chats.js'
 import type { WebErrorCode } from '../infrastructure/i18n/index.js'
 import type { CommandContext } from './context.js'
 import { errorCode } from './logger.js'
@@ -7,6 +7,11 @@ import type { Runtime } from './runtime.js'
 /** The periods the page offers. */
 export const ASK_PERIODS = ['today', 'h24', 'd3', 'd7'] as const
 export type AskPeriod = (typeof ASK_PERIODS)[number]
+
+/** Conversations of the ranking not read yet after a page. */
+function remainingOf(v: { candidates?: number; offset?: number; consulted?: number }): number {
+  return v.candidates === undefined ? 0 : Math.max(0, v.candidates - (v.offset ?? 0) - (v.consulted ?? 0))
+}
 
 /** The most requests kept per account: the oldest is dropped when another is made. */
 export const MAX_ASKS_PER_ACCOUNT = 20
@@ -25,6 +30,15 @@ export interface AskView {
   readonly since: number
   readonly until: number
   readonly consulted?: number
+  /** Eligible conversations in total, and how many earlier pages of the same request already read. */
+  readonly candidates?: number
+  readonly offset?: number
+  /** Conversations still unread after this page (done only). */
+  readonly remaining?: number
+  /** How many the "continue" button reads: the page size or what remains. Absent when it cannot continue. */
+  readonly next?: number
+  /** The ask that continued this one: a source is continued once. */
+  readonly continuedBy?: number
   readonly failedChats?: number
   readonly items?: readonly AskItem[]
   readonly error?: WebErrorCode | 'failed'
@@ -38,9 +52,17 @@ export interface AskEvent {
   readonly error?: WebErrorCode | 'failed'
 }
 
+/** What starts a request: a new one, or the next page of an earlier one (same question, filters and window). */
+export type StartAskInput =
+  | { readonly question: string; readonly period: AskPeriod; readonly chats: readonly string[] }
+  | { readonly continueFrom: number }
+
 export type StartAskResult =
   | { readonly ok: true; readonly id: number }
-  | { readonly ok: false; readonly reason: 'busy' | 'notRunning' | 'noProvider' | 'unavailable' | 'emptyQuestion' }
+  | {
+      readonly ok: false
+      readonly reason: 'busy' | 'notRunning' | 'noProvider' | 'unavailable' | 'emptyQuestion' | 'nothingToContinue'
+    }
 
 /** What the requests need of the host of the accounts. */
 export interface AskHost {
@@ -136,14 +158,24 @@ export class AskService {
     return [...list].reverse().map((entry) => entry.view)
   }
 
-  start(
-    id: string,
-    input: { readonly question: string; readonly period: AskPeriod; readonly chats: readonly string[] },
-  ): StartAskResult {
+  start(id: string, input: StartAskInput): StartAskResult {
     const { ctx, host } = this.options
     if (this.stopped || host.isStopping) return { ok: false, reason: 'unavailable' }
+    let source: AskView | null = null
+    let sourceEntry: Entry | null = null
+    if ('continueFrom' in input) {
+      const found = this.list(id).find((v) => v.id === input.continueFrom)
+      // A missing source (also one of another account or of a previous link) has nothing to continue either.
+      if (found === undefined) return { ok: false, reason: 'nothingToContinue' }
+      if (found.state !== 'done' || found.continuedBy !== undefined || remainingOf(found) <= 0) {
+        return { ok: false, reason: 'nothingToContinue' }
+      }
+      source = found
+      sourceEntry = this.entries.get(id)?.find((e) => e.view.id === found.id) ?? null
+    }
+    const fresh = 'continueFrom' in input ? null : input
     // What is stored and shown is what the model gets.
-    const question = cleanQuestion(input.question)
+    const question = cleanQuestion(source?.question ?? fresh?.question ?? '')
     if (question === '') return { ok: false, reason: 'emptyQuestion' }
     if (this.active.has(id)) return { ok: false, reason: 'busy' }
     const runtime = host.runtimeOf(id)
@@ -153,14 +185,21 @@ export class AskService {
 
     this.active.add(id)
     const now = ctx.clock.now()
-    const window = windowOf(input.period, now, runtime.config.timezone)
+    const period = source?.period ?? fresh?.period ?? 'today'
+    const chats = source?.chats ?? fresh?.chats ?? []
+    // A continuation reads the same window as its source, so the pages add up to one consistent answer.
+    const window =
+      source === null ? windowOf(period, now, runtime.config.timezone) : { since: source.since, until: source.until }
+    // The ranking is computed again: the window is fixed, but the set can shift if exclusions change or late messages
+    // arrive inside it. Privacy is unaffected (exclusions always apply); only the coverage of the pages can.
+    const offset = source === null ? 0 : (source.offset ?? 0) + (source.consulted ?? 0)
     const entry: Entry = {
       stamp: this.options.accountStamp(id),
       view: {
         id: ++this.counter,
         question,
-        period: input.period,
-        chats: input.chats,
+        period,
+        chats,
         state: 'running',
         createdAt: now,
         since: window.since,
@@ -172,7 +211,8 @@ export class AskService {
     list.push(entry)
     while (list.length > MAX_ASKS_PER_ACCOUNT) list.shift()
     this.entries.set(id, list)
-    void this.run(id, entry, runtime, askChats, window)
+    if (sourceEntry !== null) sourceEntry.view = { ...sourceEntry.view, continuedBy: entry.view.id }
+    void this.run(id, entry, runtime, askChats, window, offset)
     return { ok: true, id: entry.view.id }
   }
 
@@ -209,6 +249,7 @@ export class AskService {
     runtime: Runtime,
     askChats: NonNullable<Runtime['askChats']>,
     window: { since: number; until: number },
+    offset: number,
   ): Promise<void> {
     const { ctx, onEvent } = this.options
     let event: AskEvent
@@ -219,24 +260,25 @@ export class AskService {
         chats: entry.view.chats,
         settings: runtime.config.digest,
         concurrency: runtime.config.concurrency,
+        offset,
       })
       if (result.ok) {
+        const remaining = remainingOf(result.value)
         entry.view = {
           ...entry.view,
           state: 'done',
           finishedAt: ctx.clock.now(),
           consulted: result.value.consulted,
+          candidates: result.value.candidates,
+          offset: result.value.offset,
+          remaining,
+          ...(remaining > 0 ? { next: Math.min(MAX_ASK_CONVERSATIONS, remaining) } : {}),
           failedChats: result.value.failed,
           items: result.value.items,
         }
         event = { account: id, id: entry.view.id, state: 'done' }
       } else {
-        const error: WebErrorCode | 'failed' =
-          result.error.kind === 'tooMany'
-            ? 'tooManyChats'
-            : result.error.kind === 'emptyQuestion'
-              ? 'emptyQuestion'
-              : 'failed'
+        const error: WebErrorCode | 'failed' = result.error.kind === 'emptyQuestion' ? 'emptyQuestion' : 'failed'
         entry.view = { ...entry.view, state: 'failed', finishedAt: ctx.clock.now(), error }
         event = { account: id, id: entry.view.id, state: 'failed', error }
       }
@@ -252,6 +294,11 @@ export class AskService {
     ctx.logger.info('ask.finished', {
       account: id,
       state: entry.view.state,
+      ...(entry.view.error === undefined ? {} : { error: entry.view.error }),
+      ...(entry.view.candidates === undefined ? {} : { candidates: entry.view.candidates, offset: entry.view.offset }),
+      ...(entry.view.candidates === undefined || entry.view.consulted === undefined
+        ? {}
+        : { skipped: entry.view.remaining }),
       ...(entry.view.consulted === undefined ? {} : { consulted: entry.view.consulted }),
       ...(entry.view.items === undefined ? {} : { answered: entry.view.items.length }),
     })

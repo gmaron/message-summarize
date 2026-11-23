@@ -1,7 +1,7 @@
 import { splitIntoParts } from '../domain/chunk.js'
 import { deduplicateAcrossGroups } from '../domain/dedupe.js'
 import { isExcluded } from '../domain/exclusion.js'
-import { findMassTexts } from '../domain/mass.js'
+import { findMassTexts, isMassMessage as isMassOf } from '../domain/mass.js'
 import type { Conversation, Message, Participant } from '../domain/model.js'
 import { resolveConversationName } from '../domain/names.js'
 import { err, ok, type Result } from '../domain/result.js'
@@ -258,7 +258,7 @@ export function createGenerateDigest(deps: GenerateDigestDeps): GenerateDigest {
     const conversations = (await source.conversationsWithMessages(window)).filter((c) => !ownIds.has(c.id))
     if (conversations.length === 0) return []
     const mass = findMassTexts(await source.ownMessageTexts())
-    const isMassMessage = (m: Message): boolean => m.fromMe && m.text !== null && mass.has(m.text)
+    const isMassMessage = (m: Message): boolean => isMassOf(mass, m)
 
     const candidates: Candidate[] = []
     for (const conversation of conversations) {
