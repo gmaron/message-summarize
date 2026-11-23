@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ensureWebToken } from '../../../src/main/web-token.js'
+import { ensureWebSession, ensureWebToken } from '../../../src/main/web-token.js'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -52,5 +52,29 @@ describe('ensureWebToken (RNF-03, RNF-04)', () => {
     const files = layout()
     const tokens = await Promise.all(Array.from({ length: 8 }, () => ensureWebToken(files)))
     expect(new Set(tokens).size).toBe(1)
+  })
+})
+
+describe('ensureWebSession (the secret behind the session cookies)', () => {
+  const files = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'msum-session-'))
+    dirs.push(dir)
+    return { webSessionFile: join(dir, 'web-session') }
+  }
+
+  it('creates 32 random bytes with mode 0600 once and reuses them on every start', async () => {
+    const layout = files()
+    const secret = await ensureWebSession(layout)
+    expect(Buffer.from(secret, 'base64url')).toHaveLength(32)
+    expect(readFileSync(layout.webSessionFile, 'utf8')).toBe(`${secret}\n`)
+    if (process.platform !== 'win32') expect(statSync(layout.webSessionFile).mode & 0o777).toBe(0o600)
+    expect(await ensureWebSession(layout)).toBe(secret)
+  })
+
+  it('a new secret appears when the file is deleted (that ends every session)', async () => {
+    const layout = files()
+    const secret = await ensureWebSession(layout)
+    rmSync(layout.webSessionFile)
+    expect(await ensureWebSession(layout)).not.toBe(secret)
   })
 })

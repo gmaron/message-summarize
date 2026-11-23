@@ -817,8 +817,17 @@ export interface WebTexts {
     readonly close: string
     readonly cancel: string
     readonly unauthorizedTitle: string
-    /** Said before the command `msum open`. */
+    /** Said above the field where the token is pasted. */
     readonly unauthorizedText: string
+    readonly signInLabel: string
+    readonly signInButton: string
+    readonly signInBusy: string
+    /** The token (or link) pasted is not the one of this installation. */
+    readonly signInWrong: string
+    /** The service did not answer. */
+    readonly signInFailed: string
+    /** Said before the command `msum open`: the alternative of whoever runs the installation. */
+    readonly unauthorizedOwner: string
     readonly unauthorizedNote: string
     readonly offline: string
     /** Punctuation that joins pieces of text, here because it is not the same in every language. */

@@ -1,6 +1,7 @@
 import { isAccountIdValid } from './accounts.js'
 import { type Api, ApiError } from './api.js'
 import { OPENAI_BASE_URL } from './api-providers.js'
+import { tokenFromInput } from './auth.js'
 import { languageFromBrowser, pickLanguage } from './i18n.js'
 import { connectEvents, type EventSourceLike } from './sse.js'
 import {
@@ -69,8 +70,8 @@ export function createController(options: ControllerOptions) {
   }
   const update = (change: (current: AppState) => AppState): void => set(change(state))
   /**
-   * The session is not valid (any more: the daemon restarted, sessions live in its memory). The stream is closed for good:
-   * retrying it with a cookie the daemon does not know would never end.
+   * The session is not valid (any more: it expired after 30 days, or the token or the session secret was replaced). The
+   * stream is closed for good: retrying it with a cookie the daemon does not accept would never end.
    */
   const unauthorized = (): void => {
     stream?.close()
@@ -134,6 +135,23 @@ export function createController(options: ControllerOptions) {
     api,
     /** The daemon did not accept the session (or the token of the address). */
     markUnauthorized: unauthorized,
+    /**
+     * The "no access" screen: exchanges what the person pasted (the token or the whole link) for a session, like the link
+     * does, and loads the app. The token is never kept: it goes in one request. `invalid` is a text that cannot be a token.
+     */
+    async signIn(pasted: string): Promise<'ok' | 'invalid' | 'rejected' | 'failed'> {
+      const token = tokenFromInput(pasted)
+      if (token === null) return 'invalid'
+      try {
+        await api.openSession(token)
+      } catch (error) {
+        return error instanceof ApiError && error.status === 401 ? 'rejected' : 'failed'
+      }
+      update((s) => ({ ...s, unauthorized: false, accounts: null, setup: null, loadError: null }))
+      await this.start()
+      // The session was accepted but the next calls still say no (the browser refused the cookie): not a success.
+      return state.unauthorized ? 'failed' : 'ok'
+    },
     get state(): AppState {
       return state
     },
@@ -166,6 +184,8 @@ export function createController(options: ControllerOptions) {
         failed(error)
       }
       await Promise.all([refreshAccounts(), loadSetup()])
+      // Only one stream at a time: a second start (a fast repeated sign-in) replaces the first instead of doubling it.
+      stream?.close()
       stream = connectEvents(
         options.createEventSource,
         {

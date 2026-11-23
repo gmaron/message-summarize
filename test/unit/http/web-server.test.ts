@@ -10,6 +10,7 @@ import { createWebServer, MAX_BODY_BYTES, type WebServer } from '../../../src/in
 import { until } from '../../support/cli-harness.js'
 
 const TOKEN = 'A'.repeat(43)
+const SESSION_SECRET = 'S'.repeat(43)
 const NOT_BUILT = { title: 'Title', message: 'The web is not built <yet>' }
 
 interface Reply {
@@ -60,7 +61,15 @@ interface Setup {
 }
 
 async function setup(
-  options: { withStatic?: boolean; host?: string; heartbeatMs?: number; allowedHosts?: readonly string[] } = {},
+  options: {
+    withStatic?: boolean
+    host?: string
+    heartbeatMs?: number
+    allowedHosts?: readonly string[]
+    sessionSecret?: string
+    token?: string
+    now?: () => number
+  } = {},
 ): Promise<Setup> {
   const root = mkdtempSync(join(tmpdir(), 'msum-web-'))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
@@ -77,7 +86,9 @@ async function setup(
     host: options.host ?? '127.0.0.1',
     ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
     port: 0,
-    token: TOKEN,
+    token: options.token ?? TOKEN,
+    sessionSecret: options.sessionSecret ?? SESSION_SECRET,
+    ...(options.now === undefined ? {} : { now: options.now }),
     routes,
     events: bus,
     staticDir,
@@ -148,46 +159,125 @@ describe('authentication (RNF-03)', () => {
     expect(reply.headers['cache-control']).toBe('no-store')
   })
 
-  it('POST /api/session sets an HttpOnly SameSite=Strict cookie with a random session secret, never the token', async () => {
-    const s = await setup()
-    const reply = await s.call({
+  const login = (s: Setup, headers: Record<string, string> = {}, token = TOKEN) =>
+    s.call({
       method: 'POST',
       path: '/api/session',
-      headers: json,
-      body: JSON.stringify({ token: TOKEN }),
+      headers: { ...json, ...headers },
+      body: JSON.stringify({ token }),
     })
+
+  it('POST /api/session sets an HttpOnly SameSite=Strict cookie that lasts 30 days and is never the token', async () => {
+    const s = await setup()
+    const reply = await login(s)
     expect(reply.status).toBe(200)
     const cookie = String(reply.headers['set-cookie']?.[0])
-    expect(cookie).toMatch(/^msum_session=[A-Za-z0-9_-]{43}; HttpOnly; SameSite=Strict; Path=\/$/)
+    expect(cookie).toMatch(/^msum_session=\d+\.[A-Za-z0-9_-]{43}; Max-Age=2592000; HttpOnly; SameSite=Strict; Path=\/$/)
     expect(cookie).not.toContain(TOKEN)
+    expect(cookie).not.toContain(SESSION_SECRET)
     const pair = cookie.split(';')[0] as string
     expect((await s.call({ path: '/api/ping', headers: { Cookie: `other=1; ${pair}` } })).status).toBe(200)
-    // each session is its own secret
-    const second = await s.call({
-      method: 'POST',
-      path: '/api/session',
-      headers: json,
-      body: JSON.stringify({ token: TOKEN }),
-    })
-    expect(String(second.headers['set-cookie']?.[0]).split(';')[0]).not.toBe(pair)
-    // the master token in a cookie is not a session, and a made-up secret is not either
+    // the master token in a cookie is not a session, and a made-up value is not either
     expect((await s.call({ path: '/api/ping', headers: { Cookie: `msum_session=${TOKEN}` } })).status).toBe(401)
     expect((await s.call({ path: '/api/ping', headers: { Cookie: `msum_session=${'B'.repeat(43)}` } })).status).toBe(
       401,
     )
   })
 
-  it('a restarted server does not know the sessions of the previous one', async () => {
-    const first = await setup()
-    const reply = await first.call({
-      method: 'POST',
-      path: '/api/session',
-      headers: json,
-      body: JSON.stringify({ token: TOKEN }),
+  describe('session expiry and format', () => {
+    const START = 1_800_000_000_000
+    const DAY = 24 * 60 * 60 * 1000
+    const cookieOf = async (s: Setup): Promise<string> =>
+      String((await login(s)).headers['set-cookie']?.[0]).split(';')[0] as string
+    const ping = (s: Setup, pair: string) => s.call({ path: '/api/ping', headers: { Cookie: pair } })
+
+    it('accepts a valid cookie, also exactly 30 days later, and refuses it 30 days and a second later', async () => {
+      let now = START
+      const s = await setup({ now: () => now })
+      const pair = await cookieOf(s)
+      expect((await ping(s, pair)).status).toBe(200)
+      now = START + 30 * DAY
+      expect((await ping(s, pair)).status).toBe(200)
+      now = START + 30 * DAY + 1000
+      expect((await ping(s, pair)).status).toBe(401)
     })
-    const pair = String(reply.headers['set-cookie']?.[0]).split(';')[0] as string
+
+    it('refuses a cookie dated in the future beyond the skew, and accepts a small skew', async () => {
+      let now = START
+      const s = await setup({ now: () => now })
+      const pair = await cookieOf(s)
+      now = START - 4 * 60 * 1000
+      expect((await ping(s, pair)).status).toBe(200)
+      now = START - 6 * 60 * 1000
+      expect((await ping(s, pair)).status).toBe(401)
+    })
+
+    it('refuses a tampered issuedAt (a later date does not extend the session)', async () => {
+      let now = START
+      const s = await setup({ now: () => now })
+      const [issuedAt, mac] = ((await cookieOf(s)).split('=')[1] as string).split('.') as [string, string]
+      now = START + 31 * DAY
+      expect((await ping(s, `msum_session=${Number(issuedAt) + 31 * 86400}.${mac}`)).status).toBe(401)
+    })
+
+    it('refuses malformed and old-format cookies without failing', async () => {
+      const s = await setup({ now: () => START })
+      const mac = (await cookieOf(s)).split('.')[1] as string
+      const issuedAt = String(START / 1000)
+      for (const value of [
+        '',
+        'abc',
+        mac,
+        `.${mac}`,
+        `${issuedAt}.`,
+        `${issuedAt}.${mac}.x`,
+        `x${issuedAt}.${mac}`,
+        `${issuedAt}.${mac.slice(1)}`,
+        `${issuedAt}.${'A'.repeat(43)}`,
+        `${'9'.repeat(40)}.${mac}`,
+        `-1.${mac}`,
+      ]) {
+        expect((await ping(s, `msum_session=${value}`)).status).toBe(401)
+      }
+    })
+
+    it('gives a different value to sign-ins at different times', async () => {
+      let now = START
+      const s = await setup({ now: () => now })
+      const first = await cookieOf(s)
+      expect(await cookieOf(s)).toBe(first)
+      now += 1000
+      const second = await cookieOf(s)
+      expect(second).not.toBe(first)
+      expect((await ping(s, first)).status).toBe(200)
+      expect((await ping(s, second)).status).toBe(200)
+    })
+  })
+
+  it('a restarted server with the same persisted secret accepts the cookie of the previous run', async () => {
+    const first = await setup()
+    const pair = String((await login(first)).headers['set-cookie']?.[0]).split(';')[0] as string
+    await first.server.stop()
     const second = await setup()
-    expect((await second.call({ path: '/api/ping', headers: { Cookie: pair } })).status).toBe(401)
+    expect((await second.call({ path: '/api/ping', headers: { Cookie: pair } })).status).toBe(200)
+  })
+
+  it('a different session secret (the file was deleted) or a different token ends every session', async () => {
+    const first = await setup()
+    const pair = String((await login(first)).headers['set-cookie']?.[0]).split(';')[0] as string
+    const otherSecret = await setup({ sessionSecret: 'T'.repeat(43) })
+    expect((await otherSecret.call({ path: '/api/ping', headers: { Cookie: pair } })).status).toBe(401)
+    const otherToken = await setup({ token: 'C'.repeat(43) })
+    expect((await otherToken.call({ path: '/api/ping', headers: { Cookie: pair } })).status).toBe(401)
+  })
+
+  it('marks the cookie Secure only when the request came from an https origin', async () => {
+    const s = await setup({ allowedHosts: ['mi-equipo'] })
+    const secure = await login(s, { Host: 'mi-equipo', Origin: 'https://mi-equipo' })
+    expect(String(secure.headers['set-cookie']?.[0])).toMatch(/; Path=\/; Secure$/)
+    const plain = await login(s, { Origin: `http://127.0.0.1:${s.port}` })
+    expect(String(plain.headers['set-cookie']?.[0])).not.toContain('Secure')
+    expect(String((await login(s)).headers['set-cookie']?.[0])).not.toContain('Secure')
   })
 
   it('POST /api/session answers 401 for a wrong token, a missing one and a body that is not an object', async () => {
@@ -518,6 +608,7 @@ describe('start', () => {
       host: '127.0.0.1',
       port: s.port,
       token: TOKEN,
+      sessionSecret: SESSION_SECRET,
       routes: [],
       events: new EventBus(),
       staticDir: s.staticDir,

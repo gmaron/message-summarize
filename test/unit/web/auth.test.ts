@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { consumeToken } from '../../../src/interfaces/web/lib/auth.js'
+import { consumeToken, tokenFromInput } from '../../../src/interfaces/web/lib/auth.js'
 import { fakeFetch } from './support.js'
 
 function setup(hash: string, answers: Parameters<typeof fakeFetch>[0]) {
@@ -43,5 +43,27 @@ describe('consumeToken', () => {
     expect(broken.replaced).toEqual(['/?x=1'])
     const odd = setup('#token=x', { 'POST /api/session': { status: 500 } })
     expect(await consumeToken(odd.env)).toBe('failed')
+  })
+})
+
+describe('tokenFromInput', () => {
+  const TOKEN = `${'aB3_-xYz'.repeat(5)}abc`
+  it('takes the token as pasted, with or without blanks around it', () => {
+    expect(tokenFromInput(TOKEN)).toBe(TOKEN)
+    expect(tokenFromInput(`  ${TOKEN}\n`)).toBe(TOKEN)
+  })
+
+  it('takes the token out of a whole link', () => {
+    expect(tokenFromInput(`https://mi-equipo.ts.net/#token=${TOKEN}`)).toBe(TOKEN)
+    expect(tokenFromInput(` http://127.0.0.1:8787/#token=${TOKEN} \n`)).toBe(TOKEN)
+    expect(tokenFromInput(`#token=${TOKEN}`)).toBe(TOKEN)
+    expect(tokenFromInput(`token=${TOKEN}`)).toBe(TOKEN)
+    expect(tokenFromInput(`https://h/?x=1#a=b&token=${TOKEN}&c=d`)).toBe(TOKEN)
+  })
+
+  it('answers null for anything that cannot be a token', () => {
+    for (const text of ['', '   ', 'two words', 'a b', 'https://h/#token=', 'https://h/', 'tok<en>', "x'y", 'ñandú']) {
+      expect(tokenFromInput(text), text).toBeNull()
+    }
   })
 })

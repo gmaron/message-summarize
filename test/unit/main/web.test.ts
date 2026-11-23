@@ -9,7 +9,7 @@ import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
 import { acquireLinkLock } from '../../../src/main/link-lock.js'
 import { browserCommand } from '../../../src/main/open-url.js'
 import { readWebAddress, writeWebAddress } from '../../../src/main/web-address.js'
-import { ensureWebToken } from '../../../src/main/web-token.js'
+import { ensureWebSession, ensureWebToken } from '../../../src/main/web-token.js'
 import { disposeHarnesses, type Harness, ME, makeHarness, until, waitFor } from '../../support/cli-harness.js'
 import { allowNetwork } from '../../support/network-guard.js'
 
@@ -151,6 +151,33 @@ describe('msum daemon: the local web (RF-01, RNF-03)', () => {
     expect(await finished).toBe(0)
     expect(h.logs.join('')).not.toContain(secret)
     expect([...h.out, ...h.err].join('\n')).not.toContain(secret)
+  })
+
+  it('keeps the session secret on disk (0600), reuses it, and the cookie follows it and never reaches the logs', async () => {
+    const h = await makeHarness({ config: BASE })
+    const secret = await ensureWebSession(h.layout)
+    const { finished, port } = await startDaemon(h)
+    expect(readFileSync(h.layout.webSessionFile, 'utf8').trim()).toBe(secret)
+    if (process.platform !== 'win32') expect(statSync(h.layout.webSessionFile).mode & 0o777).toBe(0o600)
+    const reply = await fetch(`http://127.0.0.1:${port}/api/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token(h) }),
+    })
+    const cookie = (reply.headers.get('set-cookie') ?? '').split(';')[0] as string
+    expect(reply.headers.get('set-cookie')).toContain('Max-Age=2592000')
+    const withCookie = await fetch(`http://127.0.0.1:${port}/api/accounts`, { headers: { Cookie: cookie } })
+    expect(withCookie.status).toBe(200)
+    h.shutdown()
+    expect(await finished).toBe(0)
+    expect(h.logs.join('')).not.toContain(secret)
+    expect([...h.out, ...h.err].join('\n')).not.toContain(secret)
+    // the value issued at sign-in (and its MAC alone) never reaches the logs or the output either
+    const value = cookie.split('=')[1] as string
+    expect(value).toMatch(/^\d+\.[A-Za-z0-9_-]{43}$/)
+    const everything = [h.logs.join(''), ...h.out, ...h.err].join('\n')
+    expect(everything).not.toContain(value)
+    expect(everything).not.toContain(value.split('.')[1] as string)
   })
 
   it('creates the token when the daemon starts for the first time', async () => {

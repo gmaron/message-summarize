@@ -6,6 +6,10 @@ Mientras corre, el daemon sirve una página local. Esta guía explica qué se pu
 
 - Por defecto está en `http://127.0.0.1:8787`. Se configura con la opción `web` del `config.json` de la instalación: `port`, `host`, `enabled`.
 - `msum open` la abre con la sesión ya iniciada. La dirección lleva un token de acceso, generado una sola vez en el directorio de datos (`web-token`): no la compartas.
+- El token no cambia hasta que se borre `web-token` (y se reinicie el daemon: se genera uno nuevo). La sesión del navegador dura 30 días y sobrevive a los reinicios del daemon (actualizaciones, reinicios de la máquina): el secreto de las sesiones está en `web-session`, en el mismo directorio de datos, y la cookie nunca lleva el token.
+- Para cortar todas las sesiones a la vez, borrá `web-session` (o `web-token`) y reiniciá el daemon. Borrar solo `web-token` también las corta y además cambia el enlace.
+- Quien no tiene terminal puede entrar sin el enlace: la pantalla "Falta el acceso" tiene un campo donde se pega el token o el enlace completo y un botón "Entrar". La página no guarda lo que se pega.
+- Por `https` (por ejemplo detrás de `tailscale serve`, con el nombre en `web.allowedHosts`) la cookie lleva además `Secure`; por `http://127.0.0.1` no.
 - Escucha solo en esta máquina. Otro `host` (por ejemplo `0.0.0.0` dentro de Docker, publicando el puerto solo en `127.0.0.1`) es una elección explícita.
 - Detrás de un proxy inverso que reenvía el nombre por el que se llegó (por ejemplo `tailscale serve`), la web responde 403 a ese nombre, porque solo acepta IPs y los nombres de loopback. `web.allowedHosts` en el `config.json` de la instalación (vacío por defecto) lista los nombres que sí acepta, sin esquema ni puerto: `"allowedHosts": ["mi-equipo", "mi-equipo.mi-red.ts.net"]`. Un nombre listado se acepta sin puerto y su `Origin` también por `https`; el token sigue siendo obligatorio y cualquier otro nombre sigue dando 403.
 

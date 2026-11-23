@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { WebErrorCode } from '../../infrastructure/i18n/index.js'
@@ -12,8 +12,10 @@ export const MAX_BODY_BYTES = 64 * 1024
 export const DEFAULT_HEARTBEAT_MS = 25_000
 /** After this long a stop closes the connections that did not finish by themselves. */
 const STOP_FORCE_MS = 100
-/** Sessions kept in memory; opening one more drops the oldest. */
-const MAX_SESSIONS = 20
+/** How long the cookie of a session lasts in the browser: 30 days. */
+export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+/** A cookie issued this far in the future (a clock that moved back) is still refused. */
+const SESSION_SKEW_SECONDS = 5 * 60
 
 /** What the server needs to say about its own trouble. The composition root passes its logger. */
 export interface WebLogger {
@@ -27,6 +29,14 @@ export interface WebServerOptions {
   /** 0 asks the system for a free port (tests). */
   readonly port: number
   readonly token: string
+  /**
+   * A random secret kept in the data directory (`web-session`), so a session survives a restart of the daemon. The cookie
+   * holds `<issuedAt>.<HMAC(sessionSecret, token|issuedAt)>`: it follows both files, deleting either one ends every
+   * session, it never holds the token itself, and the server refuses it 30 days after `issuedAt`.
+   */
+  readonly sessionSecret: string
+  /** The clock, in milliseconds since the epoch (tests move it). */
+  readonly now?: () => number
   /** The routes under `/api`. Every one needs the token; `POST /api/session` and `GET /api/events` are built in. */
   readonly routes: readonly Route[]
   readonly events: EventSource
@@ -119,15 +129,33 @@ function parseJson(body: Buffer): unknown {
  * The local web server (RNF-03), on plain `node:http`. Static files (the shell of the single-page app, which holds no
  * data) are public; nothing under `/api` is: it needs the token, as `Authorization: Bearer` or as the `msum_session`
  * cookie that `POST /api/session` sets. The cookie does not hold the token itself (cookies are not scoped to a port, so
- * it would go to every server on this address) but a random session secret kept in memory until the daemon restarts. Requests for a `Host` we do not expect (DNS rebinding) and state-changing
+ * it would go to every server on this address) but a value derived from it and from a persisted random secret, valid
+ * for 30 days (the server checks the date it holds) and across restarts of the daemon. Requests for a `Host` we do not expect (DNS rebinding) and state-changing
  * requests whose `Origin` is foreign (CSRF) are refused before anything else.
  */
 export function createWebServer(options: WebServerOptions): WebServer {
   const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
   /** Open SSE streams, each with the function that detaches it from the bus and the heartbeat. */
   const streams = new Map<ServerResponse, () => void>()
-  /** The secrets the cookies hold: random, per run of the daemon, so the master token never travels in a cookie. */
-  const sessions: string[] = []
+  const now = options.now ?? Date.now
+  const macOf = (issuedAt: string): string =>
+    createHmac('sha256', options.sessionSecret).update(`${options.token}|${issuedAt}`).digest('base64url')
+  /** A fresh cookie value: derived from the token and the persisted secret, so the master token never travels in a cookie. */
+  const issueSession = (): string => {
+    const issuedAt = String(Math.floor(now() / 1000))
+    return `${issuedAt}.${macOf(issuedAt)}`
+  }
+  /** Strict: `<digits>.<base64url>`, the right MAC (constant time) and an age between -skew and the maximum. */
+  const sessionValid = (value: string): boolean => {
+    const match = /^(\d{1,15})\.([A-Za-z0-9_-]{43})$/.exec(value)
+    if (match === null) return false
+    const [, issuedAt, mac] = match as unknown as [string, string, string]
+    const expected = Buffer.from(macOf(issuedAt))
+    const given = Buffer.from(mac)
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return false
+    const age = Math.floor(now() / 1000) - Number(issuedAt)
+    return age <= SESSION_MAX_AGE_SECONDS && age >= -SESSION_SKEW_SECONDS
+  }
   let stopping: Promise<void> | null = null
   let bound = options.port
 
@@ -136,9 +164,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     if (bearer !== null && tokensMatch(bearer[1] as string, options.token)) return true
     const cookie = cookieValue(req.headers.cookie, SESSION_COOKIE)
     if (cookie === null) return false
-    let found = false
-    for (const session of sessions) if (tokensMatch(cookie, session)) found = true
-    return found
+    return sessionValid(cookie)
   }
 
   const allowedHosts = options.allowedHosts ?? []
@@ -186,14 +212,16 @@ export function createWebServer(options: WebServerOptions): WebServer {
     const body = parseJson(raw)
     const given = typeof body === 'object' && body !== null ? (body as { token?: unknown }).token : undefined
     if (typeof given !== 'string' || !tokensMatch(given, options.token)) return sendError(res, 401, 'unauthorized')
-    const session = randomBytes(32).toString('base64url')
-    sessions.push(session)
-    if (sessions.length > MAX_SESSIONS) sessions.shift()
+    // Over https (a reverse proxy such as `tailscale serve`; the Origin was already checked) the cookie is Secure too.
+    // Plain http on loopback gets none, which a browser would not keep.
+    const secure = req.headers.origin?.startsWith('https:') === true ? '; Secure' : ''
     sendJson(
       res,
       200,
       { ok: true },
-      { 'Set-Cookie': `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/` },
+      {
+        'Set-Cookie': `${SESSION_COOKIE}=${issueSession()}; Max-Age=${SESSION_MAX_AGE_SECONDS}; HttpOnly; SameSite=Strict; Path=/${secure}`,
+      },
     )
   }
 
