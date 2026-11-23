@@ -108,6 +108,7 @@ export const webEs: WebTexts = {
     invalidPort: 'Tiene que ser un número de puerto entre 1 y 65535.',
     invalidHostName: 'Tiene que ser una lista de nombres de host sin esquema, puerto ni barra.',
     belowMinimum: 'Demasiado chico: el mínimo es 1048576 bytes (1 MB).',
+    outOfRange: 'Tiene que ser un número entero dentro de los límites permitidos (ver la guía de transcripción).',
     invalidUrl: 'Tiene que ser una dirección http o https absoluta (por ejemplo http://127.0.0.1:11434).',
     concurrentEdit: 'El archivo cambió mientras se guardaba: no se escribió nada. Probá de nuevo.',
     installationOnly: 'Esta opción solo se puede definir en el config.json del directorio de datos.',

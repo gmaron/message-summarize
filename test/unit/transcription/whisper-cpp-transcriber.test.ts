@@ -61,6 +61,16 @@ describe.skipIf(process.platform === 'win32')('WhisperCppTranscriber', () => {
       expect(whisperCall).toContain('-nt -np -otxt -of ')
     })
 
+    it('runs every whisper process with one thread by default and with `threads` when set (-t)', async () => {
+      const fake = install()
+      const audio = fake.audio('voice.ogg', 'hello')
+      await make(fake).transcribe({ audioPath: audio, language: 'es' })
+      await make(fake, { threads: 4 }).transcribe({ audioPath: audio, language: 'es' })
+      const [first, second] = fake.whisperCalls()
+      expect(first).toMatch(/(^| )-t 1( |$)/)
+      expect(second).toMatch(/(^| )-t 4( |$)/)
+    })
+
     it('FORCES the input format from the file (never guessed from the bytes): one exact command line per format', async () => {
       const fake = install()
       const demuxers: [string, string][] = [

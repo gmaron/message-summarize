@@ -38,7 +38,7 @@ export interface CaptureMessagesDeps {
    * read on every event. Content events of these conversations are dropped.
    */
   readonly ownConversationIds: () => readonly string[]
-  /** RF-15: audios from history older than this many days are not downloaded. Default 14. */
+  /** RF-15: audios from history older than this many days are not downloaded. Default 14; 0 means no limit. */
   readonly audioHistoryDays?: number
 }
 
@@ -157,7 +157,9 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       }
       const { isNew, hasTranscript, mediaHandled } = await repository.insertMessage(message, { isGroup }, effect)
 
-      const recent = origin === 'live' || message.timestamp >= clock.now() - audioHistoryDays * DAY_MS
+      // `audioHistoryDays` 0 means no limit: every audio of the history is wanted.
+      const recent =
+        origin === 'live' || audioHistoryDays === 0 || message.timestamp >= clock.now() - audioHistoryDays * DAY_MS
       return {
         stored: true,
         isNew,

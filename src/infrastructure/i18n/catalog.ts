@@ -77,6 +77,7 @@ export type WebConfigIssueCode =
   | 'invalidPort'
   | 'invalidHostName'
   | 'belowMinimum'
+  | 'outOfRange'
   | 'invalidUrl'
   | 'concurrentEdit'
   | 'installationOnly'
@@ -269,6 +270,7 @@ export interface Catalog {
       invalidPort(option: string): string
       invalidHostName(option: string): string
       belowMinimum(option: string): string
+      outOfRange(option: string, min: string, max: string): string
       invalidUrl(option: string): string
       readonly concurrentEdit: string
       /** An option of the installation's config.json that an account's file cannot set. */
