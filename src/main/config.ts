@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
+import { type AskHint, MAX_ASK_HINT_TERMS, MAX_ASK_HINT_TEXT_CHARS, MAX_ASK_HINTS } from '../domain/ask-hints.js'
 import { exactIdOf } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
@@ -142,8 +143,17 @@ export interface TranscriptionConfig {
   readonly language: string
   /** Total time for one audio. */
   readonly timeoutMs: number
-  /** RF-15: audios of the history sync from the last N days are downloaded too (older ones stay untranscribed). */
+  /**
+   * RF-15: audios of the history sync from the last N days are downloaded too (older ones stay untranscribed). 0 means no
+   * limit: every audio of the history is downloaded and transcribed.
+   */
   readonly historyAudioDays: number
+  /** Transcriptions that run at once, each one a separate whisper process (1..16, default 1). */
+  readonly concurrency: number
+  /** Threads (`-t`) of each whisper process (1..64, default 1). Together with `concurrency`: the CPUs used. */
+  readonly threads: number
+  /** Audio downloads that run at once (1..16, default 2). */
+  readonly downloadConcurrency: number
   /** The most the downloaded audios of an account may take together, in MB. Past it new downloads are refused. */
   readonly maxMediaMb: number
 }
@@ -179,9 +189,16 @@ export interface AppConfig {
   readonly timezone: string
   readonly digest: DigestSettings
   readonly localOnlyPatterns: readonly string[]
+  /** Context of the owner added to the prompt of an Ask when the question mentions its words (never to the digest). */
+  readonly askHints: readonly AskHint[]
   /** Path of a custom prompt template, read on every digest (RF-38). */
   readonly promptFile: string | null
   readonly concurrency: number
+  /**
+   * Opt-in, owner-approved exception to RNF-17: link with `syncFullHistory: true`, so the phone sends its whole history
+   * when the device is linked (it only affects what history arrives at link time). Default false.
+   */
+  readonly fullHistoryOnLink: boolean
   /** Cron expressions (RF-60). */
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
@@ -207,6 +224,8 @@ export type ConfigIssueCode =
   | 'invalidHostName'
   /** A number under the smallest accepted (`logs.maxBytes`). */
   | 'belowMinimum'
+  /** A whole number outside its limits; `allowed` holds the smallest and the largest. */
+  | 'outOfRange'
   /** Not an absolute http(s) URL. */
   | 'invalidUrl'
   /** The account file changed while it was being updated (the writer gave up). */
@@ -240,8 +259,10 @@ const TOP_LEVEL = new Set([
   'flagUnsaved',
   'hideRest',
   'localOnlyPatterns',
+  'askHints',
   'promptFile',
   'concurrency',
+  'fullHistoryOnLink',
   'schedules',
   'provider',
   'transcription',
@@ -257,6 +278,9 @@ const TRANSCRIPTION_KEYS = new Set([
   'timeoutMs',
   'historyAudioDays',
   'maxMediaMb',
+  'concurrency',
+  'threads',
+  'downloadConcurrency',
 ])
 const PROVIDER_KEYS = new Set([
   'primary',
@@ -288,6 +312,10 @@ const INSTALLATION_ONLY = ['web', 'logs'] as const
 
 /** Lists an account can only add to (see `mergeConfigJson`). */
 const UNIONED_LISTS = ['localOnlyPatterns', 'excludePatterns'] as const
+
+export const MAX_TRANSCRIPTION_CONCURRENCY = 16
+export const MAX_TRANSCRIPTION_THREADS = 64
+export const MAX_DOWNLOAD_CONCURRENCY = 16
 
 export type Obj = Record<string, unknown>
 function isHttpUrl(value: string): boolean {
@@ -358,6 +386,37 @@ export function parseConfig(
     if (v.some((p: string) => exactIdOf(p) === '')) return add(key, 'emptyIdPattern')
     return [...(v as string[])]
   }
+  /** `askHints`: a list of `{ when: [words], text }`. Each problem names the entry, e.g. `askHints[1].when`. */
+  const parseAskHints = (): readonly AskHint[] | undefined => {
+    const v = input.askHints
+    if (v === undefined) return []
+    if (!Array.isArray(v)) return add('askHints', 'notArray')
+    if (v.length > MAX_ASK_HINTS) return add('askHints', 'tooManyHints')
+    const hints: AskHint[] = []
+    let valid = true
+    v.forEach((entry: unknown, index) => {
+      const path = `askHints[${index}]`
+      if (!isObject(entry) || Object.keys(entry).some((key) => key !== 'when' && key !== 'text')) {
+        valid = false
+        add(path, 'invalidHint')
+        return
+      }
+      const { when, text } = entry
+      let whenOk = false
+      if (!Array.isArray(when) || when.some((t) => typeof t !== 'string')) add(`${path}.when`, 'notStringList')
+      else if (when.length === 0 || when.some((t: string) => t.trim() === '')) add(`${path}.when`, 'emptyHintWhen')
+      else if (when.length > MAX_ASK_HINT_TERMS) add(`${path}.when`, 'tooManyHintTerms')
+      else whenOk = true
+      let textOk = false
+      if (typeof text !== 'string') add(`${path}.text`, 'notString')
+      else if (text.trim() === '') add(`${path}.text`, 'emptyHintText')
+      else if (text.length > MAX_ASK_HINT_TEXT_CHARS) add(`${path}.text`, 'hintTextTooLong')
+      else textOk = true
+      if (whenOk && textOk) hints.push({ when: [...(when as string[])], text: text as string })
+      else valid = false
+    })
+    return valid ? hints : undefined
+  }
   const choice = (obj: Obj, key: string, path: string, allowed: readonly string[]): string | null | undefined => {
     const v = obj[key]
     // Absent or null: not chosen (`msum init` writes null for the provider, which has no default).
@@ -412,8 +471,15 @@ export function parseConfig(
   })()
 
   const localOnlyPatterns = patterns('localOnlyPatterns')
+  const askHints = parseAskHints()
   const promptFile = text(input, 'promptFile', 'promptFile')
   const concurrency = positiveInt(input, 'concurrency', 'concurrency', DEFAULT_CONCURRENCY)
+
+  const fullHistoryOnLink = ((): boolean | undefined => {
+    const v = input.fullHistoryOnLink
+    if (v === undefined) return false
+    return typeof v === 'boolean' ? v : add('fullHistoryOnLink', 'notBoolean')
+  })()
 
   const schedules = ((): readonly string[] | undefined => {
     const v = input.schedules
@@ -561,7 +627,45 @@ export function parseConfig(
     'transcription.timeoutMs',
     DEFAULT_TRANSCRIPTION_TIMEOUT_MS,
   )
-  const historyAudioDays = positiveInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
+  const rangedInt = (
+    obj: Obj,
+    key: string,
+    path: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number | undefined => {
+    const v = nonNegativeInt(obj, key, path, fallback)
+    if (v === undefined) return undefined
+    if (v < min || v > max) return add(path, 'outOfRange', [String(min), String(max)])
+    return v
+  }
+  // 0: no limit, the whole history.
+  const historyAudioDays = nonNegativeInt(transcriptionObj, 'historyAudioDays', 'transcription.historyAudioDays', 14)
+  const transcriptionConcurrency = rangedInt(
+    transcriptionObj,
+    'concurrency',
+    'transcription.concurrency',
+    1,
+    1,
+    MAX_TRANSCRIPTION_CONCURRENCY,
+  )
+  const transcriptionThreads = rangedInt(
+    transcriptionObj,
+    'threads',
+    'transcription.threads',
+    1,
+    1,
+    MAX_TRANSCRIPTION_THREADS,
+  )
+  const downloadConcurrency = rangedInt(
+    transcriptionObj,
+    'downloadConcurrency',
+    'transcription.downloadConcurrency',
+    2,
+    1,
+    MAX_DOWNLOAD_CONCURRENCY,
+  )
   const maxMediaMb = positiveInt(transcriptionObj, 'maxMediaMb', 'transcription.maxMediaMb', 500)
 
   const webObj = section(input, 'web', 'web', WEB_KEYS)
@@ -619,6 +723,7 @@ export function parseConfig(
     language === undefined ||
     timezone === undefined ||
     localOnlyPatterns === undefined ||
+    askHints === undefined ||
     promptFile === undefined ||
     concurrency === undefined ||
     schedules === undefined ||
@@ -654,6 +759,7 @@ export function parseConfig(
     genericTimeout === undefined ||
     genericAcknowledged === undefined ||
     genericCommand === undefined ||
+    fullHistoryOnLink === undefined ||
     transcriptionEnabled === undefined ||
     whisperCommand === undefined ||
     ffmpegCommand === undefined ||
@@ -661,6 +767,9 @@ export function parseConfig(
     transcriptionLanguage === undefined ||
     transcriptionTimeout === undefined ||
     historyAudioDays === undefined ||
+    transcriptionConcurrency === undefined ||
+    transcriptionThreads === undefined ||
+    downloadConcurrency === undefined ||
     maxMediaMb === undefined ||
     webEnabled === undefined ||
     webHost === undefined ||
@@ -675,8 +784,10 @@ export function parseConfig(
     timezone,
     digest: settings.value,
     localOnlyPatterns,
+    askHints,
     promptFile,
     concurrency,
+    fullHistoryOnLink,
     schedules,
     provider: {
       primary,
@@ -716,6 +827,9 @@ export function parseConfig(
       timeoutMs: transcriptionTimeout,
       historyAudioDays,
       maxMediaMb,
+      concurrency: transcriptionConcurrency,
+      threads: transcriptionThreads,
+      downloadConcurrency,
     },
     web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort, allowedHosts: webAllowedHosts },
     logs: { maxBytes: logsMaxBytes },
@@ -939,6 +1053,8 @@ function describeIssueText(catalog: Catalog, issue: ConfigIssue): string {
       return texts.invalidHostName(issue.option)
     case 'belowMinimum':
       return texts.belowMinimum(issue.option)
+    case 'outOfRange':
+      return texts.outOfRange(issue.option, issue.allowed?.[0] ?? '1', issue.allowed?.[1] ?? '')
     case 'installationOnly':
       return texts.installationOnly(issue.option)
     case 'invalidUrl':
@@ -957,12 +1073,15 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
     timezone,
     excludePatterns: [],
     localOnlyPatterns: [],
+    askHints: [],
     defaultWindowHours: 24,
     maxCharsPerConversation: 24000,
     unreadOnly: false,
     flagUnsaved: false,
     hideRest: false,
     concurrency: DEFAULT_CONCURRENCY,
+    // Opt-in (RNF-17 exception): ask the phone for its whole history when the account is linked. See docs/guides.
+    fullHistoryOnLink: false,
     // No "schedules": the times of the digests are set with `msum schedule add` (they live in the database).
     provider: {
       // RF-41: there is no default provider. Set "claude-cli", "ollama", "openai", "anthropic" or "gemini" here. The

@@ -173,6 +173,9 @@ export class SqliteConversationPurge {
   /** Deletes the messages and the row of the conversation. Returns how many messages went. */
   purge(id: string): number {
     return inTransaction(this.db, () => {
+      // Reactions and poll votes belong to the conversation (the details of a message go with it, by cascade).
+      this.db.prepare('DELETE FROM reactions WHERE conversation_id = ?').run(id)
+      this.db.prepare('DELETE FROM poll_votes WHERE conversation_id = ?').run(id)
       const messages = this.db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id)
       this.db.prepare('DELETE FROM conversations WHERE id = ?').run(id)
       return Number(messages.changes)

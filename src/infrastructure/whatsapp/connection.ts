@@ -5,11 +5,11 @@ import type { CaptureMessages } from '../../application/capture-messages.js'
 import { createDownloadAudios, type DownloadAudios, type DownloadOutcome } from '../../application/download-audios.js'
 import type { Clock } from '../../application/ports/clock.js'
 import type { AudioDownloader, DownloadQueue } from '../../application/ports/download-queue.js'
-import { err } from '../../domain/result.js'
+import { err, ok } from '../../domain/result.js'
 import { getCatalog, type Language } from '../i18n/index.js'
-import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher } from './media.js'
+import { type AudioDescriptor, type AudioFetcher, classifyFailure, createAudioFetcher, statusOf } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
-import { createTranslator } from './translate.js'
+import { type CaptureCounters, createTranslator, type WarningDetail } from './translate.js'
 import type {
   WaChat,
   WaContact,
@@ -58,6 +58,10 @@ export interface HistorySyncProgress {
 export type HistorySyncListener = (progress: HistorySyncProgress) => void
 
 /**
+ * NOTE: this constant only decides when the LINK wait is over (the progress and completion events below). The capture of
+ * the history is NOT filtered by it: `messaging-history.set` of every sync type goes through the translator, so a full
+ * history (`fullHistoryOnLink`) is stored whole.
+ *
  * Baileys' `HistorySyncType.RECENT` (3): the history that WhatsApp sends when a device is linked (`syncFullHistory` is
  * off). It is the only type that counts for the progress: in `Socket/chats.js` Baileys emits `messaging-history.status`
  * `complete` for RECENT when progress 100 arrives (explicit) or `paused` after 120 s without chunks (inferred), and
@@ -96,6 +100,12 @@ export interface WhatsAppSocket {
    * would be a message out (RNF-17): such an audio is an error.
    */
   openAudio(descriptor: AudioDescriptor): Promise<Readable>
+  /**
+   * Asks the owner's OWN phone to upload an audio again, because the server forgot it (RF-15). Answers with the new
+   * `directPath`. Sends nothing to a third party: see `requestAudioReupload` in baileys-socket.ts. Absent on a socket that
+   * cannot do it. Rejects with a Boom whose status is 404 when the phone does not have the file either.
+   */
+  requestAudioReupload?(request: AudioReuploadRequest): Promise<string>
   readonly signalRepository?: {
     readonly lidMapping?:
       | {
@@ -105,6 +115,17 @@ export interface WhatsAppSocket {
         }
       | undefined
   }
+}
+
+/** What it takes to ask the phone to upload a media again: the key of the message and the media it holds. */
+export interface AudioReuploadRequest {
+  readonly key: {
+    readonly remoteJid: string
+    readonly id: string
+    readonly fromMe: boolean
+    readonly participant: string | null
+  }
+  readonly descriptor: AudioDescriptor
 }
 
 export interface SocketSession {
@@ -118,11 +139,45 @@ export interface SocketSession {
 }
 
 /** Creates a socket (and its authentication state) for one connection attempt. Baileys lives behind it. */
-export type SocketFactory = (options: { readonly authDir: string }) => Promise<SocketSession>
+export type SocketFactory = (options: {
+  readonly authDir: string
+  /** Ask the phone for its whole history when the device is linked (`fullHistoryOnLink`). Default false. */
+  readonly fullHistory?: boolean
+}) => Promise<SocketSession>
+
+/**
+ * How the history sync goes, in counts only (never content or ids). One per `messaging-history.set` chunk, whatever its
+ * `syncType` (INITIAL_BOOTSTRAP, RECENT, FULL, ON_DEMAND, PUSH_NAME...): nothing is filtered out of the capture.
+ * `chunks`, `messages` and `chats` are totals since the connection object was made.
+ */
+export interface HistoryProgressReport {
+  readonly syncType: number | null
+  readonly progress: number | null
+  readonly isLatest: boolean | null
+  readonly chunks: number
+  readonly messages: number
+  readonly chats: number
+}
 
 export interface BackoffPolicy {
   readonly baseMs: number
   readonly maxMs: number
+}
+
+/** How long `stop()` waits for events the timeout abandoned (history chunks are never abandoned). */
+const ABANDONED_STOP_WAIT_MS = 60_000
+
+/** A queued event that has not settled after this long is abandoned so the ones behind it are not held forever. */
+export const EVENT_TIMEOUT_MS = 30_000
+const HISTORY_SET_EVENT = 'messaging-history.set'
+/** How often the capture counters are reported while connected (and only when they changed). */
+export const STATS_INTERVAL_MS = 60_000
+
+/** The counter of each event the connection listens to (fixed names, because the daemon logs them). */
+const EVENT_COUNTERS: Readonly<Record<string, string>> = {
+  'messages.upsert': 'evMessagesUpsert',
+  'messaging-history.set': 'evHistorySet',
+  'messages.update': 'evMessagesUpdate',
 }
 
 export const DEFAULT_BACKOFF: BackoffPolicy = { baseMs: 1_000, maxMs: 60_000 }
@@ -134,11 +189,27 @@ export interface WhatsAppConnectionOptions {
   readonly clock: Clock
   readonly ownIds: OwnConversationIds
   readonly socketFactory: SocketFactory
+  /** `fullHistoryOnLink` of the account: the socket is made with `syncFullHistory: true`. Default false. */
+  readonly fullHistory?: boolean
+  /** Told after every stored chunk of history, with counts only. */
+  readonly onHistoryProgress?: (report: HistoryProgressReport) => void
+  /** Messages that arrived without content (could not be decrypted), at most once per `undecryptableWindowMs`: the count. */
+  readonly onUndecryptable?: (count: number) => void
+  /** Default 60 s. Test seam. */
+  readonly undecryptableWindowMs?: number
   /** The stored name of a conversation (from the capture repository), so a group is asked about only if unnamed. */
   readonly storedConversationName?: (conversationId: string) => Promise<string | null | undefined>
   readonly backoff?: BackoffPolicy
   /** A fixed code for something that went wrong inside the adapter. Never chat content, never a secret. */
-  readonly onWarning?: (code: string) => void
+  readonly onWarning?: (code: string, detail?: WarningDetail) => void
+  /** Counts of what the adapter received, stored and dropped. Called while connected, only when they changed. */
+  readonly onStats?: (stats: CaptureCounters) => void
+  /** Default 30 s. Test seam. */
+  readonly eventTimeoutMs?: number
+  /** Default 10 s. Test seam. */
+  readonly slowStepMs?: number
+  /** Default 60 s. Test seam. */
+  readonly statsIntervalMs?: number
   /**
    * RF-15: download the audios the capture asks for (live ones, and those of the history within the configured days)
    * into `mediaDir`, from the DURABLE download queue `queue` (the database), one at a time. Without it no audio is
@@ -159,6 +230,11 @@ export interface WhatsAppConnectionOptions {
     readonly maxDirBytes?: number
     /** Transient failures of one audio before it fails for good. Default 5. */
     readonly maxAttempts?: number
+    /** Downloads that run at once. Default 1. */
+    readonly concurrency?: number
+    /** Downloaded files waiting for a transcriber: no new download while it is at `maxAwaiting` or more. */
+    readonly awaiting?: () => Promise<number>
+    readonly maxAwaiting?: number
     /** Called after a file was stored: the transcription queue can start. */
     readonly onDownloaded?: () => void
     /** Told about every download attempt (a fixed word), for logs. */
@@ -216,7 +292,7 @@ export class WhatsAppConnection {
   private readonly translator
   private fetcher: AudioFetcher | null = null
   private worker: DownloadAudios | null = null
-  private activeDownload: AbortController | null = null
+  private readonly activeDownloads = new Set<AbortController>()
   private session: SocketSession | null = null
   private detach: (() => void) | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -225,8 +301,16 @@ export class WhatsAppConnection {
   private running = false
   private loggedOut = false
   private readonly settling: Promise<void>[] = []
+  /** Events past the timeout whose work is still running. `stop()` waits for them. */
+  private readonly abandoned = new Set<Promise<void>>()
   private queue: Promise<void> = Promise.resolve()
   private readonly backoff: BackoffPolicy
+  private readonly counters: Record<string, number> = {}
+  private statsTimer: ReturnType<typeof setInterval> | null = null
+  private lastStats = '{}'
+  private historyChunks = 0
+  private historyMessageTotal = 0
+  private historyChatTotal = 0
 
   constructor(private readonly options: WhatsAppConnectionOptions) {
     this.backoff = options.backoff ?? DEFAULT_BACKOFF
@@ -255,6 +339,9 @@ export class WhatsAppConnection {
       clock: options.clock,
       ownIds: options.ownIds,
       ...(options.onWarning === undefined ? {} : { onWarning: options.onWarning }),
+      ...(options.slowStepMs === undefined ? {} : { slowStepMs: options.slowStepMs }),
+      ...(options.onUndecryptable === undefined ? {} : { onUndecryptable: options.onUndecryptable }),
+      ...(options.undecryptableWindowMs === undefined ? {} : { undecryptableWindowMs: options.undecryptableWindowMs }),
       resolvePhoneNumber: async (lid) => this.session?.socket.signalRepository?.lidMapping?.getPNForLID(lid),
       resolveLid: async (phone) => this.session?.socket.signalRepository?.lidMapping?.storedLidForPN?.(phone),
       onAlias: async (a, b) => {
@@ -361,6 +448,23 @@ export class WhatsAppConnection {
   }
 
   /** Stops for good: no reconnection, no listeners on the socket, the connection closed, pending events done. */
+  private async waitAbandoned(): Promise<void> {
+    const deadline = Date.now() + ABANDONED_STOP_WAIT_MS
+    while (this.abandoned.size > 0) {
+      const left = deadline - Date.now()
+      if (left <= 0) return
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([
+        Promise.all([...this.abandoned]),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, left)
+          timer.unref?.()
+        }),
+      ])
+      clearTimeout(timer)
+    }
+  }
+
   async stop(): Promise<void> {
     this.running = false
     this.generation++
@@ -368,6 +472,10 @@ export class WhatsAppConnection {
     this.release()
     this.setStatus({ state: 'stopped' })
     await this.queue
+    // Work abandoned by the event timeout is still running: wait for it, so the database is not closed under it, but not
+    // forever: an event that never settles would hold the stop. History chunks are never abandoned (they are in the
+    // queue, awaited above with no limit), so what is given up here is at most part of one live event.
+    await this.waitAbandoned()
     // The download in progress is aborted (stream destroyed, partial file removed) and its audio stays in the durable
     // queue, to be downloaded after the next start. When this returns nothing of the account is open and nothing will
     // write to its database (it is closed next). A fresh worker is ready if the connection is started again.
@@ -397,25 +505,57 @@ export class WhatsAppConnection {
         // Without a connection nothing can be downloaded: not the fault of the audio, so it is not counted.
         if (this.session === null) return err({ kind: 'unavailable', reason: 'not-connected' })
         const controller = new AbortController()
-        this.activeDownload = controller
+        this.activeDownloads.add(controller)
         try {
+          const { directPath, mediaKey, mimetype, fileLength } = item.descriptor
           const result = await fetcher.fetch(
-            item.descriptor,
+            { directPath, mediaKey, mimetype, fileLength },
             { conversationId: item.conversationId, messageId: item.messageId },
             controller.signal,
           )
           return result.ok ? result : err({ kind: classifyFailure(result.error), reason: result.error })
         } finally {
-          if (this.activeDownload === controller) this.activeDownload = null
+          this.activeDownloads.delete(controller)
         }
       },
-      abort: () => this.activeDownload?.abort(),
+      canRequestReupload: () => this.session?.socket.requestAudioReupload !== undefined,
+      requestReupload: async (item) => {
+        const session = this.session
+        const request = session?.socket.requestAudioReupload
+        const key = item.descriptor.reuploadKey
+        // Nothing to ask with: the audio fails as it did before this existed.
+        if (session === null || request === undefined) return err({ kind: 'unavailable', reason: 'not-connected' })
+        if (key === undefined) return err({ kind: 'permanent', reason: 'expired' })
+        try {
+          const directPath = await request.call(session.socket, {
+            key: { remoteJid: key.remoteJid, id: item.messageId, fromMe: key.fromMe, participant: key.participant },
+            descriptor: item.descriptor,
+          })
+          return ok(directPath)
+        } catch (error) {
+          // A connection that went away meanwhile is not the fault of the audio.
+          if (this.session === null) return err({ kind: 'unavailable', reason: 'not-connected' })
+          // The phone answered that it does not have the file either: it will not come back.
+          if (statusOf(error) === 404) return err({ kind: 'permanent', reason: 'expired' })
+          return err({
+            kind: 'transient',
+            reason: (error as Error).message === 'timeout' ? 'timeout' : 'reupload-failed',
+          })
+        }
+      },
+      abort: () => {
+        for (const controller of [...this.activeDownloads]) controller.abort()
+      },
     }
     return createDownloadAudios({
       queue: media.queue,
       downloader,
       clock: this.options.clock,
+      wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
       ...(media.maxAttempts === undefined ? {} : { maxAttempts: media.maxAttempts }),
+      ...(media.concurrency === undefined ? {} : { concurrency: media.concurrency }),
+      ...(media.awaiting === undefined ? {} : { awaiting: media.awaiting }),
+      ...(media.maxAwaiting === undefined ? {} : { maxAwaiting: media.maxAwaiting }),
       ...(media.onDownloaded === undefined ? {} : { onDownloaded: media.onDownloaded }),
       ...(media.onOutcome === undefined ? {} : { onOutcome: media.onOutcome }),
     })
@@ -436,6 +576,8 @@ export class WhatsAppConnection {
 
   private setStatus(status: WhatsAppStatus): void {
     this.current = status
+    if (status.state === 'connected') this.startStats()
+    else this.stopStats()
     for (const listener of [...this.listeners]) {
       try {
         listener(status)
@@ -458,7 +600,7 @@ export class WhatsAppConnection {
     this.session = null
     // A download in progress belongs to the connection that is going away: it is aborted (stream destroyed, partial file
     // removed) and its audio stays in the durable queue.
-    this.activeDownload?.abort()
+    for (const controller of [...this.activeDownloads]) controller.abort()
     if (session === null) return
     this.settling.push(session.settle().catch(() => this.options.onWarning?.('settle-failed')))
     try {
@@ -474,7 +616,10 @@ export class WhatsAppConnection {
     this.setStatus({ state: 'connecting' })
     let session: SocketSession
     try {
-      session = await this.options.socketFactory({ authDir: this.options.authDir })
+      session = await this.options.socketFactory({
+        authDir: this.options.authDir,
+        ...(this.options.fullHistory === true ? { fullHistory: true } : {}),
+      })
     } catch {
       if (generation !== this.generation) return
       this.running = false
@@ -504,7 +649,8 @@ export class WhatsAppConnection {
     const on = <T>(event: string, handler: (data: T) => void | Promise<void>): void => {
       const listener = (data: T): void => {
         if (generation !== this.generation) return
-        this.enqueue(() => handler(data))
+        this.count(EVENT_COUNTERS[event] ?? 'evOther')
+        this.enqueue(event, () => handler(data))
       }
       subscriptions.push([event, listener as (data: never) => void])
       ev.on(event, listener as (data: never) => void)
@@ -533,6 +679,7 @@ export class WhatsAppConnection {
     on<WaHistorySet>('messaging-history.set', async (data) => {
       await translator.historySet(data)
       const { syncType, progress } = data
+      this.reportHistory(data)
       if (syncType === HISTORY_SYNC_RECENT && typeof progress === 'number' && Number.isFinite(progress)) {
         const percent = Math.min(100, Math.max(0, Math.round(progress)))
         // Only the percent of a chunk that is stored is shown. At 100 the last chunk is in: that is half of "complete".
@@ -570,8 +717,103 @@ export class WhatsAppConnection {
     }
   }
 
-  private enqueue(work: () => void | Promise<void>): void {
-    this.queue = this.queue.then(work).catch(() => this.options.onWarning?.('event-failed'))
+  private count(name: string): void {
+    this.counters[name] = (this.counters[name] ?? 0) + 1
+  }
+
+  /**
+   * Events run one at a time. One that does not settle within the timeout is abandoned from the queue (it no longer
+   * holds the later events) but NOT forgotten: its promise is kept in `abandoned` and `stop()` waits for it, so the
+   * database is never closed under work that is still writing. The warning names the event and nothing else.
+   *
+   * `messaging-history.set` is exempt from the timeout: a chunk of a full history can hold tens of thousands of messages
+   * and take minutes, and abandoning it would let stop() close the database under it and lose the rest of the chunk. It
+   * is awaited as long as it takes; after the timeout it only warns once (`event-slow`) so that it is visible.
+   */
+  private enqueue(event: string, work: () => void | Promise<void>): void {
+    const limit = this.options.eventTimeoutMs ?? EVENT_TIMEOUT_MS
+    const exempt = event === HISTORY_SET_EVENT
+    this.queue = this.queue
+      .then(() => {
+        const running = Promise.resolve().then(work)
+        return new Promise<void>((resolve, reject) => {
+          let over = false
+          const timer = setTimeout(() => {
+            over = true
+            if (exempt) {
+              this.options.onWarning?.('event-slow', { wsEvent: event })
+              return
+            }
+            this.count('eventTimeout')
+            this.options.onWarning?.('event-timeout', { wsEvent: event })
+            const tracked: Promise<void> = running
+              .then(
+                () => undefined,
+                () => undefined,
+              )
+              .finally(() => this.abandoned.delete(tracked))
+            this.abandoned.add(tracked)
+            resolve()
+          }, limit)
+          timer.unref?.()
+          running.then(
+            () => {
+              clearTimeout(timer)
+              resolve()
+            },
+            (error: unknown) => {
+              clearTimeout(timer)
+              if (over && !exempt) return
+              reject(error)
+            },
+          )
+        })
+      })
+      .catch(() => {
+        this.count('eventFailed')
+        this.options.onWarning?.('event-failed')
+      })
+  }
+
+  /** Counts of a stored chunk of history (every sync type), for the log. Never content. */
+  private reportHistory({ syncType, progress, isLatest, messages, chats }: WaHistorySet): void {
+    this.historyChunks++
+    this.historyMessageTotal += messages?.length ?? 0
+    this.historyChatTotal += chats?.length ?? 0
+    try {
+      this.options.onHistoryProgress?.({
+        syncType: typeof syncType === 'number' ? syncType : null,
+        progress: typeof progress === 'number' && Number.isFinite(progress) ? progress : null,
+        isLatest: typeof isLatest === 'boolean' ? isLatest : null,
+        chunks: this.historyChunks,
+        messages: this.historyMessageTotal,
+        chats: this.historyChatTotal,
+      })
+    } catch {
+      this.options.onWarning?.('history-listener-failed')
+    }
+  }
+
+  /** The counters of the adapter and of its translator. Numbers only. */
+  stats(): CaptureCounters {
+    return { ...this.counters, ...this.translator.stats() }
+  }
+
+  private startStats(): void {
+    if (this.statsTimer !== null || this.options.onStats === undefined) return
+    this.statsTimer = setInterval(() => {
+      const snapshot = this.stats()
+      const text = JSON.stringify(snapshot)
+      if (text === this.lastStats) return
+      this.lastStats = text
+      this.options.onStats?.(snapshot)
+    }, this.options.statsIntervalMs ?? STATS_INTERVAL_MS)
+    this.statsTimer.unref?.()
+  }
+
+  private stopStats(): void {
+    if (this.statsTimer !== null) clearInterval(this.statsTimer)
+    this.statsTimer = null
   }
 
   private onConnectionUpdate(

@@ -50,7 +50,8 @@ function setup(options: { summarizer?: Summarizer; ownConversationIds?: () => re
     source,
     summarizer,
     renderers,
-    systemPrompt: (question, owner) => `ASK[${question}] for ${owner ?? 'nobody'}`,
+    systemPrompt: (question, owner, hints) =>
+      `ASK[${question}] for ${owner ?? 'nobody'}${hints.length === 0 ? '' : ` HINTS[${hints.join('|')}]`}`,
     contactStatus: (status) => `STATUS[${status}]`,
     ...(options.ownConversationIds === undefined ? {} : { ownConversationIds: options.ownConversationIds }),
   })
@@ -91,6 +92,32 @@ describe('AskChats: the request', () => {
     await run(request({ question: long, settings: settings({ ownerName: 'Lucía' }) }))
     const prompt = (summarizer as FakeSummarizer).calls[0]?.systemPrompt
     expect(prompt).toBe(`ASK[${'q'.repeat(MAX_QUESTION_CHARS)}] for Lucía`)
+  })
+
+  it('adds the texts of the hints that the question mentions, only those, in order', async () => {
+    const { source, summarizer, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez')
+    const askHints = [
+      { when: ['encargo', 'encargos'], text: 'An encargo is a custom cake order.' },
+      { when: ['turno'], text: 'A turno is a pickup slot.' },
+      { when: ['Cumpleaños'], text: 'Birthdays need a candle.' },
+    ]
+    await run(request({ question: 'qué ENCARGOS hay para el cumpleanos de Ana', askHints }))
+    await run(request({ question: 'qué dijo Ana', askHints }))
+    await run(request({ question: 'qué encargo y turno hay', askHints }))
+    const prompts = (summarizer as FakeSummarizer).calls.map((c) => c.systemPrompt)
+    expect(prompts[0]).toBe(
+      'ASK[qué ENCARGOS hay para el cumpleanos de Ana] for nobody HINTS[An encargo is a custom cake order.|Birthdays need a candle.]',
+    )
+    expect(prompts[1]).toBe('ASK[qué dijo Ana] for nobody')
+    expect(prompts[2]).toContain('HINTS[An encargo is a custom cake order.|A turno is a pickup slot.]')
+  })
+
+  it('matches the hints against the cleaned question', async () => {
+    const { source, summarizer, run } = setup()
+    addChat(source, '9911963367943', 'Ana Gómez')
+    await run(request({ question: ' qué\n\u0000encargo ', askHints: [{ when: ['qué encargo'], text: 'H' }] }))
+    expect((summarizer as FakeSummarizer).calls[0]?.systemPrompt).toContain('HINTS[H]')
   })
 
   it('calls the summarizer once per conversation with its id, name and transcript', async () => {

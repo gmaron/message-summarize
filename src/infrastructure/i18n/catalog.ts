@@ -77,6 +77,7 @@ export type WebConfigIssueCode =
   | 'invalidPort'
   | 'invalidHostName'
   | 'belowMinimum'
+  | 'outOfRange'
   | 'invalidUrl'
   | 'concurrentEdit'
   | 'installationOnly'
@@ -188,6 +189,13 @@ export interface Catalog {
     copies(count: number): string
     /** Shown instead of the text of a message that has none (RF-10). */
     readonly kinds: Readonly<Record<MessageKind, string>>
+    /**
+     * Prefix of the line of a reply to a status of the owner. `what` is the kind of the status and its text, already put
+     * together ("image «holiday»"), or null when nothing of it is known.
+     */
+    replyToStatus(what: string | null): string
+    /** Prefix of the line of a reply to a message; `excerpt` is the short quoted text. */
+    replyTo(excerpt: string): string
   }
 
   /** Texts the capture adapters put into stored messages (RF-10, RF-11). */
@@ -196,8 +204,14 @@ export interface Catalog {
     readonly editedPrefix: string
     /** Name of a document that has none, inside the text of a document message (legacy "sin nombre"). */
     readonly unnamedDocument: string
+    /** The text stored for a message of a type that is not handled: `name` is the protocol's fixed field name. */
+    otherType(name: string): string
     /** Label of a message that shares several contacts (the singular is `transcript.kinds.contact`). */
     readonly contacts: string
+    /** Text of a WhatsApp Business order; `total` is already formatted with its currency, null when unknown. */
+    order(items: number | null, total: string | null): string
+    /** Text of a WhatsApp Business product; `price` is already formatted with its currency, null when unknown. */
+    product(title: string | null, price: string | null): string
   }
 
   readonly digest: {
@@ -214,8 +228,11 @@ export interface Catalog {
 
   /** The free requests of the owner over the chats (the "Ask" tab of the web). */
   readonly ask: {
-    /** The system prompt of one conversation for a request: the cleaned question and the owner name. */
-    systemPrompt(question: string, ownerName: string): string
+    /**
+     * The system prompt of one conversation for a request: the cleaned question, the owner name and the texts of the
+     * owner's hints that apply to the question (none: the prompt has no section for them).
+     */
+    systemPrompt(question: string, ownerName: string, hints: readonly string[]): string
     /** One line before the transcript of a chat: whether the contact is in the owner's address book, or that it is a group. */
     contactStatus(status: 'saved' | 'unsaved' | 'group'): string
   }
@@ -266,6 +283,7 @@ export interface Catalog {
       invalidPort(option: string): string
       invalidHostName(option: string): string
       belowMinimum(option: string): string
+      outOfRange(option: string, min: string, max: string): string
       invalidUrl(option: string): string
       readonly concurrentEdit: string
       /** An option of the installation's config.json that an account's file cannot set. */
@@ -433,6 +451,7 @@ export interface Catalog {
     }
     readonly link: {
       alreadyLinked(id: string, account: string): string
+      fullHistoryNeedsDaemon(id: string): string
       scanQr(qrFile: string): string
       readonly connected: string
       readonly receivingHistory: string

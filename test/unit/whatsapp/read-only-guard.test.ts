@@ -52,10 +52,22 @@ const code = (source: string): string =>
 const SEND_FILE = 'baileys-socket.ts'
 const SEND_FUNCTION = /async function sendTextToSelf\([^)]*\)[^{]*\{\n([\s\S]*?)\n\}\n/
 
+/**
+ * The ONE other allowance (RF-15): `updateMediaMessage`, Baileys' media retry, may appear in the body of the function
+ * `requestAudioReupload` of baileys-socket.ts. It asks the account's OWN phone to upload an old audio again (a receipt to
+ * the own JID): nothing goes to a third party. It is cut out of the code like the sender.
+ */
+const REUPLOAD_FUNCTION = /async function requestAudioReupload\([\s\S]*?\n\): Promise<string> \{\n([\s\S]*?)\n\}\n/
+
 function splitAllowedSender(source: string): { rest: string; body: string | null } {
   const match = SEND_FUNCTION.exec(code(source))
-  if (match === null) return { rest: code(source), body: null }
-  return { rest: code(source).replace(SEND_FUNCTION, ''), body: match[1] ?? '' }
+  const rest = code(source).replace(REUPLOAD_FUNCTION, '')
+  if (match === null) return { rest, body: null }
+  return { rest: rest.replace(SEND_FUNCTION, ''), body: match[1] ?? '' }
+}
+
+function reuploadBody(source: string): string | null {
+  return REUPLOAD_FUNCTION.exec(code(source))?.[1] ?? null
 }
 
 /**
@@ -111,6 +123,25 @@ describe('the adapter is read only (RNF-17)', () => {
     expect(code(readFileSync(join(dir, SEND_FILE), 'utf-8'))).toMatch(
       /async function sendTextToSelf\(socket: BaileysSocket, text: string\): Promise<void>/,
     )
+  })
+
+  it('updateMediaMessage appears exactly once in the adapter: inside requestAudioReupload, in baileys-socket.ts', () => {
+    const occurrences = files.flatMap((file) => {
+      const count = (code(readFileSync(join(dir, file), 'utf-8')).match(/\bupdateMediaMessage\b/g) ?? []).length
+      return count === 0 ? [] : [`${file}:${count}`]
+    })
+    expect(occurrences).toEqual([`${SEND_FILE}:1`])
+    const body = reuploadBody(readFileSync(join(dir, SEND_FILE), 'utf-8'))
+    expect(body).not.toBeNull()
+    expect((body ?? '').match(/\bupdateMediaMessage\b/g)).toHaveLength(1)
+  })
+
+  it('the re-upload request touches nothing else that sends: no sendMessage, presence, receipts or relay', () => {
+    const body = reuploadBody(readFileSync(join(dir, SEND_FILE), 'utf-8')) ?? ''
+    expect(body).toMatch(/socket\.updateMediaMessage\(message\)/)
+    expect(body).not.toMatch(/\b(sendMessage|sendPresenceUpdate|readMessages|relayMessage|sendReceipt|sendNode)\b/)
+    // The key comes from the request (the message of the owner's own account), and the only thing asked is an audio.
+    expect(body).toMatch(/audioMessage/)
   })
 
   it('sendTextToSelf is named only where it is declared, wrapped and called', () => {

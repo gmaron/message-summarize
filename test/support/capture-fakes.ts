@@ -7,12 +7,23 @@ import type {
   UnreadEffect,
 } from '../../src/application/ports/capture-repository.js'
 import type { DownloadQueue, PendingDownload, RetryOutcome } from '../../src/application/ports/download-queue.js'
-import type { PendingAudio, TimeRange, TranscriptionStore } from '../../src/application/ports/transcription-store.js'
+import type {
+  AudioQueueStats,
+  AudioQueueStatsSource,
+  ClaimOrder,
+  PendingAudio,
+  TimeRange,
+  TranscriptionClaims,
+  TranscriptionStore,
+} from '../../src/application/ports/transcription-store.js'
 import {
   type Conversation,
   MESSAGE_KINDS,
   type Message,
+  type MessageExtras,
   type Participant,
+  type PollVote,
+  type Reaction,
   type UnreadState,
 } from '../../src/domain/model.js'
 import { unmaskedName } from '../../src/domain/names.js'
@@ -23,7 +34,9 @@ import { InMemorySource } from './application-fakes.js'
  * read port. It follows the contract of the port (test/contract/capture-repository.contract.ts), so a use case test
  * cannot pass because this fake is more lenient than the SQLite adapter.
  */
-export class InMemoryCaptureRepository implements CaptureRepository, TranscriptionStore, DownloadQueue {
+export class InMemoryCaptureRepository
+  implements CaptureRepository, TranscriptionStore, TranscriptionClaims, DownloadQueue, AudioQueueStatsSource
+{
   /** Where the data lives, and the read port over it. */
   readonly source = new InMemorySource()
   private readonly editedAt = new Map<string, number>()
@@ -117,12 +130,52 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
     return true
   }
 
+  /** What was stored next to each message (by conversation and id), reactions and poll votes. */
+  readonly extras = new Map<string, MessageExtras>()
+  readonly reactions: Reaction[] = []
+  readonly pollVotes: PollVote[] = []
+
+  async recordReaction(reaction: Reaction, hint: ConversationHint = {}): Promise<void> {
+    this.ensureConversation(reaction.conversationId, hint)
+    const same = (r: Reaction): boolean =>
+      r.conversationId === reaction.conversationId &&
+      r.targetId === reaction.targetId &&
+      r.fromMe === reaction.fromMe &&
+      r.senderId === reaction.senderId
+    const index = this.reactions.findIndex(same)
+    const old = this.reactions[index]
+    if (old !== undefined && old.timestamp > reaction.timestamp) return
+    if (index >= 0) this.reactions.splice(index, 1)
+    if (reaction.emoji !== '') this.reactions.push(reaction)
+  }
+
+  async recordPollVote(vote: PollVote, hint: ConversationHint = {}): Promise<void> {
+    this.ensureConversation(vote.conversationId, hint)
+    this.pollVotes.push(vote)
+  }
+
   async insertMessage(
     message: Message,
     hint: ConversationHint = {},
     effectIfNew: UnreadEffect = 'none',
+    extras?: MessageExtras,
   ): Promise<InsertResult> {
     const isNew = this.upsertRow(message, hint, null)
+    if (extras !== undefined) {
+      const key = this.key(message.conversationId, message.id)
+      this.extras.set(key, { ...this.extras.get(key), ...extras })
+      const quoted = extras.quoted
+      if (quoted != null) {
+        const index = this.indexOf(message.conversationId, message.id)
+        const stored = this.messages[index]
+        if (stored !== undefined) {
+          this.setAt(index, {
+            ...stored,
+            reply: { kind: quoted.kind, text: quoted.text, fromStatus: quoted.fromStatus },
+          })
+        }
+      }
+    }
     if (isNew) await this.applyEffect(message.conversationId, effectIfNew, hint)
     const stored = this.messages[this.indexOf(message.conversationId, message.id)]
     return {
@@ -184,6 +237,11 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
       attempts: number
       /** When a download that failed for a moment is due again (epoch ms). Absent: due now. */
       nextAttemptAt?: number
+      /** True while the phone was asked to upload the media again and the audio waits for that. */
+      needsReupload?: boolean
+      reuploadAttempts?: number
+      /** True while a transcription worker has the audio. */
+      claimed?: boolean
     }
   >()
 
@@ -225,10 +283,15 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
   // ---- DownloadQueue: the durable download queue, over the same data ---------------------------------------------
 
   async nextDownload(now: number): Promise<PendingDownload | null> {
+    return this.peekDownload(now, false)
+  }
+
+  private peekDownload(now: number, needsReupload: boolean): PendingDownload | null {
     let best: { message: Message; descriptor: DownloadDescriptor } | null = null
     for (const message of this.messages) {
       const media = this.media.get(this.key(message.conversationId, message.id))
       if (media?.status !== 'download_pending' || media.descriptor === null) continue
+      if ((media.needsReupload === true) !== needsReupload) continue
       if (media.nextAttemptAt !== undefined && media.nextAttemptAt > now) continue
       if (best === null || message.timestamp < best.message.timestamp) best = { message, descriptor: media.descriptor }
     }
@@ -238,7 +301,74 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
       messageId: best.message.id,
       timestamp: best.message.timestamp,
       descriptor: best.descriptor,
+      reuploadAttempts: this.media.get(this.key(best.message.conversationId, best.message.id))?.reuploadAttempts ?? 0,
     }
+  }
+
+  async claimDownload(now: number, leaseMs: number): Promise<PendingDownload | null> {
+    return this.claimWhere(false, now, leaseMs)
+  }
+
+  async claimReupload(now: number, leaseMs: number): Promise<PendingDownload | null> {
+    return this.claimWhere(true, now, leaseMs)
+  }
+
+  private claimWhere(needsReupload: boolean, now: number, leaseMs: number): PendingDownload | null {
+    const next = this.peekDownload(now, needsReupload)
+    if (next === null) return null
+    const key = this.key(next.conversationId, next.messageId)
+    const media = this.media.get(key)
+    if (media !== undefined) this.media.set(key, { ...media, nextAttemptAt: now + leaseMs })
+    return next
+  }
+
+  async releaseDownload(conversationId: string, messageId: string): Promise<void> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status === 'download_pending') {
+      const { nextAttemptAt: _lease, ...rest } = media
+      this.media.set(key, rest)
+    }
+  }
+
+  async markNeedsReupload(conversationId: string, messageId: string): Promise<boolean> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status !== 'download_pending' || media.descriptor?.reuploadKey === undefined) return false
+    const { nextAttemptAt: _lease, ...rest } = media
+    this.media.set(key, { ...rest, needsReupload: true })
+    return true
+  }
+
+  async completeReupload(conversationId: string, messageId: string, directPath: string): Promise<void> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status !== 'download_pending' || media.descriptor === null) return
+    const { nextAttemptAt: _lease, ...rest } = media
+    this.media.set(key, {
+      ...rest,
+      descriptor: { ...media.descriptor, directPath },
+      needsReupload: false,
+      reuploadAttempts: (media.reuploadAttempts ?? 0) + 1,
+    })
+  }
+
+  async retryReupload(
+    conversationId: string,
+    messageId: string,
+    maxAttempts: number,
+    nextAttemptAt: (attempts: number) => number,
+  ): Promise<RetryOutcome> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status !== 'download_pending') return 'retry'
+    const attempts = (media.reuploadAttempts ?? 0) + 1
+    if (attempts >= maxAttempts) {
+      await this.failDownload(conversationId, messageId, 'expired')
+      return 'failed'
+    }
+    this.media.set(key, { ...media, reuploadAttempts: attempts, nextAttemptAt: nextAttemptAt(attempts) })
+    return 'retry'
   }
 
   async countDownloads(): Promise<number> {
@@ -278,7 +408,7 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
     return 'retry'
   }
 
-  async sweepDownloads(now: number, maxAgeMs: number): Promise<{ invalid: number; expired: number }> {
+  async sweepDownloads(now: number, maxAgeMs: number | null): Promise<{ invalid: number; expired: number }> {
     let invalid = 0
     let expired = 0
     for (const message of this.messages) {
@@ -291,7 +421,7 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
       if (media.descriptor === null || media.descriptor.directPath === '' || media.descriptor.mediaKey.length === 0) {
         fail('invalid-media')
         invalid += 1
-      } else if (message.timestamp < now - maxAgeMs) {
+      } else if (maxAgeMs !== null && message.timestamp < now - maxAgeMs) {
         fail('expired')
         expired += 1
       }
@@ -329,6 +459,55 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
     return this.pendingIn(range).length
   }
 
+  async claimPending(range?: TimeRange, order: ClaimOrder = 'newest'): Promise<PendingAudio | null> {
+    const free = this.pendingIn(range).filter(
+      ({ message }) => this.media.get(this.key(message.conversationId, message.id))?.claimed !== true,
+    )
+    // Ties keep insertion order in the oldest-first list; for newest first the whole list is reversed, like `DESC`.
+    const first = order === 'oldest' ? free[0] : free[free.length - 1]
+    if (first === undefined) return null
+    const key = this.key(first.message.conversationId, first.message.id)
+    const media = this.media.get(key)
+    if (media !== undefined) this.media.set(key, { ...media, claimed: true })
+    return {
+      conversationId: first.message.conversationId,
+      messageId: first.message.id,
+      mediaRef: first.ref,
+      timestamp: first.message.timestamp,
+    }
+  }
+
+  async releaseClaim(conversationId: string, messageId: string): Promise<void> {
+    const key = this.key(conversationId, messageId)
+    const media = this.media.get(key)
+    if (media?.status === 'pending') this.media.set(key, { ...media, claimed: false })
+  }
+
+  async releaseAllClaims(): Promise<number> {
+    let released = 0
+    for (const [key, media] of this.media) {
+      if (media.claimed !== true) continue
+      this.media.set(key, { ...media, claimed: false })
+      released++
+    }
+    return released
+  }
+
+  async audioQueueStats(): Promise<AudioQueueStats> {
+    const all = [...this.media.values()]
+    const count = (status: string): number => all.filter((m) => m.status === status).length
+    const running = all.filter((m) => m.status === 'pending' && m.claimed === true).length
+    const reupload = all.filter((m) => m.status === 'download_pending' && m.needsReupload === true).length
+    return {
+      downloading: count('download_pending') - reupload,
+      pending: count('pending') - running,
+      running,
+      done: count('done'),
+      failed: count('failed'),
+      reuploadRequested: reupload,
+    }
+  }
+
   async complete(conversationId: string, messageId: string, transcript: string): Promise<boolean> {
     const key = this.key(conversationId, messageId)
     const media = this.media.get(key)
@@ -337,14 +516,16 @@ export class InMemoryCaptureRepository implements CaptureRepository, Transcripti
     const old = this.messages[index]
     if (old === undefined) return false
     this.setAt(index, { ...old, transcript })
-    this.media.set(key, { ...media, status: 'done', error: null })
+    this.media.set(key, { ...media, status: 'done', error: null, claimed: false })
     return true
   }
 
   async fail(conversationId: string, messageId: string, reason: string): Promise<void> {
     const key = this.key(conversationId, messageId)
     const media = this.media.get(key)
-    if (media?.status === 'pending') this.media.set(key, { ...media, status: 'failed', error: reason.slice(0, 500) })
+    if (media?.status === 'pending') {
+      this.media.set(key, { ...media, status: 'failed', error: reason.slice(0, 500), claimed: false })
+    }
   }
 
   async markReadThrough(conversationId: string, messageIds: readonly string[]): Promise<void> {

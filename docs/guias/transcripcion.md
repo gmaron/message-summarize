@@ -35,8 +35,11 @@ Con la transcripción desactivada, o si falta whisper, ffmpeg o el modelo, **tod
 | `whisperCommand` | `whisper-cli` | El programa de whisper.cpp (un nombre del `PATH`, o una ruta). |
 | `ffmpegCommand` | `ffmpeg` | El programa ffmpeg. |
 | `timeoutMs` | `300000` | Lo máximo que puede tardar un audio, ffmpeg incluido. Un programa que tarda más se mata. |
-| `historyAudioDays` | `14` | También se descargan y transcriben los audios del historial de los últimos N días. |
+| `historyAudioDays` | `14` | También se descargan y transcriben los audios del historial de los últimos N días. **`0` significa sin límite: todo el historial** (un historial completo puede traer miles de audios; ver [Un historial completo](#un-historial-completo-muchos-audios-en-paralelo)). |
 | `maxMediaMb` | `500` | Lo máximo que pueden ocupar juntos los audios descargados de una cuenta, en MB. |
+| `concurrency` | `1` | Cuántas transcripciones corren a la vez (de 1 a 16), cada una un proceso `whisper-cli` aparte. |
+| `threads` | `1` | Hilos (`-t`) de cada proceso `whisper-cli` (de 1 a 64). |
+| `downloadConcurrency` | `2` | Cuántas descargas de audios corren a la vez (de 1 a 16). |
 
 ## Límites, porque el audio viene de otras personas
 
@@ -46,15 +49,41 @@ Con la transcripción desactivada, o si falta whisper, ffmpeg o el modelo, **tod
 
 ### Nada se pierde por un reinicio
 
-- Los audios por descargar esperan en una cola guardada en la base de la cuenta (con lo necesario para descargar cada uno), y el daemon la recorre de a uno, del más viejo al más nuevo: una primera vinculación con cientos de audios solo tarda, y la memoria guarda un audio a la vez.
+- Los audios por descargar esperan en una cola guardada en la base de la cuenta (con lo necesario para descargar cada uno), y el daemon la recorre del más viejo al más nuevo, hasta `downloadConcurrency` a la vez: una primera vinculación con cientos de audios solo tarda, y la memoria guarda solo los audios que se están descargando.
 - Una descarga cortada por una parada, un reinicio o una conexión caída sigue en la cola y se retoma.
 - Una falla de descarga pasajera se reintenta con espera creciente (30 segundos, luego 1, 2 y 4 minutos: 5 intentos), y después el audio queda registrado como fallido (`download-failed`).
-- Un audio pendiente de más de 30 días se abandona (`expired`), igual que un archivo que WhatsApp ya no tiene. Uno demasiado grande o una carpeta llena fallan en el acto.
+- Un audio pendiente no tiene límite de antigüedad: si WhatsApp ya no tiene su archivo, se le pide de nuevo a tu celular (ver más abajo) y queda registrado como fallido (`expired`) solo si eso no funciona. Uno demasiado grande o una carpeta llena fallan en el acto.
 - La clave para descifrar cada archivo vive solo en esa base mientras espera, y se borra apenas el archivo se guarda o la descarga falla definitivamente; nunca se escribe en los logs.
 
-## Un solo whisper a la vez
+## Cómo se transcriben los audios
 
-**Un solo whisper a la vez en todo el programa,** sin importar cuántas cuentas haya: los audios se transcriben en segundo plano, en orden, a medida que llegan. Justo antes de cada resumen, los audios de su ventana que todavía esperan se transcriben primero, y el resumen los espera como máximo dos minutos: lo que no está listo sale como sin transcribir y se termina después.
+Por defecto **un solo whisper a la vez en todo el programa** (`concurrency: 1`), sin importar cuántas cuentas haya. Con `concurrency` mayor que 1, corren hasta esa cantidad a la vez en todo el programa, cada uno un proceso aparte. Los audios se transcriben en segundo plano, **del más nuevo al más viejo** (lo que acaba de llegar se lee primero), apenas se descargan: no esperan a un resumen. Justo antes de cada resumen, los audios de su ventana que todavía esperan se transcriben primero (del más viejo al más nuevo), y el resumen los espera como máximo dos minutos: lo que no está listo sale como sin transcribir y se termina después.
+
+La cola vive en la base de la cuenta. Cada transcriptor toma el próximo audio pendiente y lo marca en curso en un solo paso, así que dos nunca se llevan el mismo. Si el proceso se detiene, el audio que estaba en curso vuelve a la cola cuando arranca de nuevo, y el trabajo sigue donde estaba.
+
+## Un historial completo: muchos audios, en paralelo
+
+Vincular una cuenta con todo su historial (`historyAudioDays: 0`) puede traer miles de audios. Una configuración para una máquina que tiene que pasar por todos:
+
+```json
+"transcription": {
+  "enabled": true, "model": "large-v3-turbo-q5_0", "language": "es",
+  "historyAudioDays": 0, "concurrency": 8, "threads": 1, "downloadConcurrency": 4
+}
+```
+
+- **CPUs:** alrededor de `concurrency × threads`. Conviene más `concurrency` que `threads`: varios audios a la vez aprovechan mejor la CPU que uno con muchos hilos. Por ejemplo, con 8 CPUs, `concurrency: 8, threads: 1` (o `concurrency: 4, threads: 2`).
+- **RAM:** alrededor de **1 GB por transcripción simultánea** con `large-v3-turbo-q5_0` (así que `concurrency: 10` pide unos 10 GB, más el resto del programa). Con menos RAM, bajá `concurrency`. Si el daemon corre en un contenedor (un sandbox), dale esas CPUs y esa memoria, o el sistema va a matar procesos de whisper.
+- La memoria queda acotada: las descargas y las transcripciones toman filas de la base de a una, nunca la cola entera.
+- Progreso: cada 60 segundos, si cambió, el daemon registra `transcription.stats` con solo cantidades (`pending`, `downloading`, `running`, `done`, `failed`, `reuploadRequested`).
+
+### Audios viejos: se piden de nuevo a tu celular
+
+WhatsApp borra los medios de sus servidores pasadas unas semanas, así que los audios de un historial viejo responden "ya no está" (404 o 410). **Solo para audios**, el programa usa entonces la función estándar de cualquier dispositivo vinculado: le pide a **tu propio celular** que suba el archivo de nuevo (un pedido de reintento de medio dirigido a tu propia cuenta; no le envía nada a nadie más ni toca la conversación). Cuando el celular responde, la descarga sigue.
+
+- Como máximo empieza un pedido cada 2 segundos.
+- Cada audio se pide como máximo 4 veces (con espera creciente de 1, 4 y 16 minutos si el celular no responde); después, o si el celular dice que tampoco tiene el archivo, queda registrado como fallido (`expired`) y se muestra como sin transcribir.
+- El celular tiene que estar prendido y con conexión para responder. Los audios de las últimas semanas no lo necesitan.
 
 ### `msum digest` y el daemon
 

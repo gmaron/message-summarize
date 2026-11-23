@@ -3,12 +3,15 @@ import type { Clock } from '../../application/ports/clock.js'
 import type { Message, UnreadState } from '../../domain/model.js'
 import type { Catalog } from '../i18n/index.js'
 import { type ParsedContent, parseContent, parseEdit, parseEditedBody, toNumber, unwrap } from './content.js'
+import { parseExtras } from './details.js'
 import { addressOf, isBroadcastJid, isGroupJid, isLid, isNewsletterJid, normalizeJid } from './jid.js'
 import { extensionForMimetype, isSafeDirectPath } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
+import { rawValueJson } from './raw.js'
 import type {
   WaChat,
   WaContact,
+  WaContent,
   WaGroup,
   WaHistorySet,
   WaKey,
@@ -61,9 +64,32 @@ export interface TranslatorPorts {
    * downloads anything itself and holds no audio in memory: the queue is the database.
    */
   readonly audio?: { kick(): void }
+  /**
+   * Messages that arrived with no content (the platform could not decrypt them) are counted (`droppedNoMessage`) and
+   * reported through this, at most once per `undecryptableWindowMs`, with how many there were. Never an id.
+   */
+  readonly onUndecryptable?: (count: number) => void
+  /** Default 60 s. Test seam. */
+  readonly undecryptableWindowMs?: number
   /** A failure inside the translation, as a fixed code. It never carries chat content. */
-  readonly onWarning?: (code: 'event-failed' | 'item-failed') => void
+  readonly onWarning?: (code: 'event-failed' | 'item-failed' | 'slow-step', detail?: WarningDetail) => void
+  /** A step that awaits the platform or the capture and takes longer than this is reported as `slow-step`. */
+  readonly slowStepMs?: number
 }
+
+/** What a warning may say besides its code: only fixed words (the name of an event or of a step), never content. */
+export interface WarningDetail {
+  readonly wsEvent?: string
+  readonly step?: string
+}
+
+/** Default time after which an awaited step is reported as slow. */
+export const SLOW_STEP_MS = 10_000
+/** Default window of the report of undecryptable messages. */
+export const UNDECRYPTABLE_WINDOW_MS = 60_000
+
+/** Counts of what the translator saw and did: numbers only, never content or ids. Keys appear once they are counted. */
+export type CaptureCounters = Readonly<Record<string, number>>
 
 /**
  * WhatsApp events into calls to the capture use case (RF-10 to RF-15). PURE with respect to the socket: it receives
@@ -90,6 +116,8 @@ export interface WhatsAppTranslator {
   aliasesOf(id: string): Promise<string[]>
   /** The pairs learned so far, `[lid, phone]`: memory only. */
   knownAliases(): [string, string][]
+  /** A copy of the counters (received, stored, edited, dropped by reason, failed). */
+  stats(): CaptureCounters
 }
 
 interface Located {
@@ -112,12 +140,33 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
 
   const warn = (code: 'event-failed' | 'item-failed'): void => ports.onWarning?.(code)
 
+  const counters: Record<string, number> = {}
+  const count = (name: string, by = 1): void => {
+    counters[name] = (counters[name] ?? 0) + by
+  }
+
+  /**
+   * Awaits one step that depends on the platform (or the capture) and warns, once, if it takes too long. The step is
+   * still awaited: this only makes a hang visible. The warning carries the step's name and nothing else.
+   */
+  async function timed<T>(step: string, work: Promise<T> | undefined): Promise<T | undefined> {
+    if (work === undefined) return undefined
+    const timer = setTimeout(() => ports.onWarning?.('slow-step', { step }), ports.slowStepMs ?? SLOW_STEP_MS)
+    timer.unref?.()
+    try {
+      return await work
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   /** Runs one item of a batch: one bad item never loses the rest, and nothing about it is logged. */
   async function each<T>(items: readonly T[] | null | undefined, work: (item: T) => Promise<void>): Promise<void> {
     for (const item of items ?? []) {
       try {
         await work(item)
       } catch {
+        count('itemFailed')
         warn('item-failed')
       }
     }
@@ -139,7 +188,7 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     lidToPhone.set(normalizedLid, normalizedPhone)
     if (before === normalizedPhone) return
     try {
-      await ports.onAlias?.(normalizedLid, normalizedPhone)
+      await timed('onAlias', Promise.resolve(ports.onAlias?.(normalizedLid, normalizedPhone)))
     } catch {
       // see above
     }
@@ -153,11 +202,13 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     const normalized = normalizeJid(id)
     const found = new Set<string>()
     if (isLid(normalized)) {
-      const phone = lidToPhone.get(normalized) ?? (await ports.resolvePhoneNumber?.(normalized).catch(() => null))
+      const phone =
+        lidToPhone.get(normalized) ??
+        (await timed('resolvePhoneNumber', ports.resolvePhoneNumber?.(normalized)).catch(() => null))
       if (phone) found.add(normalizeJid(phone))
     } else {
       for (const [lid, phone] of lidToPhone) if (phone === normalized) found.add(lid)
-      const lid = await ports.resolveLid?.(normalized).catch(() => null)
+      const lid = await timed('resolveLid', ports.resolveLid?.(normalized)).catch(() => null)
       if (lid) found.add(normalizeJid(lid))
     }
     found.delete(normalized)
@@ -182,7 +233,7 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     }
     const known = lidToPhone.get(normalized)
     if (known !== undefined) return known
-    const resolved = await ports.resolvePhoneNumber?.(normalized).catch(() => null)
+    const resolved = await timed('resolvePhoneNumber', ports.resolvePhoneNumber?.(normalized)).catch(() => null)
     if (resolved) {
       await learn(normalized, resolved)
       return lidToPhone.get(normalized) ?? normalized
@@ -194,9 +245,16 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
 
   /** Where a chat is, or null for what the adapter never captures: status, broadcasts, newsletters, the own chat. */
   async function locate(jid: string | null | undefined, alt?: string | null): Promise<Located | null> {
-    if (!jid || isIgnored(jid)) return null
+    if (!jid) return null
+    if (isIgnored(jid)) {
+      count('ignoredChat')
+      return null
+    }
     const chatJid = await toPhone(jid, alt)
-    if (ownIds.has(chatJid) || ownIds.has(jid)) return null
+    if (ownIds.has(chatJid) || ownIds.has(jid)) {
+      count('ownChat')
+      return null
+    }
     return { chatJid, isGroup: isGroupJid(chatJid) }
   }
 
@@ -207,14 +265,14 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     const known = groupNames.get(chatJid)
     if (known !== undefined) return known
     if (!mayAsk || ports.fetchGroupSubject === undefined) return null
-    const stored = await ports.storedConversationName?.(chatJid).catch(() => null)
+    const stored = await timed('storedConversationName', ports.storedConversationName?.(chatJid)).catch(() => null)
     if (stored) {
       groupNames.set(chatJid, stored)
       return stored
     }
     const failedAt = failedGroupLookups.get(chatJid)
     if (failedAt !== undefined && clock.now() - failedAt < GROUP_LOOKUP_RETRY_MS) return null
-    const subject = await ports.fetchGroupSubject(chatJid).catch(() => null)
+    const subject = await timed('fetchGroupSubject', ports.fetchGroupSubject(chatJid)).catch(() => null)
     if (subject === undefined) return null // could not ask: try again next time
     if (subject) {
       groupNames.set(chatJid, subject)
@@ -230,15 +288,18 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     const previous = announced.get(chatJid)
     if (previous === name || (previous !== undefined && name === null)) return
     announced.set(chatJid, name)
-    await capture.conversationMetadata({
-      conversation: {
-        id: chatJid,
-        isGroup,
-        name,
-        participantId: isGroup ? null : chatJid,
-        address: isGroup ? chatJid : addressOf(chatJid),
-      },
-    })
+    await timed(
+      'capture.conversationMetadata',
+      capture.conversationMetadata({
+        conversation: {
+          id: chatJid,
+          isGroup,
+          name,
+          participantId: isGroup ? null : chatJid,
+          address: isGroup ? chatJid : addressOf(chatJid),
+        },
+      }),
+    )
   }
 
   function rememberChatName(located: Located, name: string | null | undefined): void {
@@ -346,19 +407,110 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     return true
   }
 
+  function dropped(reason: string): void {
+    count(`dropped${reason[0]?.toUpperCase()}${reason.slice(1)}`)
+  }
+
+  // A message with no content could not be decrypted. It is still counted as dropped; the count is also reported, once
+  // per window, so a stream of them is visible in the log without one line each.
+  let undecryptable = 0
+  let undecryptableTimer: ReturnType<typeof setTimeout> | null = null
+  function noteUndecryptable(): void {
+    undecryptable++
+    if (undecryptableTimer !== null || ports.onUndecryptable === undefined) return
+    undecryptableTimer = setTimeout(() => {
+      undecryptableTimer = null
+      const n = undecryptable
+      undecryptable = 0
+      if (n > 0) ports.onUndecryptable?.(n)
+    }, ports.undecryptableWindowMs ?? UNDECRYPTABLE_WINDOW_MS)
+    undecryptableTimer.unref?.()
+  }
+
+  /** A reaction (not a message): stored apart, never shown in a digest. */
+  async function handleReaction(
+    msg: WaMessage,
+    content: WaContent,
+    located: Located,
+    timestamp: number,
+  ): Promise<void> {
+    const reaction = content.reactionMessage
+    const targetId = reaction?.key?.id
+    if (!reaction || !targetId || !msg.key) return dropped('notParsed')
+    const author = await authorOf(msg.key, located, msg.pushName)
+    const conversationName = await conversationNameOf(located, false)
+    await announce(located, conversationName)
+    await timed(
+      'capture.receiveReaction',
+      capture.receiveReaction({
+        isGroup: located.isGroup,
+        conversationName,
+        ...(author.sender === undefined ? {} : { sender: author.sender }),
+        reaction: {
+          conversationId: located.chatJid,
+          targetId,
+          senderId: author.senderId,
+          fromMe: author.fromMe,
+          emoji: reaction.text ?? '',
+          timestamp: toNumber(reaction.senderTimestampMs) ?? timestamp,
+        },
+      }),
+    )
+    count('reactions')
+  }
+
+  /** A vote on a poll: stored as received (encrypted), see the TODO of the `poll_votes` table. */
+  async function handlePollVote(
+    msg: WaMessage,
+    content: WaContent,
+    located: Located,
+    timestamp: number,
+  ): Promise<void> {
+    const update = content.pollUpdateMessage
+    const pollId = update?.pollCreationMessageKey?.id
+    if (!update || !pollId || !msg.key) return dropped('notParsed')
+    const author = await authorOf(msg.key, located, msg.pushName)
+    const conversationName = await conversationNameOf(located, false)
+    await announce(located, conversationName)
+    await timed(
+      'capture.receivePollVote',
+      capture.receivePollVote({
+        isGroup: located.isGroup,
+        conversationName,
+        ...(author.sender === undefined ? {} : { sender: author.sender }),
+        vote: {
+          conversationId: located.chatJid,
+          pollId,
+          senderId: author.senderId,
+          fromMe: author.fromMe,
+          timestamp: toNumber(update.senderTimestampMs) ?? timestamp,
+          raw: rawValueJson(update),
+        },
+      }),
+    )
+    count('pollVotes')
+  }
+
   async function handleMessage(msg: WaMessage, origin: 'live' | 'history'): Promise<void> {
     const key = msg.key
-    if (!key?.remoteJid || !key.id || !msg.message) return
+    if (!key?.remoteJid || !key.id) return dropped('noKey')
+    if (!msg.message) {
+      noteUndecryptable()
+      return dropped('noMessage')
+    }
     const located = await locate(key.remoteJid, key.remoteJidAlt)
-    if (located === null) return
+    if (located === null) return dropped('notLocated')
     const content = unwrap(msg.message)
-    if (content === null) return
+    if (content === null) return dropped('noContent')
     const timestamp = timestampMs(msg.messageTimestamp)
-    if (timestamp === null) return
+    if (timestamp === null) return dropped('noTimestamp')
+
+    if (content.reactionMessage) return handleReaction(msg, content, located, timestamp)
+    if (content.pollUpdateMessage) return handlePollVote(msg, content, located, timestamp)
 
     const edit = parseEdit(content, catalog)
     const parsed = edit?.parsed ?? parseContent(content, catalog)
-    if (parsed === null) return // reactions, protocol messages, key distribution, empty texts
+    if (parsed === null) return dropped('notParsed') // reactions, protocol messages, key distribution, empty texts
 
     const author = await authorOf(key, located, msg.pushName)
     const conversationName = await conversationNameOf(located, origin === 'live')
@@ -373,25 +525,33 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
       // `author` here is the EDITOR (the key of the protocol message), not the author of the original. The edit
       // carries it as the message's sender so the repository can apply the edit only when it matches the original's
       // author (RF-11): a group member cannot rewrite another member's message by referencing its id.
-      if (!firstSightOfEdit(located.chatJid, edit.originalId, author, parsed.text)) return
-      await capture.editMessage({
-        ...context,
-        message: buildMessage(edit.originalId, located, author, timestamp, parsed),
-        editedAt: timestamp,
-      })
+      if (!firstSightOfEdit(located.chatJid, edit.originalId, author, parsed.text)) return dropped('duplicateEdit')
+      await timed(
+        'capture.editMessage',
+        capture.editMessage({
+          ...context,
+          message: buildMessage(edit.originalId, located, author, timestamp, parsed),
+          editedAt: timestamp,
+        }),
+      )
+      count('edited')
       return
     }
-    const outcome = await capture.receiveMessage({
-      ...context,
-      message: buildMessage(key.id, located, author, timestamp, parsed),
-      origin,
-    })
+    const outcome = await timed(
+      'capture.receiveMessage',
+      capture.receiveMessage({
+        ...context,
+        message: buildMessage(key.id, located, author, timestamp, parsed),
+        origin,
+        extras: parseExtras(msg.message, content, catalog),
+      }),
+    )
+    count('stored')
     // The capture decides which audios are wanted: live ones, and those of the history within the configured days.
-    if (outcome.downloadAudio && ports.audio !== undefined) {
-      await requestDownload(
-        msg,
-        { conversationId: located.chatJid, isGroup: located.isGroup, conversationName },
-        key.id,
+    if (outcome?.downloadAudio && ports.audio !== undefined) {
+      await timed(
+        'requestDownload',
+        requestDownload(msg, { conversationId: located.chatJid, isGroup: located.isGroup, conversationName }, key.id),
       )
     }
   }
@@ -422,6 +582,16 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
         mediaKey,
         mimetype: audio.mimetype,
         fileLength: toNumber(audio.fileLength),
+        // What it takes to ask the phone to upload the media again when WhatsApp's servers have forgotten it.
+        ...(msg.key?.remoteJid
+          ? {
+              reuploadKey: {
+                remoteJid: msg.key.remoteJid,
+                fromMe: Boolean(msg.key.fromMe),
+                participant: msg.key.participant ?? null,
+              },
+            }
+          : {}),
       },
     })
     ports.audio?.kick()
@@ -440,12 +610,16 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     if (!firstSightOfEdit(located.chatJid, edit.originalId, author, edit.parsed.text)) return true
     const conversationName = await conversationNameOf(located, true)
     await announce(located, conversationName)
-    await capture.editMessage({
-      isGroup: located.isGroup,
-      conversationName,
-      message: buildMessage(edit.originalId, located, author, editedAt, edit.parsed),
-      editedAt,
-    })
+    await timed(
+      'capture.editMessage',
+      capture.editMessage({
+        isGroup: located.isGroup,
+        conversationName,
+        message: buildMessage(edit.originalId, located, author, editedAt, edit.parsed),
+        editedAt,
+      }),
+    )
+    count('editedByUpdate')
     return true
   }
 
@@ -472,6 +646,8 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     // messages.upsert: whatever its type ('notify', or 'append' for what was delivered while we were offline), it
     // arrived while connected: live, as the previous tool treated it. Only messaging-history.set is history.
     async messagesUpsert({ messages }) {
+      count('upsertBatches')
+      count('upsertMessages', messages?.length ?? 0)
       await each(messages, (msg) => handleMessage(msg, 'live'))
     },
 
@@ -492,6 +668,7 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
           snapshotStartedAt: startedAt,
         })
       })
+      count('historyMessages', messages?.length ?? 0)
       await each(messages, (msg) => handleMessage(msg, 'history'))
     },
 
@@ -564,5 +741,6 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     learnLidMapping: ({ lid, pn }) => learn(lid, pn),
     aliasesOf,
     knownAliases: () => [...lidToPhone],
+    stats: () => ({ ...counters }),
   }
 }

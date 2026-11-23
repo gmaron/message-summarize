@@ -66,6 +66,7 @@ describe('messages.upsert (RF-10)', () => {
       conversationName: null,
       sender: { id: ANA, savedName: null, publicName: 'Ana' },
       origin: 'live',
+      extras: expect.objectContaining({ raw: '{"conversation":"hola"}', quoted: null, forwarded: false }),
       message: {
         id: 'M1',
         conversationId: ANA,
@@ -634,6 +635,7 @@ describe('what the translator never does', () => {
         'learnLidMapping',
         'messagesUpdate',
         'messagesUpsert',
+        'stats',
       ].sort(),
     )
   })

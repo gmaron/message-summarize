@@ -17,7 +17,9 @@ No se envía nada a ningún lado salvo lo que figura en esta guía. No hay telem
 
 ### WhatsApp
 
-Por la conexión de tu propia cuenta (incluida la descarga de los audios que recibís, cuando la transcripción está activada).
+Por la conexión de tu propia cuenta (incluida la descarga de los audios que recibís, cuando la transcripción está activada). Para un audio viejo que los servidores de WhatsApp ya no tienen, el programa le pide a **tu propio celular** que lo suba de nuevo (el pedido estándar de reintento de medio de un dispositivo vinculado, dirigido a tu propia cuenta): no se le envía nada a nadie más.
+
+Con la opción `fullHistoryOnLink` (apagada por defecto) el celular manda **todo** su historial al vincular el dispositivo, en lugar de solo el reciente. Es una excepción elegida por vos al principio de respeto a la plataforma (RNF-17): solo cambia cuánto historial llega al vincular; el cliente sigue sin marcarse "en línea" y sin enviar nada. Todo se guarda en la base de la cuenta, en tu máquina, incluido el contenido original de cada mensaje (`messages.raw`) con los datos para volver a descargar archivos. Más en [la web y las cuentas](web-y-cuentas.md#historial-completo-al-vincular).
 
 ### El proveedor de LLM que elegiste
 

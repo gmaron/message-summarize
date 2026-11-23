@@ -20,7 +20,10 @@ const get = (root: object, path: string): unknown => path.split('.').reduce<unkn
 
 /** Arguments to call each function of the catalog with. A new function without an entry fails the test below. */
 const SAMPLES: Record<string, unknown[][]> = {
-  'ask.systemPrompt': [['What did Ana say?', 'Pao']],
+  'ask.systemPrompt': [
+    ['What did Ana say?', 'Pao', []],
+    ['What did Ana say?', 'Pao', ['An encargo is a custom cake order.']],
+  ],
   'ask.contactStatus': [['saved'], ['unsaved'], ['group']],
   'transcript.header': [
     [true, 'N'],
@@ -30,6 +33,18 @@ const SAMPLES: Record<string, unknown[][]> = {
   'transcript.massMessage': [['E']],
   'transcript.audio': [['T']],
   'transcript.copies': [[1], [2]],
+  'transcript.replyToStatus': [['image «x»'], [null]],
+  'transcript.replyTo': [['x']],
+  'capture.order': [
+    [3, '12.000'],
+    [1, null],
+    [null, null],
+  ],
+  'capture.otherType': [['groupInviteMessage']],
+  'capture.product': [
+    ['Cake', '5.000'],
+    [null, null],
+  ],
   'digest.title': [['P', 'D']],
   'digest.headline': [
     [{ total: 1, unreadOnly: false, since: 'D', needsReply: 1, unsaved: 0 }],
@@ -49,6 +64,12 @@ const SAMPLES: Record<string, unknown[][]> = {
   'errors.settings.notInteger': [['opt']],
   'errors.settings.notBoolean': [['opt']],
   'errors.settings.notObject': [['opt']],
+  'errors.settings.invalidHint': [['opt']],
+  'errors.settings.emptyHintWhen': [['opt']],
+  'errors.settings.emptyHintText': [['opt']],
+  'errors.settings.tooManyHints': [['opt']],
+  'errors.settings.tooManyHintTerms': [['opt']],
+  'errors.settings.hintTextTooLong': [['opt']],
   'cli.argErrors.unknownCommand': [['x']],
   'cli.argErrors.unknownOption': [['--x']],
   'cli.argErrors.missingValue': [['--x']],
@@ -225,6 +246,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   'cli.config.invalidPort': [['web.port']],
   'cli.config.invalidHostName': [['web.allowedHosts']],
   'cli.config.belowMinimum': [['logs.maxBytes']],
+  'cli.config.outOfRange': [['transcription.concurrency', '1', '16']],
   'cli.config.invalidUrl': [['provider.ollama.baseUrl']],
   'cli.config.installationOnly': [['web']],
   'cli.web.listening': [['127.0.0.1', 8787]],
@@ -266,6 +288,7 @@ const SAMPLES: Record<string, unknown[][]> = {
   'cli.blockedReasons.mismatch': [['x']],
   'cli.blockedReasons.noAccount': [['x']],
   'cli.link.alreadyLinked': [['x', 'a']],
+  'cli.link.fullHistoryNeedsDaemon': [['x']],
   'cli.link.scanQr': [['q']],
   'cli.link.done': [['a']],
   'cli.link.failed': [['r']],
@@ -412,7 +435,21 @@ describe('catalogs', () => {
   })
 
   it('have a label for every kind of message', () => {
-    const kinds = ['text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'poll', 'event']
+    const kinds = [
+      'text',
+      'image',
+      'video',
+      'audio',
+      'document',
+      'sticker',
+      'location',
+      'contact',
+      'poll',
+      'event',
+      'order',
+      'product',
+      'other',
+    ]
     for (const catalog of [es, en]) {
       expect(Object.keys(catalog.transcript.kinds).sort()).toEqual([...kinds].sort())
       for (const label of Object.values(catalog.transcript.kinds)) expect(label).toMatch(/^\[.+\]$/)
@@ -443,5 +480,29 @@ describe('catalogs', () => {
     expect(es.digest.title('WhatsApp', 'D')).toBe('Resumen WhatsApp — D')
     expect(es.digest.hiddenRest(2)).toBe('*⚪ El resto:* 2 chats sin nada para vos')
     expect(es.digest.hiddenRest(1)).toBe('*⚪ El resto:* 1 chat sin nada para vos')
+  })
+})
+
+describe('the Ask system prompt', () => {
+  const hints = ['Un encargo es una torta por pedido.']
+  it.each([
+    ['es', es],
+    ['en', en],
+  ])(
+    '(%s) is untouched without hints and puts the owner context before the untrusted text paragraph',
+    (_n, catalog) => {
+      const plain = catalog.ask.systemPrompt('q', 'Pao', [])
+      const withHints = catalog.ask.systemPrompt('q', 'Pao', hints)
+      expect(plain).not.toContain(hints[0] as string)
+      expect(withHints).toContain(`- ${hints[0]}`)
+      const untrusted = withHints.indexOf(
+        catalog === es ? 'El texto de la conversación' : 'The text of the conversation',
+      )
+      expect(withHints.indexOf(hints[0] as string)).toBeLessThan(untrusted)
+      expect(withHints.replace(/\n(Context|Contexto)[^\n]*\n- [^\n]*\n/, '')).toBe(plain)
+    },
+  )
+  it('the Spanish prompt never calls the question "pedido"', () => {
+    expect(es.ask.systemPrompt('q', 'Pao', [])).not.toMatch(/pedido/i)
   })
 })

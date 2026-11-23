@@ -59,7 +59,7 @@ function setup(
 }
 
 describe('the background queue (RF-15)', () => {
-  it('transcribes every pending audio, OLDEST first, and stops when none is left', async () => {
+  it('transcribes every pending audio, NEWEST first, and stops when none is left', async () => {
     const t = setup()
     await audio(t.repo, 'late', 3000)
     await audio(t.repo, 'early', 1000)
@@ -68,9 +68,9 @@ describe('the background queue (RF-15)', () => {
     t.transcription.kick()
     await t.transcription.idle()
     expect(t.transcriber.calls.map((c) => c.audioPath)).toEqual([
-      '/media/early.ogg',
-      '/media/middle.ogg',
       '/media/late.ogg',
+      '/media/middle.ogg',
+      '/media/early.ogg',
     ])
     expect(await transcriptOf(t.repo, 'early')).toBe('text of /media/early.ogg')
     expect(await transcriptOf(t.repo, 'late')).toBe('text of /media/late.ogg')
@@ -137,8 +137,8 @@ describe('the background queue (RF-15)', () => {
 
   it('records a failure for good and goes on with the next audio', async () => {
     const t = setup()
-    await audio(t.repo, 'bad', 1000)
-    await audio(t.repo, 'good', 2000)
+    await audio(t.repo, 'bad', 2000)
+    await audio(t.repo, 'good', 1000)
     t.transcriber.answer = async (r): Promise<Result<string, TranscribeFailure>> =>
       r.audioPath.includes('bad') ? err({ kind: 'failed', reason: 'ffmpeg exited with code 1' }) : ok('fine')
     t.transcription.kick()
@@ -205,7 +205,7 @@ describe('when the transcriber is not available (RF-21)', () => {
   it('a store that fails does not break the loop or leak an error', async () => {
     const t = setup()
     await audio(t.repo, 'a', 1000)
-    t.repo.nextPending = async () => {
+    t.repo.claimPending = async () => {
       throw new Error('database is closed')
     }
     t.transcription.kick()
@@ -347,8 +347,8 @@ describe('what is kept is the text: the audio file goes once its transcription i
 
   it('deletes the file of an audio that failed for good, and of one that timed out', async () => {
     const t = setup()
-    await audio(t.repo, 'bad', 1000)
-    await audio(t.repo, 'slow', 2000)
+    await audio(t.repo, 'bad', 2000)
+    await audio(t.repo, 'slow', 1000)
     t.transcriber.answer = async (r) =>
       r.audioPath.includes('bad') ? err({ kind: 'failed', reason: 'unsupported-format' }) : err({ kind: 'timeout' })
     t.transcription.kick()

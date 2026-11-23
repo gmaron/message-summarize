@@ -565,5 +565,57 @@ export function describeCaptureRepositoryContract(backend: PersistenceBackend): 
         expect(await f.repository.countOtherConversationsWithOwnText('c1', 'nothing')).toBe(0)
       })
     })
+
+    describe('extras, reactions and poll votes', () => {
+      it('shows the reply of a message to the read port, and nothing for one that is not a reply', async () => {
+        const f = make()
+        await f.repository.insertMessage(message({ id: 'a', timestamp: 1 }), {}, 'none', {
+          quoted: { id: 'Q', kind: 'image', text: 'mi torta', fromStatus: true },
+        })
+        await f.repository.insertMessage(message({ id: 'b', timestamp: 2 }), {}, 'none', { raw: '{}', forwarded: true })
+        const [a, b] = await f.source.messagesInWindow('c1', all)
+        expect(a?.reply).toEqual({ kind: 'image', text: 'mi torta', fromStatus: true })
+        expect(b?.reply).toBeUndefined()
+      })
+
+      it('does not change the text, the unread state or the effect of a message', async () => {
+        const f = make()
+        const result = await f.repository.insertMessage(message({ id: 'a' }), {}, 'increment', {
+          raw: '{"conversation":"hello"}',
+          forwarded: true,
+          viewOnce: true,
+        })
+        expect(result.isNew).toBe(true)
+        expect(await texts(f)).toEqual(['hello'])
+        expect(await f.source.unreadState('c1')).toEqual({ kind: 'count', count: 1 })
+      })
+
+      it('keeps reactions apart from the messages: they are never read as messages or counted as unread', async () => {
+        const f = make()
+        await f.repository.insertMessage(message({ id: 'a' }))
+        const reaction = {
+          conversationId: 'c1',
+          targetId: 'a',
+          senderId: 'p1',
+          fromMe: false,
+          emoji: '👍',
+          timestamp: 5,
+        }
+        await f.repository.recordReaction(reaction)
+        await f.repository.recordReaction({ ...reaction, emoji: '' })
+        await f.repository.recordReaction({ ...reaction, conversationId: 'c-new', targetId: 'zz' }, { isGroup: false })
+        expect(await texts(f)).toEqual(['hello'])
+        expect(await f.source.messagesInWindow('c-new', all)).toEqual([])
+        expect(await f.source.unreadState('c1')).toEqual({ kind: 'unknown' })
+      })
+
+      it('accepts a poll vote and a replay of it', async () => {
+        const f = make()
+        const vote = { conversationId: 'c1', pollId: 'P', senderId: 'p1', fromMe: false, timestamp: 5, raw: '{}' }
+        await f.repository.recordPollVote(vote, { isGroup: false })
+        await expect(f.repository.recordPollVote(vote)).resolves.toBeUndefined()
+        expect(await f.source.messagesInWindow('c1', all)).toEqual([])
+      })
+    })
   })
 }

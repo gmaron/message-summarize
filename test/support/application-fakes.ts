@@ -75,8 +75,11 @@ export class InMemorySource implements DigestSource {
     return this
   }
 
-  private of(conversationId: string): Message[] {
-    return this.messages.filter((m) => m.conversationId === conversationId).sort((a, b) => a.timestamp - b.timestamp)
+  /** Messages of kind `other` are not summarized: the readers leave them out (only the unread tail counts them). */
+  private of(conversationId: string, withOther = false): Message[] {
+    return this.messages
+      .filter((m) => m.conversationId === conversationId && (withOther || m.kind !== 'other'))
+      .sort((a, b) => a.timestamp - b.timestamp)
   }
 
   async conversationsWithMessages(window: SummaryWindow): Promise<readonly Conversation[]> {
@@ -114,7 +117,7 @@ export class InMemorySource implements DigestSource {
   }
 
   async lastIncoming(conversationId: string, limit: number): Promise<readonly IncomingMessage[]> {
-    return this.of(conversationId)
+    return this.of(conversationId, true)
       .filter((m) => !m.fromMe)
       .reverse()
       .slice(0, limit)

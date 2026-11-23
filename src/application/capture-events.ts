@@ -1,4 +1,12 @@
-import type { Conversation, Message, Participant, UnreadState } from '../domain/model.js'
+import type {
+  Conversation,
+  Message,
+  MessageExtras,
+  Participant,
+  PollVote,
+  Reaction,
+  UnreadState,
+} from '../domain/model.js'
 import type { DownloadDescriptor } from './ports/capture-repository.js'
 
 /**
@@ -34,6 +42,18 @@ interface EventContext {
 export interface MessageReceived extends EventContext {
   readonly message: Message
   readonly origin: MessageOrigin
+  /** What the adapter understood besides the text (reply, media, location, raw content...). Stored with the message. */
+  readonly extras?: MessageExtras
+}
+
+/** An emoji reaction (not a message: it is stored apart and never shown in a digest). Subject to exclusion like content. */
+export interface ReactionReceived extends EventContext {
+  readonly reaction: Reaction
+}
+
+/** A vote on a poll, as received. Subject to exclusion like content. */
+export interface PollVoteReceived extends EventContext {
+  readonly vote: PollVote
 }
 
 /**

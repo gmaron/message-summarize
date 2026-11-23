@@ -76,6 +76,14 @@ describe('CaptureMessages: receiving (RF-10)', () => {
     expect(stored.map((m) => [m.kind, m.text])).toEqual([...kinds.map((k) => [k, `[${k}]`]), ['sticker', null]])
   })
 
+  it('a message of kind other moves no unread counter: not incoming, and not as a sign the owner read', async () => {
+    const { capture, source } = setup()
+    await capture.receiveMessage(received({ id: 'a' }))
+    await capture.receiveMessage(received({ id: 'pin', kind: 'other', text: '[other]' }))
+    await capture.receiveMessage(received({ id: 'own-pin', kind: 'other', text: '[other]', fromMe: true }))
+    expect(await source.unreadState('c1')).toEqual({ kind: 'count', count: 1 })
+  })
+
   it('a replay is idempotent: nothing is duplicated and the counter does not move again', async () => {
     const { capture, source } = setup()
     const first = await capture.receiveMessage(received({ id: 'a' }))
@@ -626,6 +634,12 @@ describe('CaptureMessages: audio download (RF-15)', () => {
     expect((await capture.receiveMessage(audio(NOW - 3 * DAY - 1, 'history'))).downloadAudio).toBe(false)
   })
 
+  it('a history window of 0 days means no limit: every audio of the history is wanted', async () => {
+    const { capture } = setup([], { audioHistoryDays: 0 })
+    expect((await capture.receiveMessage(audio(NOW - 3000 * DAY, 'history'))).downloadAudio).toBe(true)
+    expect((await capture.receiveMessage(audio(NOW - 1, 'history'))).downloadAudio).toBe(true)
+  })
+
   it('not for other kinds', async () => {
     const { capture } = setup()
     expect((await capture.receiveMessage(received({ id: 'i', kind: 'image' }))).downloadAudio).toBe(false)
@@ -891,5 +905,52 @@ describe('capture to digest, on SQLite', () => {
     } finally {
       temp.dispose()
     }
+  })
+})
+
+describe('CaptureMessages: extras, reactions and poll votes', () => {
+  const reaction = (conversationId = 'c1') => ({
+    conversationId,
+    targetId: 'm1',
+    senderId: 'p1',
+    fromMe: false,
+    emoji: '👍',
+    timestamp: 1_000,
+  })
+  const vote = (conversationId = 'c1') => ({
+    conversationId,
+    pollId: 'P',
+    senderId: 'p1',
+    fromMe: false,
+    timestamp: 1_000,
+    raw: '{}',
+  })
+
+  it('stores the extras of a message with it', async () => {
+    const { capture, repository } = setup()
+    await capture.receiveMessage(received({}, { extras: { raw: '{"a":1}', forwarded: true } }))
+    expect(repository.extras.get(JSON.stringify(['c1', 'm1']))).toEqual({ raw: '{"a":1}', forwarded: true })
+  })
+
+  it('stores a reaction and a vote, and never as a message', async () => {
+    const { capture, repository, source } = setup()
+    await capture.receiveReaction({ reaction: reaction(), isGroup: false })
+    await capture.receivePollVote({ vote: vote(), isGroup: false })
+    expect(repository.reactions).toHaveLength(1)
+    expect(repository.pollVotes).toHaveLength(1)
+    expect(await source.messagesInWindow('c1', all)).toEqual([])
+  })
+
+  it('applies the exclusion (RF-14) and the own-chat filter to reactions and votes', async () => {
+    const excluded = setup(['spam-chat'])
+    await excluded.capture.receiveReaction({ reaction: reaction('spam-chat@g.us'), isGroup: true })
+    await excluded.capture.receivePollVote({ vote: vote('spam-chat@g.us'), isGroup: true })
+    expect(excluded.repository.reactions).toEqual([])
+    expect(excluded.repository.pollVotes).toEqual([])
+    expect(await excluded.repository.findConversation('spam-chat@g.us')).toBeNull()
+
+    const ownChat = setup([], { ownConversationIds: () => ['me'] })
+    await ownChat.capture.receiveReaction({ reaction: reaction('me'), isGroup: false })
+    expect(ownChat.repository.reactions).toEqual([])
   })
 })

@@ -38,13 +38,14 @@ La web todavía no configura la transcripción: se activa en `config.json` (ver 
 
 ## Pedir algo sobre tus chats
 
-La pestaña "Pedir" responde un pedido sobre los chats de un período (hoy, 24 horas, 3 o 7 días), por ejemplo "la lista de pedidos que me hicieron esta semana, quién pidió qué y si ya respondí". Solo lee: no envía nada a WhatsApp.
+La pestaña "Pedir" responde una consulta sobre los chats de un período (hoy, 24 horas, 3 o 7 días), por ejemplo "la lista de pedidos que me hicieron esta semana, quién pidió qué y si ya respondí". Solo lee: no envía nada a WhatsApp.
 
-- **Cómo responde.** Lee cada conversación del período por separado con tu proveedor y muestra solo las que tienen algo para tu pedido, primero las que esperan tu respuesta. No junta varios chats en una sola respuesta.
+- **Cómo responde.** Lee cada conversación del período por separado con tu proveedor y muestra solo las que tienen algo para tu consulta, primero las que esperan tu respuesta. No junta varios chats en una sola respuesta.
 - **Qué chats.** Los mismos que resumiría un digest: los chats excluidos y tu propio chat nunca se leen, aunque los nombres en el filtro opcional "Solo estos chats" (nombres o números, separados por comas). Los chats "solo locales" los responde solo tu modelo local, igual que en el digest. Un período con más de 60 chats se rechaza: elegí menos días o filtrá.
 - **Dictado.** El botón del micrófono usa el reconocimiento de voz de tu navegador, no este programa: según el navegador, el audio puede ir a Google (Chrome) o a Apple (Safari). Escribir no envía nada a ningún lado. Algunos navegadores, como Firefox, no pueden dictar.
-- **Dónde quedan las respuestas.** Solo en la memoria del daemon, las últimas 20 por cuenta, y se pierden al reiniciarlo. Cada una se puede copiar o borrar. La cuenta tiene que estar conectada y corre un pedido a la vez por cuenta.
-- **Límites.** El pedido admite hasta 1000 caracteres. No usa tu prompt personalizado: tiene sus propias instrucciones. Tampoco transcribe antes los audios pendientes: un audio que el digest todavía no transcribió figura como "audio sin transcribir", y la respuesta puede sugerir escucharlo.
+- **Dónde quedan las respuestas.** Solo en la memoria del daemon, las últimas 20 por cuenta, y se pierden al reiniciarlo. Cada una se puede copiar o borrar. La cuenta tiene que estar conectada y corre una consulta a la vez por cuenta.
+- **Contexto propio.** Si en tus consultas una palabra significa algo propio de tu negocio, podés explicárselo al modelo con la opción `askHints` del `config.json` (se agrega al prompt solo cuando la consulta nombra esas palabras; ver la [guía del daemon](demonio-y-horarios.md)). Solo lo usa esta pestaña, no el digest.
+- **Límites.** La consulta admite hasta 1000 caracteres. No usa tu prompt personalizado: tiene sus propias instrucciones. Tampoco transcribe antes los audios pendientes: un audio que el digest todavía no transcribió figura como "audio sin transcribir", y la respuesta puede sugerir escucharlo.
 
 ## El asistente de primer uso
 
@@ -102,3 +103,18 @@ Ver [El daemon, las cuentas y los horarios](demonio-y-horarios.md#varias-cuentas
 ---
 
 Volver al [README](../../README.es.md) · [Índice de guías](README.md)
+
+## Historial completo al vincular
+
+Por defecto WhatsApp manda solo el historial reciente cuando vinculás un dispositivo. Para guardar todo, poné en el `config.json` de la cuenta:
+
+```json
+{ "fullHistoryOnLink": true }
+```
+
+y volvé a vincular la cuenta (en la web, "Volver a vincular"; WhatsApp solo manda el historial al vincular un dispositivo nuevo). Lo que no se guarda en ese momento no se puede recuperar después.
+
+- Es una **excepción aprobada** a RNF-17 (respeto a la plataforma): solo cambia cuánto historial manda el celular al vincular. El cliente sigue sin marcarse "en línea" y no envía nada.
+- La sincronización puede tardar y llegar en bloques; el progreso se ve en los logs como `history.progress` (solo cantidades de bloques, mensajes y chats). Dejá el daemon conectado hasta que termine: usá la web o el daemon para vincular, porque `msum link` espera un tiempo acotado.
+- Cada mensaje guarda también su contenido original (`messages.raw`, JSON) y se modelan aparte las respuestas (también a estados), reenvíos, archivos, ubicaciones, contactos, encuestas, pedidos y productos de WhatsApp Business y reacciones. Las reacciones no aparecen en los digests.
+- Los mensajes que WhatsApp entrega sin poder descifrarlos se cuentan; se avisa como máximo una vez por minuto (`capture.undecryptable`).

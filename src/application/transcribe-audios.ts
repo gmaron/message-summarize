@@ -1,13 +1,14 @@
 import type { StartDeadline } from './ports/deadline.js'
 import type { Transcriber } from './ports/transcriber.js'
-import type { TimeRange, TranscriptionStore } from './ports/transcription-store.js'
+import type { ClaimOrder, TimeRange, TranscriptionClaims, TranscriptionStore } from './ports/transcription-store.js'
 import { createTranscriptionSlot, type TranscriptionSlot } from './transcription-slot.js'
+import { createWorkerPool } from './worker-pool.js'
 
 /** What happened to one audio. `error` is a failure of the store (for example a closed database), not of the audio. */
 export type TranscriptionOutcome = 'transcribed' | 'failed' | 'timeout' | 'unavailable' | 'error'
 
 export interface TranscribeAudiosDeps {
-  readonly store: TranscriptionStore
+  readonly store: TranscriptionStore & TranscriptionClaims
   /** Null: transcription is off (RF-21). Nothing is queued, waited for or run, and audios stay untranscribed. */
   readonly transcriber: Transcriber | null
   /** `auto`, or an ISO code (RF-23). */
@@ -17,9 +18,11 @@ export interface TranscribeAudiosDeps {
   readonly startDeadline: StartDeadline
   /** Told about every audio that was handled, for logs and tests. */
   readonly onOutcome?: (outcome: TranscriptionOutcome) => void
+  /** How many transcriptions run at once (`transcription.concurrency`). Default 1. */
+  readonly concurrency?: number
   /**
-   * Where the work runs. Share ONE slot between every account of the process, so only one transcription runs at a time
-   * whatever the number of accounts (RNF-09). Default: a slot of its own.
+   * Where the work runs. Share ONE slot between every account of the process, so no more than its limit run at a time
+   * whatever the number of accounts (RNF-09). Default: a slot of its own, with the limit `concurrency`.
    */
   readonly slot?: TranscriptionSlot
   /**
@@ -54,12 +57,14 @@ export interface PrepareReport {
 /**
  * Transcription of the audios that capture downloaded (RF-15, RF-20, RF-21).
  *
- * One audio at a time, always (RNF-09): a whisper run is the heaviest thing the program does, so every step goes
- * through one queue, whoever asks. Two callers:
- * - `kick`: the background queue. It works through every pending audio, oldest first, and stops when none is left. The
- *   daemon kicks it when an audio arrives and now and then.
- * - `prepareWindow`: right before a digest. It works only on the audios of the digest window, and gives up waiting
- *   after `maxWaitMs`. What is not done stays pending, and the background queue goes on with it.
+ * At most `concurrency` audios at a time (RNF-09, default 1): a whisper run is the heaviest thing the program does, so
+ * every step goes through the slot, whoever asks. The queue is the database: a worker CLAIMS the next pending audio
+ * (marked in progress in one step, so no audio is handed to two workers) and gives it back if the transcription did not
+ * happen. Claims are reset when the process starts (`releaseAllClaims`), so a restart resumes where it was. Two callers:
+ * - `kick`: the background queue. A pool of `concurrency` workers works through every pending audio, NEWEST first (what
+ *   just arrived is read first), and stops when none is left. The daemon kicks it when an audio arrives and now and then.
+ * - `prepareWindow`: right before a digest. It works only on the audios of the digest window, oldest first, and gives up
+ *   waiting after `maxWaitMs`. What is not done stays pending, and the background queue goes on with it.
  *
  * When the transcriber says it is unavailable (a program or the model is missing) a run stops at once and the audio stays
  * pending: the digest then shows it as not transcribed and everything else works (RF-21).
@@ -67,6 +72,11 @@ export interface PrepareReport {
 export interface TranscribeAudios {
   /** False when there is no transcriber. */
   readonly enabled: boolean
+  /**
+   * Run once when the process starts, before the first `kick`: an audio that was in progress when the previous process
+   * died is pending again. Returns how many were. Do not call it from a process that is not the owner of the queue.
+   */
+  recover(): Promise<number>
   /** Starts the background queue unless it is running. Returns at once. */
   kick(): void
   /** Resolves when the background queue is not running. */
@@ -82,12 +92,11 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
   const report = (outcome: TranscriptionOutcome): void => deps.onOutcome?.(outcome)
 
   let stopped = false
-  let background: Promise<void> | null = null
-  let again = false
-  // Every step goes through the slot, which runs one at a time: this is what keeps the concurrency at 1. A step is tracked
+  const concurrency = Math.max(1, Math.floor(deps.concurrency ?? 1))
+  // Every step goes through the slot, which runs at most its limit at a time: this is what bounds the concurrency. A step is tracked
   // from the moment it RUNS (not while it waits its turn in a slot shared with other accounts), so `stop` waits for the
   // work of this account that is really going on and never for the work of another one.
-  const slot = deps.slot ?? createTranscriptionSlot()
+  const slot = deps.slot ?? createTranscriptionSlot(concurrency)
   const inFlight = new Set<Promise<unknown>>()
   const exclusive = <T>(work: () => Promise<T>): Promise<T> =>
     slot.run(async () => {
@@ -109,14 +118,30 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
   }
 
   /** Handles ONE audio. 'done': one was handled, go on. 'stop': nothing left, or it cannot go on now. */
-  async function step(range: TimeRange | undefined): Promise<'done' | 'stop'> {
+  async function step(range: TimeRange | undefined, order: ClaimOrder): Promise<'done' | 'stop'> {
     if (transcriber === null || stopped) return 'stop'
+    let claimed: { conversationId: string; messageId: string } | null = null
+    /** The audio goes back to the queue: the transcription did not happen. */
+    const giveBack = async (): Promise<void> => {
+      if (claimed === null) return
+      const { conversationId, messageId } = claimed
+      claimed = null
+      try {
+        await store.releaseClaim(conversationId, messageId)
+      } catch {
+        // a store that fails here is closed; the claim is reset at the next start
+      }
+    }
     try {
-      const next = await store.nextPending(range)
+      const next = await store.claimPending(range, order)
       if (next === null) return 'stop'
+      claimed = next
       const result = await transcriber.transcribe({ audioPath: deps.mediaPath(next.mediaRef), language: deps.language })
       // Stopped meanwhile: the process was killed, so the result says nothing about the audio. It stays pending.
-      if (stopped) return 'stop'
+      if (stopped) {
+        await giveBack()
+        return 'stop'
+      }
       if (result.ok) {
         // Only the one that stored the transcript deletes the file: if another process finished it first, it is theirs.
         const stored = await store.complete(next.conversationId, next.messageId, result.value)
@@ -126,6 +151,7 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
       }
       const failure = result.error
       if (failure.kind === 'unavailable') {
+        await giveBack()
         report('unavailable')
         return 'stop'
       }
@@ -134,37 +160,29 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
       await dropMedia(next.mediaRef) // failed for good: the file is of no use any more
       return 'done'
     } catch {
+      await giveBack()
       report('error')
       return 'stop'
     }
   }
 
+  const background = createWorkerPool({
+    size: concurrency,
+    isStopped: () => stopped,
+    step: () => exclusive(() => step(undefined, 'newest')),
+  })
+
   return {
     enabled: transcriber !== null,
 
     kick() {
-      if (transcriber === null || stopped) return
-      if (background !== null) {
-        again = true
-        return
-      }
-      background = (async () => {
-        try {
-          do {
-            again = false
-            while ((await exclusive(() => step(undefined))) === 'done') {
-              // next audio
-            }
-          } while (again && !stopped)
-        } finally {
-          background = null
-        }
-      })()
+      if (transcriber === null) return
+      background.kick()
     },
 
-    idle: async () => {
-      while (background !== null) await background
-    },
+    idle: () => background.idle(),
+
+    recover: () => store.releaseAllClaims(),
 
     async prepareWindow(range, maxWaitMs, options) {
       if (transcriber === null || stopped) return { handled: 0, remaining: 0 }
@@ -208,7 +226,8 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
           return false
         }
       }
-      const work = (async () => {
+      // The same number of workers as the background queue; they claim the OLDEST audio of the window first.
+      const worker = async (): Promise<void> => {
         // `waiting` is read again when the step's turn comes, so no new audio starts after the deadline.
         while (
           waiting &&
@@ -218,12 +237,13 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
               switched = true
               return 'stop' as const
             }
-            return step(range)
+            return step(range, 'oldest')
           })) === 'done'
         ) {
           handled++
         }
-      })()
+      }
+      const work = Promise.all(Array.from({ length: concurrency }, worker))
       await Promise.race([work.catch(() => undefined), deadline.expired])
       waiting = false
       // Switched to observing: wait for the daemon with what is left of the same time.

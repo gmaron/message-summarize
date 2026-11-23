@@ -87,10 +87,10 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-async function create() {
+async function create(extra: { fullHistory?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'message-summarize-socket-'))
   dirs.push(dir)
-  const session = await baileysSocketFactory({ authDir: join(dir, 'auth') })
+  const session = await baileysSocketFactory({ authDir: join(dir, 'auth'), ...extra })
   const options = made.options[0]
   if (options === undefined) throw new Error('no socket was made')
   return { session, options }
@@ -102,6 +102,20 @@ describe('the Baileys socket configuration', () => {
     expect(options.markOnlineOnConnect).toBe(false)
     expect(options.syncFullHistory).toBe(false)
     expect(BAILEYS_SOCKET_OPTIONS).toEqual({ markOnlineOnConnect: false, syncFullHistory: false })
+  })
+
+  it('asks for the full history only when the account opted in (fullHistoryOnLink), and changes nothing else', async () => {
+    const off = await create({ fullHistory: false })
+    expect(off.options.syncFullHistory).toBe(false)
+    made.options.length = 0
+    const on = await create({ fullHistory: true })
+    expect(on.options.syncFullHistory).toBe(true)
+    // Everything else stays as it was: not online, a desktop browser, the silent logger.
+    expect(on.options.markOnlineOnConnect).toBe(false)
+    expect(on.options.browser).toEqual(off.options.browser)
+    expect(on.options.logger).toBe(off.options.logger)
+    // The constant itself is not touched by the opt-in.
+    expect(BAILEYS_SOCKET_OPTIONS.syncFullHistory).toBe(false)
   })
 
   it('gives Baileys a logger that says nothing, at every level and in every child (RNF-04)', async () => {
@@ -172,6 +186,7 @@ describe('the Baileys socket configuration', () => {
       'ev',
       'groupMetadata',
       'openAudio',
+      'requestAudioReupload',
       'sendTextToSelf',
       'signalRepository',
       'user',
@@ -248,7 +263,16 @@ describe('the LID mapping of the narrow socket (RNF-01, RNF-17)', () => {
     const mapping = session.socket.signalRepository?.lidMapping
     expect(Object.keys(mapping ?? {}).sort()).toEqual(['getPNForLID', 'storedLidForPN'])
     expect(Object.keys(session.socket).sort()).toEqual(
-      ['end', 'ev', 'groupMetadata', 'openAudio', 'sendTextToSelf', 'signalRepository', 'user'].sort(),
+      [
+        'end',
+        'ev',
+        'groupMetadata',
+        'openAudio',
+        'requestAudioReupload',
+        'sendTextToSelf',
+        'signalRepository',
+        'user',
+      ].sort(),
     )
   })
 

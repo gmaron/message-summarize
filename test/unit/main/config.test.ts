@@ -40,8 +40,10 @@ describe('parseConfig defaults', () => {
         hideRest: false,
       },
       localOnlyPatterns: [],
+      askHints: [],
       promptFile: null,
       concurrency: 4,
+      fullHistoryOnLink: false,
       schedules: [],
       provider: {
         primary: null,
@@ -70,6 +72,9 @@ describe('parseConfig defaults', () => {
         timeoutMs: 300_000,
         historyAudioDays: 14,
         maxMediaMb: 500,
+        concurrency: 1,
+        threads: 1,
+        downloadConcurrency: 2,
       },
       web: { enabled: true, host: '127.0.0.1', port: 8787, allowedHosts: [] },
       logs: { maxBytes: 52_428_800 },
@@ -237,6 +242,9 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
       timeoutMs: 300_000,
       historyAudioDays: 14,
       maxMediaMb: 500,
+      concurrency: 1,
+      threads: 1,
+      downloadConcurrency: 2,
     })
   })
 
@@ -252,6 +260,9 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
           timeoutMs: 60_000,
           historyAudioDays: 30,
           maxMediaMb: 100,
+          concurrency: 10,
+          threads: 2,
+          downloadConcurrency: 6,
         },
       }),
     ).toEqual({
@@ -263,6 +274,9 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
       timeoutMs: 60_000,
       historyAudioDays: 30,
       maxMediaMb: 100,
+      concurrency: 10,
+      threads: 2,
+      downloadConcurrency: 6,
     })
     expect(transcriptionOf({ transcription: { enabled: true } })).toMatchObject({ enabled: true, language: 'auto' })
   })
@@ -306,8 +320,11 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
     expect(issuesOf({ transcription: { timeoutMs: 1.5 } })).toEqual([
       { option: 'transcription.timeoutMs', code: 'notInteger' },
     ])
-    expect(issuesOf({ transcription: { historyAudioDays: 0 } })).toEqual([
+    expect(issuesOf({ transcription: { historyAudioDays: -1 } })).toEqual([
       { option: 'transcription.historyAudioDays', code: 'notPositive' },
+    ])
+    expect(issuesOf({ transcription: { historyAudioDays: 2.5 } })).toEqual([
+      { option: 'transcription.historyAudioDays', code: 'notInteger' },
     ])
     expect(issuesOf({ transcription: { historyAudioDays: 'many' } })).toEqual([
       { option: 'transcription.historyAudioDays', code: 'notNumber' },
@@ -321,6 +338,53 @@ describe('transcription options (RF-15, RF-21, RF-23)', () => {
     expect(issuesOf({ transcription: { enable: true } })).toEqual([
       { option: 'transcription.enable', code: 'unknownOption' },
     ])
+  })
+
+  it('historyAudioDays 0 means the whole history: it is accepted and kept as 0', () => {
+    expect(transcriptionOf({ transcription: { historyAudioDays: 0 } }).historyAudioDays).toBe(0)
+    expect(transcriptionOf({ transcription: { historyAudioDays: 3650 } }).historyAudioDays).toBe(3650)
+  })
+
+  describe('concurrency, threads and downloadConcurrency', () => {
+    const limits = [
+      ['concurrency', 1, 16],
+      ['threads', 1, 64],
+      ['downloadConcurrency', 1, 16],
+    ] as const
+
+    for (const [key, min, max] of limits) {
+      it(`${key} takes whole numbers from ${min} to ${max}`, () => {
+        expect(transcriptionOf({ transcription: { [key]: min } })[key]).toBe(min)
+        expect(transcriptionOf({ transcription: { [key]: max } })[key]).toBe(max)
+      })
+
+      it(`${key} refuses what is out of range, not a whole number or not a number, naming the option`, () => {
+        const option = `transcription.${key}`
+        expect(issuesOf({ transcription: { [key]: 0 } })).toEqual([
+          { option, code: 'outOfRange', allowed: [String(min), String(max)] },
+        ])
+        expect(issuesOf({ transcription: { [key]: max + 1 } })).toEqual([
+          { option, code: 'outOfRange', allowed: [String(min), String(max)] },
+        ])
+        expect(issuesOf({ transcription: { [key]: -3 } })).toEqual([{ option, code: 'notPositive' }])
+        expect(issuesOf({ transcription: { [key]: 1.5 } })).toEqual([{ option, code: 'notInteger' }])
+        expect(issuesOf({ transcription: { [key]: '4' } })).toEqual([{ option, code: 'notNumber' }])
+      })
+    }
+
+    it('explains an out-of-range value in both languages, with the limits', () => {
+      const issue: ConfigIssue = {
+        option: 'transcription.concurrency',
+        code: 'outOfRange',
+        allowed: ['1', '16'],
+      }
+      const en = describeConfigIssue(getCatalog('en'), issue)
+      expect(en).toContain('transcription.concurrency')
+      expect(en).toContain('between 1 and 16')
+      const es = describeConfigIssue(getCatalog('es'), issue)
+      expect(es).toContain('transcription.concurrency')
+      expect(es).toContain('entre 1 y 16')
+    })
   })
 
   it('explains an invalid language in both languages, naming the option', () => {
@@ -707,5 +771,92 @@ describe('loadEffectiveConfig', () => {
     expect(await languageHint(two.rootFile, two.accountFile)).toBe('en')
     const three = setup('{nope', '{nope')
     expect(await languageHint(three.rootFile, three.accountFile)).toBe('es')
+  })
+})
+
+describe('askHints', () => {
+  const hint = { when: ['encargo', 'encargos'], text: 'An encargo is a custom cake order.' }
+
+  it('is empty by default and accepts valid hints', () => {
+    const empty = parse({})
+    expect(empty.ok && empty.value.askHints).toEqual([])
+    const result = parse({ askHints: [hint, { when: ['turno'], text: 'A turno is a pickup slot.' }] })
+    expect(result.ok && result.value.askHints).toEqual([hint, { when: ['turno'], text: 'A turno is a pickup slot.' }])
+  })
+
+  it('is part of the written default config only as an empty list', () => {
+    expect(JSON.parse(defaultConfigJson(BA)).askHints).toEqual([])
+  })
+
+  it.each([
+    ['not a list', 'x', [{ option: 'askHints', code: 'notArray' }]],
+    ['an entry that is not an object', ['x'], [{ option: 'askHints[0]', code: 'invalidHint' }]],
+    ['an extra key', [{ ...hint, extra: 1 }], [{ option: 'askHints[0]', code: 'invalidHint' }]],
+    ['when missing', [{ text: 'a' }], [{ option: 'askHints[0].when', code: 'notStringList' }]],
+    ['when not texts', [{ when: [1], text: 'a' }], [{ option: 'askHints[0].when', code: 'notStringList' }]],
+    ['when empty', [{ when: [], text: 'a' }], [{ option: 'askHints[0].when', code: 'emptyHintWhen' }]],
+    ['an empty term', [{ when: ['a', ' '], text: 'a' }], [{ option: 'askHints[0].when', code: 'emptyHintWhen' }]],
+    [
+      'too many terms',
+      [{ when: Array.from({ length: 21 }, (_, i) => `t${i}`), text: 'a' }],
+      [{ option: 'askHints[0].when', code: 'tooManyHintTerms' }],
+    ],
+    ['text missing', [{ when: ['a'] }], [{ option: 'askHints[0].text', code: 'notString' }]],
+    ['text empty', [{ when: ['a'], text: '  ' }], [{ option: 'askHints[0].text', code: 'emptyHintText' }]],
+    [
+      'text too long',
+      [{ when: ['a'], text: 'x'.repeat(2001) }],
+      [{ option: 'askHints[0].text', code: 'hintTextTooLong' }],
+    ],
+    ['too many hints', Array.from({ length: 21 }, () => hint), [{ option: 'askHints', code: 'tooManyHints' }]],
+    [
+      'the index of the bad entry',
+      [hint, { when: [], text: 'a' }],
+      [{ option: 'askHints[1].when', code: 'emptyHintWhen' }],
+    ],
+  ])('refuses %s', (_name, askHints, expected) => {
+    expect(issuesOf({ askHints })).toEqual(expected)
+  })
+
+  it('accepts a text of exactly the limit and 20 hints and 20 terms', () => {
+    const edge = { when: Array.from({ length: 20 }, (_, i) => `t${i}`), text: 'x'.repeat(2000) }
+    expect(parse({ askHints: Array.from({ length: 20 }, () => edge) }).ok).toBe(true)
+  })
+
+  it('has messages in both languages that name the entry', () => {
+    const issue: ConfigIssue = { option: 'askHints[2].when', code: 'emptyHintWhen' }
+    expect(describeConfigIssue(getCatalog('es'), issue)).toContain('askHints[2].when')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('askHints[2].when')
+  })
+
+  it('of an account replaces the installation hints instead of adding to them', () => {
+    const base = { askHints: [hint] }
+    const account = { askHints: [{ when: ['turno'], text: 'A turno is a pickup slot.' }] }
+    expect(mergeConfigJson(base, account).askHints).toEqual(account.askHints)
+    expect(mergeConfigJson(base, {}).askHints).toEqual(base.askHints)
+    expect(mergeConfigJson(base, { askHints: [] }).askHints).toEqual([])
+  })
+})
+
+describe('fullHistoryOnLink', () => {
+  it('is false by default and can be turned on per account', () => {
+    const off = parse({})
+    const on = parse({ fullHistoryOnLink: true })
+    expect(off.ok && off.value.fullHistoryOnLink).toBe(false)
+    expect(on.ok && on.value.fullHistoryOnLink).toBe(true)
+  })
+
+  it('must be true or false, with the message in both languages', () => {
+    const issues = issuesOf({ fullHistoryOnLink: 'yes' })
+    expect(issues).toEqual([{ option: 'fullHistoryOnLink', code: 'notBoolean' }])
+    const [issue] = issues
+    if (issue === undefined) throw new Error('no issue')
+    expect(describeConfigIssue(getCatalog('es'), issue)).toContain('fullHistoryOnLink')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('fullHistoryOnLink')
+    expect(describeConfigIssue(getCatalog('en'), issue)).toContain('true or false')
+  })
+
+  it('is written with its default by `msum init`', () => {
+    expect(JSON.parse(defaultConfigJson(BA)).fullHistoryOnLink).toBe(false)
   })
 })

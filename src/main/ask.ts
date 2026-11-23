@@ -259,6 +259,7 @@ export class AskService {
         window,
         chats: entry.view.chats,
         settings: runtime.config.digest,
+        askHints: runtime.config.askHints,
         concurrency: runtime.config.concurrency,
         offset,
       })

@@ -160,6 +160,20 @@ export function describeDigestSourceContract(backend: PersistenceBackend): void 
         expect(ids(await source.messagesInWindow('c1', window(0, 2_000)))).toEqual(['z', 'a', 'm'])
       })
 
+      it('leaves out messages of kind other: not in the window, not before it, and they do not make a chat active', async () => {
+        const { seed, source } = make()
+        seed.addMessages(
+          message({ id: 'before-other', conversationId: 'c1', timestamp: 500, kind: 'other', text: '[other]' }),
+          message({ id: 'before', conversationId: 'c1', timestamp: 600 }),
+          message({ id: 'only-other', conversationId: 'c2', timestamp: 1_000, kind: 'other', text: '[other]' }),
+          message({ id: 'text', conversationId: 'c1', timestamp: 1_000 }),
+          message({ id: 'other', conversationId: 'c1', timestamp: 1_100, kind: 'other', text: '[other]' }),
+        )
+        expect(ids(await source.messagesInWindow('c1', window(1_000, 2_000)))).toEqual(['text'])
+        expect(ids(await source.messagesBefore('c1', 1_000, 10))).toEqual(['before'])
+        expect(ids(await source.conversationsWithMessages(window(1_000, 2_000)))).toEqual(['c1'])
+      })
+
       it('is empty for an unknown conversation', async () => {
         const { source } = make()
         expect(await source.messagesInWindow('nope', window(0, 2_000))).toEqual([])

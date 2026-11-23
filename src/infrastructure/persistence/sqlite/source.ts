@@ -1,6 +1,13 @@
 import type { DigestSource } from '../../../application/ports/digest-source.js'
 import type { OwnMessageText } from '../../../domain/mass.js'
-import type { Conversation, Message, MessageKind, Participant, UnreadState } from '../../../domain/model.js'
+import type {
+  Conversation,
+  Message,
+  MessageKind,
+  Participant,
+  ReplyContext,
+  UnreadState,
+} from '../../../domain/model.js'
 import type { IncomingMessage } from '../../../domain/unread.js'
 import type { SummaryWindow } from '../../../domain/window.js'
 import type { Database } from './database.js'
@@ -25,10 +32,15 @@ interface MessageRow {
   text: string | null
   transcript: string | null
   read: number
+  quoted_kind: string | null
+  quoted_text: string | null
+  quoted_from_status: number
+  quoted_id: string | null
 }
 
 const MESSAGE_COLUMNS =
-  'conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read'
+  'conversation_id, id, sender_id, sender_name, sender_address, from_me, timestamp, kind, text, transcript, read, ' +
+  'quoted_kind, quoted_text, quoted_from_status, quoted_id'
 
 const toConversation = (row: ConversationRow): Conversation => ({
   id: row.id,
@@ -50,7 +62,22 @@ const toMessage = (row: MessageRow): Message => ({
   text: row.text,
   transcript: row.transcript,
   read: row.read !== 0,
+  ...replyOf(row),
 })
+
+/** The reply context of a row, or nothing for a message that is not a reply (so the Message has no `reply` key). */
+function replyOf(row: MessageRow): { reply: ReplyContext } | Record<string, never> {
+  if (row.quoted_id === null && row.quoted_kind === null && row.quoted_text === null && row.quoted_from_status === 0) {
+    return {}
+  }
+  return {
+    reply: {
+      kind: row.quoted_kind as MessageKind | null,
+      text: row.quoted_text,
+      fromStatus: row.quoted_from_status !== 0,
+    },
+  }
+}
 
 /**
  * Read side of the SQLite database: implements the DigestSource port.
@@ -59,6 +86,8 @@ const toMessage = (row: MessageRow): Message => ({
  * - Messages with the same timestamp keep insertion order (`seq`). An upsert of an existing message keeps its
  *   place.
  * - Conversations whose first message in the window has the same timestamp are ordered by id, ascending.
+ * - Messages of kind `other` (types that are not handled, stored for their raw content) are never read for a digest or
+ *   an Ask: they are not part of what is summarized, and they do not make a chat count as active.
  *
  * A message cannot exist without its conversation row (foreign key), so "a chat with messages but no metadata"
  * is covered by the stub row the capture-side writer creates (no name, individual chat, address = id).
@@ -73,7 +102,7 @@ export class SqliteDigestSource implements DigestSource {
       .prepare(
         `SELECT c.id, c.is_group, c.name, c.participant_id, c.address
          FROM (SELECT conversation_id, MIN(timestamp) AS first_ts
-               FROM messages WHERE timestamp >= ? AND timestamp < ?
+               FROM messages WHERE timestamp >= ? AND timestamp < ? AND kind <> 'other'
                GROUP BY conversation_id) AS w
          JOIN conversations c ON c.id = w.conversation_id
          ORDER BY w.first_ts, c.id`,
@@ -86,7 +115,7 @@ export class SqliteDigestSource implements DigestSource {
     const rows = this.db
       .prepare(
         `SELECT ${MESSAGE_COLUMNS} FROM messages
-         WHERE conversation_id = ? AND timestamp >= ? AND timestamp < ?
+         WHERE conversation_id = ? AND timestamp >= ? AND timestamp < ? AND kind <> 'other'
          ORDER BY timestamp, seq`,
       )
       .all(conversationId, window.since, window.until) as unknown as MessageRow[]
@@ -127,7 +156,7 @@ export class SqliteDigestSource implements DigestSource {
     // The nearest `limit` messages before the timestamp, handed over oldest first.
     const rows = this.db
       .prepare(
-        `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE conversation_id = ? AND timestamp < ?
+        `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE conversation_id = ? AND timestamp < ? AND kind <> 'other'
          ORDER BY timestamp DESC, seq DESC LIMIT ?`,
       )
       .all(conversationId, timestamp, Math.max(0, limit)) as unknown as MessageRow[]

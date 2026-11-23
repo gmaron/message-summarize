@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createTranscriptionSlot } from '../../../src/application/transcription-slot.js'
 import { err, ok } from '../../../src/domain/result.js'
 import { runMain } from '../../../src/main/app.js'
 import { parseConfig } from '../../../src/main/config.js'
@@ -30,7 +31,11 @@ const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 function openRuntime(
   h: Harness,
   id: string,
-  options: { transcription?: Record<string, unknown>; transcriber?: FakeTranscriber | null } = {},
+  options: {
+    transcription?: Record<string, unknown>
+    transcriber?: FakeTranscriber | null
+    slot?: ReturnType<typeof createTranscriptionSlot>
+  } = {},
 ): Runtime {
   const parsed = parseConfig(
     {
@@ -49,6 +54,7 @@ function openRuntime(
     clock: h.clock,
     summarizer: null,
     ...(options.transcriber === undefined ? {} : { transcriber: options.transcriber }),
+    ...(options.slot === undefined ? {} : { transcriptionSlot: options.slot }),
   })
   runtimes.push(runtime)
   return runtime
@@ -253,9 +259,10 @@ describe('the audio file goes once its transcription is over (RF-15)', () => {
     const h = await makeHarness()
     const transcriber = new FakeTranscriber()
     const runtime = openRuntime(h, 'default', { transcriber })
-    const good = await queueAudio(h, runtime, 'good', 50)
+    // The newest is transcribed first, so the one that cannot be done now is the oldest: the others are done before it.
+    const good = await queueAudio(h, runtime, 'good', 30)
     const bad = await queueAudio(h, runtime, 'bad', 40)
-    const later = await queueAudio(h, runtime, 'later', 30)
+    const later = await queueAudio(h, runtime, 'later', 50)
     transcriber.answer = async (r) =>
       r.audioPath.includes('bad')
         ? err({ kind: 'failed', reason: 'unsupported-format' })
@@ -309,7 +316,70 @@ describe('the audios of the history of the last N days (RF-15)', () => {
     expect(await hint(60, 59, 'history')).toBe(true)
   })
 
+  it('transcription.historyAudioDays 0 wants the whole history', async () => {
+    expect(await hint(0, 3000, 'history')).toBe(true)
+  })
+
   it('a live audio is always wanted, however old its timestamp says it is', async () => {
     expect(await hint(3, 400, 'live')).toBe(true)
+  })
+})
+
+describe('transcription.concurrency over the real queue (SQLite)', () => {
+  it('runs up to `concurrency` whisper processes at once and every audio is done once, newest first', async () => {
+    const transcriber = new FakeTranscriber()
+    transcriber.answer = async () => {
+      await flush()
+      await flush()
+      return ok('hola')
+    }
+    const h = await makeHarness({ config: { language: 'en', timezone: BA, provider: { primary: 'claude-cli' } } })
+    const runtime = openRuntime(h, 'default', {
+      transcriber,
+      transcription: { concurrency: 4 },
+      slot: createTranscriptionSlot(),
+    })
+    const files: string[] = []
+    for (let i = 0; i < 12; i++) files.push(await queueAudio(h, runtime, `a${String(i).padStart(2, '0')}`, 100 - i))
+    runtime.transcription.kick()
+    await runtime.transcription.idle()
+    expect(transcriber.maxInFlight).toBe(4)
+    expect(new Set(transcriber.calls.map((c) => c.audioPath)).size).toBe(12)
+    // minutesAgo goes down as i goes up: a11 is the newest, and the first one taken.
+    expect(transcriber.calls[0]?.audioPath.endsWith('a11.ogg')).toBe(true)
+    expect(files.every((file) => !existsSync(file))).toBe(true) // the text is what is kept
+    expect(runtime.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE transcribe_status = 'done'").get()).toEqual({
+      n: 12,
+    })
+  })
+
+  it('a restart resumes: what was in progress when the process died is transcribed by the next one', async () => {
+    const h = await makeHarness({ config: { language: 'en', timezone: BA, provider: { primary: 'claude-cli' } } })
+    const first = openRuntime(h, 'default', { transcriber: null })
+    await queueAudio(h, first, 'a', 10)
+    await queueAudio(h, first, 'b', 20)
+    // The first process claimed both and died with them in progress.
+    first.db.prepare('UPDATE messages SET transcribe_claimed_at = 1').run()
+    first.close()
+    const transcriber = new FakeTranscriber()
+    transcriber.answer = async () => ok('resumed')
+    const second = openRuntime(h, 'default', { transcriber, slot: createTranscriptionSlot() })
+    second.transcription.kick()
+    await second.transcription.idle()
+    expect(transcriber.calls).toHaveLength(0) // in progress for somebody: not handed out
+    expect(await second.transcription.recover()).toBe(2)
+    second.transcription.kick()
+    await second.transcription.idle()
+    expect(transcriptOf(second, 'a')).toBe('resumed')
+    expect(transcriptOf(second, 'b')).toBe('resumed')
+  })
+
+  it('raises the limit of the process slot to the concurrency of the account', async () => {
+    const slot = createTranscriptionSlot()
+    const h = await makeHarness({ config: { language: 'en', timezone: BA, provider: { primary: 'claude-cli' } } })
+    openRuntime(h, 'default', { transcriber: null, transcription: { concurrency: 5 }, slot })
+    expect(slot.limit).toBe(5)
+    openRuntime(h, 'default', { transcriber: null, transcription: { concurrency: 2 }, slot })
+    expect(slot.limit).toBe(5)
   })
 })

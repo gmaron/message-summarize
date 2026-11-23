@@ -42,7 +42,7 @@ test/
 These are not style preferences. Breaking them can get a user's WhatsApp number banned or leak private conversations.
 
 - **Never send anything to third parties.** The digest goes only to the account's own chat. The WhatsApp delivery adapter must reject any other recipient, including another account linked in the same installation (RF-51).
-- **Do not mark the client as online**, and do not add behavior that sends messages, automates replies or changes how the client connects (RNF-17).
+- **Do not mark the client as online**, and do not add behavior that sends messages, automates replies or changes how the client connects (RNF-17). The only approved exceptions are opt-in full history on link and asking the own phone to re-upload old audios; both are described in RNF-17.
 - **LLM CLIs run without tools:** tools, MCP and session persistence disabled, in an empty temporary directory, with a timeout (RF-49). Chat text is written by third parties and must be treated as untrusted input.
 - **"Local only" conversations never reach an external provider** (RF-43).
 - **No telemetry, and no network calls beyond the declared ones** (RNF-01). Secrets and the WhatsApp session never appear in logs (RNF-04).

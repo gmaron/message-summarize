@@ -226,6 +226,17 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
     })
   })
 
+  it('keeps askHints of the account file when other settings are saved', async () => {
+    const w = await world({
+      accounts: ['alpha'],
+      config: { ...BASE, provider: { primary: 'claude-cli', ollama: { model: 'llama3' } } },
+    })
+    const askHints = [{ when: ['encargo', 'encargos'], text: 'An encargo is a custom cake order.' }]
+    writeFileSync(accountFile(w, 'alpha'), JSON.stringify({ askHints }))
+    expect((await w.api('PUT', url('alpha'), { hideRest: true })).status).toBe(200)
+    expect(readAccount(w, 'alpha')).toEqual({ askHints, hideRest: true })
+  })
+
   it('reports the issues on GET when a hand edit made the configuration invalid', async () => {
     const w = await world({ accounts: ['alpha'] })
     writeFileSync(accountFile(w, 'alpha'), '{ "hideRest": ')

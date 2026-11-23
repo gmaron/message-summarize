@@ -35,6 +35,13 @@ export type SettingsIssueCode =
   | 'notInteger'
   | 'notBoolean'
   | 'notObject'
+  /** An entry of `askHints` that is not an object with `when` and `text` (or has other keys). */
+  | 'invalidHint'
+  | 'emptyHintWhen'
+  | 'emptyHintText'
+  | 'tooManyHints'
+  | 'tooManyHintTerms'
+  | 'hintTextTooLong'
 
 /** A problem with one option: which one and why. */
 export interface SettingsIssue {

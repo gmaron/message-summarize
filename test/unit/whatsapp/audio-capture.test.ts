@@ -102,6 +102,8 @@ describe('the translator hands the capture the download descriptor (RF-15, RNF-0
             mediaKey: new Uint8Array(SECRET_KEY),
             mimetype: 'audio/ogg; codecs=opus',
             fileLength: 20,
+            // What it takes to ask the phone to upload the media again if the server forgets it.
+            reuploadKey: { remoteJid: ANA, fromMe: false, participant: null },
           },
         },
       ],
@@ -637,8 +639,17 @@ describe('the WhatsApp connection, the capture and SQLite together (RF-15, RNF-0
         type: 'notify',
         messages: [audio('full', { messageTimestamp: SECONDS - 100 })],
       })
-      await until(() => w.statuses().full === 'failed', 'the refusal')
-      expect(w.rows().find((r) => r.id === 'full')?.transcribe_error).toBe('media-cap')
+      await new Promise((resolve) => setTimeout(resolve, 150)) // the attempt that hits the cap happens before the stream is opened
+      // A full folder is not a failure of the audio: it stays queued with its descriptor, nothing counted
+      expect(w.rows().find((r) => r.id === 'full')).toMatchObject({
+        transcribe_status: 'download_pending',
+        has_descriptor: 1,
+        dl_attempts: 0,
+      })
+      // Room is made (a transcription deleted its file) and the worker is woken: the audio is downloaded
+      for (const file of w.files()) rmSync(join(w.mediaDir, file))
+      c.connection.kickDownloads()
+      await until(() => w.statuses().full === 'pending', 'the audio to be downloaded once there is room')
       await c.connection.stop()
     })
 

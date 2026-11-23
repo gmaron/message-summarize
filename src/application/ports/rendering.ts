@@ -7,7 +7,7 @@ import type { WindowError } from '../../domain/window.js'
 /** One message of a conversation as the LLM will read it. */
 export interface TranscriptEntry {
   readonly message: WithCopies<
-    Pick<Message, 'timestamp' | 'fromMe' | 'senderName' | 'senderAddress' | 'kind' | 'text' | 'transcript'>
+    Pick<Message, 'timestamp' | 'fromMe' | 'senderName' | 'senderAddress' | 'kind' | 'text' | 'transcript' | 'reply'>
   >
   /** The author, to pick the label of the line. Null when unknown. */
   readonly participant: Participant | null

@@ -202,7 +202,6 @@ describe('what the sender writes is checked before anything is requested', () =>
       'invalid-media-path',
       'invalid-media',
       'unsupported-format',
-      'media-cap',
       'expired',
       'empty',
     ] as const) {
@@ -211,6 +210,8 @@ describe('what the sender writes is checked before anything is requested', () =>
     for (const transient of ['timeout', 'download-failed', 'write-failed'] as const) {
       expect(classifyFailure(transient), transient).toBe('transient')
     }
+    // a full media folder is not the fault of the audio: it waits for room
+    expect(classifyFailure('media-cap')).toBe('unavailable')
     expect(classifyFailure('aborted')).toBe('unavailable')
   })
 })
@@ -232,6 +233,16 @@ describe('MEDIA CAP, abort and the connection going away', () => {
     expect(await fetcher.fetch(audioMessage(30), KEY)).toEqual({ ok: false, error: 'media-cap' }) // 80 + 30 > 100
     expect(opened).toBe(0)
     expect((await fetcher.fetch(audioMessage(20), KEY)).ok).toBe(true) // 80 + 20 fits
+  })
+
+  it('an audio bigger than the whole limit with an empty folder is too-large: waiting would never help', async () => {
+    const dir = mediaDir()
+    const fetcher = createAudioFetcher({
+      mediaDir: dir,
+      maxDirBytes: 100,
+      openAudio: async () => Readable.from([Buffer.alloc(1)]),
+    })
+    expect(await fetcher.fetch(audioMessage(200), KEY)).toEqual({ ok: false, error: 'too-large' })
   })
 
   it('counts the partial files too, and a full folder refuses even an audio that announces no size', async () => {

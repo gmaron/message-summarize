@@ -69,6 +69,12 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
   const heartbeat = setInterval(() => void lock.heartbeat(), LINK_HEARTBEAT_MS)
   heartbeat.unref()
   try {
+    // A full history can take many minutes and `maxAfterConnectMs` would cut it (what is not captured then is lost for
+    // good): that link is made from the daemon (web), which keeps the connection after the QR is scanned.
+    if (config.fullHistoryOnLink) {
+      io.err(texts.link.fullHistoryNeedsDaemon(account.id))
+      return EXIT_FAILURE
+    }
     await ctx.afterLock?.()
     // The authoritative check: once the lock is held nothing can change between it and the work.
     const daemonPid = await daemonUsing(ctx.layout, account)
@@ -101,7 +107,9 @@ export async function linkCommand(ctx: CommandContext, args: AccountArg): Promis
           capture: counted.capture,
           // Link only captures: the audios stay queued for the daemon's worker (one whisper per installation, RNF-09).
           downloadAudios: false,
-          onWarning: (code) => logger.warn('adapter.warning', { code }),
+          onWarning: (code, detail) => logger.warn('adapter.warning', { code, ...detail }),
+          onHistoryProgress: (report) => logger.info('history.progress', { ...report }),
+          onUndecryptable: (count) => logger.warn('capture.undecryptable', { count }),
         })
         if (relinking) await connection.clearSession()
 

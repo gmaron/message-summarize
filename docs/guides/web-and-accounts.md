@@ -44,6 +44,7 @@ The "Ask" tab answers a request about the chats of a period (today, 24 hours, 3 
 - **Which chats.** The same ones a digest would summarize: excluded chats and your own chat are never read, even if you name them in the optional "Only these chats" filter (names or numbers, separated by commas). "Local only" chats are answered only by your local model, as in the digest. A period with more than 60 chats is rejected: choose fewer days or filter.
 - **Dictation.** The microphone button uses your browser's speech recognition, not this program: depending on the browser, the audio may go to Google (Chrome) or Apple (Safari). Typing sends nothing anywhere. Some browsers, such as Firefox, cannot dictate.
 - **Where answers are kept.** Only in the daemon's memory, the last 20 per account, and they are lost when it restarts. Each one can be copied or deleted. The account must be connected, and only one request runs at a time per account.
+- **Your own context.** If a word in your requests means something specific to your business, you can explain it to the model with the `askHints` option of `config.json` (it is added to the prompt only when the request mentions those words; see the [daemon guide](daemon-and-schedules.md)). Only this tab uses it, not the digest.
 - **Limits.** A request takes up to 1000 characters. It does not use your custom prompt: it has its own instructions. Nor does it transcribe pending audio first: an audio the digest has not transcribed yet shows as "audio not transcribed", and the answer may suggest listening to it.
 
 ## The first-run wizard
@@ -102,3 +103,18 @@ See [The daemon, accounts and schedules](daemon-and-schedules.md#several-account
 ---
 
 Back to the [README](../../README.md) · [Guides index](README.md)
+
+## Full history on link
+
+By default WhatsApp sends only the recent history when you link a device. To keep everything, set this in the account's `config.json`:
+
+```json
+{ "fullHistoryOnLink": true }
+```
+
+and link the account again (in the web, "Link again"; WhatsApp only sends history when a new device is linked). What is not stored at that moment cannot be recovered later.
+
+- It is an **approved exception** to RNF-17 (platform respect): it only changes how much history the phone sends at link time. The client is still not marked "online" and sends nothing.
+- The sync can take a while and arrives in chunks; its progress shows in the logs as `history.progress` (only counts of chunks, messages and chats). Keep the daemon connected until it ends: link from the web or the daemon, because `msum link` waits a bounded time.
+- Every message also keeps its original content (`messages.raw`, JSON), and replies (also to statuses), forwards, files, locations, contacts, polls, WhatsApp Business orders and products and reactions are modeled apart. Reactions do not show in digests.
+- Messages that WhatsApp delivers without being able to decrypt them are counted; a warning is logged at most once a minute (`capture.undecryptable`).

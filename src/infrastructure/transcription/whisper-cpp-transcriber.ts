@@ -14,6 +14,8 @@ export interface WhisperCppOptions {
   readonly modelPath: string | null
   /** Total time for one audio, conversion included (RF-20). Default 5 minutes. */
   readonly timeoutMs?: number
+  /** Threads of each whisper process (`-t`). Default 1: with several transcriptions at once, one thread each. */
+  readonly threads?: number
   /** Time between SIGTERM and SIGKILL when a limit fires. Default 5 seconds. */
   readonly killGraceMs?: number
   /** Where the environment of the programs is taken from. Default `process.env` (only a few names are used). */
@@ -102,6 +104,7 @@ export class WhisperCppTranscriber implements Transcriber {
   private readonly whisperCommand: string
   private readonly ffmpegCommand: string
   private readonly timeoutMs: number
+  private readonly threads: number
   private readonly running = new Set<RunningProcess>()
   private closed = false
 
@@ -109,6 +112,7 @@ export class WhisperCppTranscriber implements Transcriber {
     this.whisperCommand = options.whisperCommand ?? 'whisper-cli'
     this.ffmpegCommand = options.ffmpegCommand ?? 'ffmpeg'
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TRANSCRIPTION_TIMEOUT_MS
+    this.threads = Math.max(1, Math.floor(options.threads ?? 1))
   }
 
   async close(): Promise<void> {
@@ -146,7 +150,21 @@ export class WhisperCppTranscriber implements Transcriber {
         'whisper',
         this.whisperCommand,
         // -nt: no timestamps, -np: nothing but results on the output, -otxt -of: the text goes to <base>.txt.
-        ['-m', modelPath, '-l', request.language, '-f', wav, '-nt', '-np', '-otxt', '-of', base],
+        [
+          '-m',
+          modelPath,
+          '-l',
+          request.language,
+          '-t',
+          String(this.threads),
+          '-f',
+          wav,
+          '-nt',
+          '-np',
+          '-otxt',
+          '-of',
+          base,
+        ],
         dir,
         remaining(),
       )

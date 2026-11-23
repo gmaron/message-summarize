@@ -18,10 +18,11 @@ export const DEFAULT_MAX_MEDIA_DIR_BYTES = 500 * 1024 * 1024
  * - invalid-media-path: the message has no `directPath`, or it is not a plain WhatsApp media path. Nothing is requested
  *   (the sender writes these fields, and they must never choose where we connect).
  * - unsupported-format: the mimetype is not one of the audio formats of WhatsApp.
- * - media-cap: the account's media directory is full (`transcription.maxMediaMb`).
+ * - media-cap: the account's media directory is full (`transcription.maxMediaMb`). Not the fault of the audio: it is
+ *   `unavailable` (claim released, nothing counted, descriptor kept) and downloads go on when transcription frees space.
  * - invalid-media: no usable decryption key.
- * - expired: the server no longer has the file (HTTP 404 or 410). It will not come back: Baileys' way of asking the sender
- *   to upload it again is a message out, which this program never sends (RNF-17).
+ * - expired: the server no longer has the file (HTTP 404 or 410). The download worker then asks the owner's own phone to
+ *   upload it again (never the sender: that would be a message out, RNF-17).
  * - aborted: not a failure of the audio (the connection was closed or dropped): it is asked for again.
  */
 export type AudioFetchFailure =
@@ -48,6 +49,7 @@ export function classifyFailure(code: AudioFetchFailure): 'permanent' | 'transie
     case 'write-failed':
       return 'transient'
     case 'aborted':
+    case 'media-cap':
       return 'unavailable'
     default:
       return 'permanent'
@@ -55,7 +57,7 @@ export function classifyFailure(code: AudioFetchFailure): 'permanent' | 'transie
 }
 
 /** The HTTP status that a failed download carries (Baileys throws a Boom with it), if any. */
-function statusOf(error: unknown): number | undefined {
+export function statusOf(error: unknown): number | undefined {
   const e = error as { output?: { statusCode?: unknown }; statusCode?: unknown; status?: unknown } | null
   for (const value of [e?.output?.statusCode, e?.statusCode, e?.status]) if (typeof value === 'number') return value
   return undefined
@@ -181,7 +183,11 @@ export function createAudioFetcher(options: AudioFetcherOptions): AudioFetcher {
 
       try {
         if (!(await ensureMediaDir(options.mediaDir))) return err('write-failed')
-        if ((await mediaDirectoryBytes(options.mediaDir)) + (announced ?? 0) > maxDirBytes) return err('media-cap')
+        const used = await mediaDirectoryBytes(options.mediaDir)
+        if (used + (announced ?? 0) > maxDirBytes) {
+          // Waiting only helps when something is in the folder to be freed: an audio bigger than the whole limit never fits.
+          return err(used === 0 ? 'too-large' : 'media-cap')
+        }
       } catch {
         return err('write-failed')
       }
