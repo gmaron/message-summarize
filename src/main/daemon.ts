@@ -554,7 +554,8 @@ export class Daemon {
             this.logger.error('daemon.markerFailed', { code: errorCode(error) }),
           )
         : undefined,
-      this.within(this.stopConnection()),
+      // Not bounded: see doShutdown.
+      this.stopConnection(),
     ])
   }
 
@@ -629,15 +630,19 @@ export class Daemon {
   private async doShutdown(): Promise<void> {
     this.stopTimers()
     const running = this.digestRun
-    await this.within(
-      Promise.all([
-        this.blockPromise,
-        this.stopConnection(),
-        // Kills a transcription that is running: its audio stays pending for the next start.
-        this.runtime.transcription.stop(),
-        running === null ? undefined : running.catch(() => undefined),
-      ]),
-    )
+    await Promise.all([
+      this.within(
+        Promise.all([
+          this.blockPromise,
+          // Kills a transcription that is running: its audio stays pending for the next start.
+          this.runtime.transcription.stop(),
+          running === null ? undefined : running.catch(() => undefined),
+        ]),
+      ),
+      // NOT bounded by the grace: a history chunk being written must finish before the database is closed (the platform
+      // never sends it again). It is local work, so it ends; the connection bounds what it waits for besides that.
+      this.stopConnection(),
+    ])
     this.logger.info('account.stopped', { code: 0 })
     this.finish(0)
   }

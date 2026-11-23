@@ -611,12 +611,16 @@ describe('Daemon: stopping', () => {
     expect(named(harness, 'account.stopped')).toHaveLength(1)
   })
 
-  it('on stop, a connection that never stops does not hold the shutdown past the grace period', async () => {
+  it('on stop, waits for the connection past the grace period: a history chunk being written must end first', async () => {
     const { harness, daemon } = await start()
-    harness.connection.stop = () => new Promise(() => {})
+    let release: () => void = () => {}
+    harness.connection.stop = () => new Promise<void>((resolve) => (release = resolve))
     const stopped = daemon.stop()
-    await vi.advanceTimersByTimeAsync(7_100)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(named(harness, 'account.stopped')).toHaveLength(0)
+    release()
     await stopped
+    expect(named(harness, 'account.stopped')).toHaveLength(1)
     expect(await daemon.finished).toBe(0)
   })
 })

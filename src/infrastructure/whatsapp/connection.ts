@@ -164,6 +164,9 @@ export interface BackoffPolicy {
   readonly maxMs: number
 }
 
+/** How long `stop()` waits for events the timeout abandoned (history chunks are never abandoned). */
+const ABANDONED_STOP_WAIT_MS = 60_000
+
 /** A queued event that has not settled after this long is abandoned so the ones behind it are not held forever. */
 export const EVENT_TIMEOUT_MS = 30_000
 const HISTORY_SET_EVENT = 'messaging-history.set'
@@ -445,6 +448,23 @@ export class WhatsAppConnection {
   }
 
   /** Stops for good: no reconnection, no listeners on the socket, the connection closed, pending events done. */
+  private async waitAbandoned(): Promise<void> {
+    const deadline = Date.now() + ABANDONED_STOP_WAIT_MS
+    while (this.abandoned.size > 0) {
+      const left = deadline - Date.now()
+      if (left <= 0) return
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([
+        Promise.all([...this.abandoned]),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, left)
+          timer.unref?.()
+        }),
+      ])
+      clearTimeout(timer)
+    }
+  }
+
   async stop(): Promise<void> {
     this.running = false
     this.generation++
@@ -452,9 +472,10 @@ export class WhatsAppConnection {
     this.release()
     this.setStatus({ state: 'stopped' })
     await this.queue
-    // Work abandoned by the event timeout is still running: wait for all of it (no timeout), so the database is not
-    // closed under it.
-    while (this.abandoned.size > 0) await Promise.all([...this.abandoned])
+    // Work abandoned by the event timeout is still running: wait for it, so the database is not closed under it, but not
+    // forever: an event that never settles would hold the stop. History chunks are never abandoned (they are in the
+    // queue, awaited above with no limit), so what is given up here is at most part of one live event.
+    await this.waitAbandoned()
     // The download in progress is aborted (stream destroyed, partial file removed) and its audio stays in the durable
     // queue, to be downloaded after the next start. When this returns nothing of the account is open and nothing will
     // write to its database (it is closed next). A fresh worker is ready if the connection is started again.
