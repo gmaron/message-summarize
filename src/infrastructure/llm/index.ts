@@ -1,5 +1,6 @@
 export * from './api/index.js'
 export * from './cli/index.js'
+export { composeAnswerer, FallbackAnswerer } from './compose-answerer.js'
 export { type ComposeSummarizerOptions, composeSummarizer } from './compose-summarizer.js'
 export { FallbackSummarizer } from './fallback-summarizer.js'
 export { LOCAL_ONLY_UNAVAILABLE, LocalOnlyRouter } from './local-only-router.js'
