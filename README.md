@@ -181,7 +181,7 @@ The daemon serves the local page at `http://127.0.0.1:8787`; `msum open` opens i
 
   ![Conversations tab](docs/images/screenshots/conversations.png)
 
-- **Ask:** ask for something about the chats of a period, by typing or dictating (a custom summary, a list of orders, what someone said). It reads each chat with your provider and sends nothing to WhatsApp; answers stay only in memory. Dictation is done by your browser, which may send the audio to Google or Apple. See the [web guide](docs/guides/web-and-accounts.md#ask-for-something-about-your-chats).
+- **Ask:** ask for something about the chats of a period, by typing or dictating (a custom summary, a list of orders, what someone said). It builds one answer that the model writes seeing all the chats together (unanswered, unread or all), keeps it in the account's database (the latest 50) and, if you leave it ticked, sends it only to your own WhatsApp chat; never to anyone else. Dictation is done by your browser, which may send the audio to Google or Apple. See the [web guide](docs/guides/web-and-accounts.md#ask-for-something-about-your-chats).
 
 - **Settings:** provider, model, keys, name, language and time zone.
 

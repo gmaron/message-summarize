@@ -181,7 +181,7 @@ El daemon sirve la página local en `http://127.0.0.1:8787`; `msum open` la abre
 
   ![Pestaña Conversaciones](docs/images/screenshots/conversations.png)
 
-- **Pedir:** pedir algo sobre los chats de un período, escribiendo o dictando (un resumen a medida, una lista de pedidos, qué dijo alguien). Lee cada chat con tu proveedor y no envía nada a WhatsApp; las respuestas quedan solo en memoria. El dictado lo hace tu navegador, que puede enviar el audio a Google o Apple. Ver la [guía de la web](docs/guias/web-y-cuentas.md#pedir-algo-sobre-tus-chats).
+- **Pedir:** pedir algo sobre los chats de un período, escribiendo o dictando (un resumen a medida, una lista de pedidos, qué dijo alguien). Arma una sola respuesta que el modelo escribe viendo todos los chats juntos (sin responder, no leídos o todos), la guarda en la base de la cuenta (las últimas 50) y, si lo dejás tildado, la manda solo a tu propio chat de WhatsApp; nunca a otra persona. El dictado lo hace tu navegador, que puede enviar el audio a Google o Apple. Ver la [guía de la web](docs/guias/web-y-cuentas.md#pedir-algo-sobre-tus-chats).
 
 - **Ajustes:** proveedor, modelo, claves, nombre, idioma y zona horaria.
 

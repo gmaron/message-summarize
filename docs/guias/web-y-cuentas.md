@@ -38,14 +38,17 @@ La web todavía no configura la transcripción: se activa en `config.json` (ver 
 
 ## Pedir algo sobre tus chats
 
-La pestaña "Pedir" responde una consulta sobre los chats de un período (hoy, 24 horas, 3 o 7 días), por ejemplo "la lista de pedidos que me hicieron esta semana, quién pidió qué y si ya respondí". Solo lee: no envía nada a WhatsApp.
+La pestaña "Pedir" responde una consulta sobre los chats de un período (hoy, 24 horas, 3 o 7 días), por ejemplo "la lista de pedidos que me hicieron esta semana, quién pidió qué y si ya respondí". Lee tus chats y, si dejás tildada la casilla, manda la respuesta a tu propio WhatsApp; nunca a otra persona.
 
-- **Cómo responde.** Lee cada conversación del período por separado con tu proveedor y muestra solo las que tienen algo para tu consulta, primero las que esperan tu respuesta. No junta varios chats en una sola respuesta.
-- **Qué chats.** Los mismos que resumiría un digest: los chats excluidos y tu propio chat nunca se leen, aunque los nombres en el filtro opcional "Solo estos chats" (nombres o números, separados por comas). Los chats "solo locales" los responde solo tu modelo local, igual que en el digest. Un período con más de 60 chats se rechaza: elegí menos días o filtrá.
+- **Cómo responde.** Arma un solo texto con los chats elegidos, cada uno con su título, y el modelo escribe UNA respuesta viendo todos los chats juntos (dice de qué chat viene cada cosa). Si el texto es muy largo (más de 150 000 caracteres) lo lee por partes y después junta lo que encontró; la página muestra el avance. Más de 1 200 000 caracteres no se acepta: acortá el período o filtrá chats.
+- **Qué mensajes.** "Sin responder" (lo que te escribieron después de tu última respuesta en cada chat, con 3 mensajes de contexto; un grupo donde nunca escribiste no cuenta), "No leídos" o "Todos". Empieza según la opción "solo no leídos" de la cuenta. Los chats excluidos y tu propio chat nunca se leen, aunque los nombres en el filtro opcional "Solo estos chats" (nombres o números, separados por comas).
+- **"Solo local".** Esos chats no entran en la consulta salvo que todos tus proveedores sean locales (Ollama); si no, quedan afuera y la respuesta dice cuántos.
+- **Mandarlo a mi WhatsApp.** Viene tildada. La respuesta pasa al formato de WhatsApp y sale por la misma cola que el digest, solo a tu chat de "Mensaje a mí mismo", cuando la cuenta está conectada. La página dice si quedó en cola o ya se envió.
+- **Consultas guardadas.** Un clic en una consulta guardada la pone en el cuadro; podés guardar la consulta actual con un nombre y quitar las tuyas. Quedan en la opción `askPresets` del `config.json` de la cuenta (hasta 20; ver la [guía del daemon](demonio-y-horarios.md)). Si no guardaste ninguna, el programa ofrece "Pedidos" y "Pendientes".
 - **Dictado.** El botón del micrófono usa el reconocimiento de voz de tu navegador, no este programa: según el navegador, el audio puede ir a Google (Chrome) o a Apple (Safari). Escribir no envía nada a ningún lado. Algunos navegadores, como Firefox, no pueden dictar.
-- **Dónde quedan las respuestas.** Solo en la memoria del daemon, las últimas 20 por cuenta, y se pierden al reiniciarlo. Cada una se puede copiar o borrar. La cuenta tiene que estar conectada y corre una consulta a la vez por cuenta.
+- **Dónde quedan las respuestas.** En la base de la cuenta, en tu computadora: las últimas 50, que sobreviven a un reinicio. Cada una se puede copiar o borrar. La cuenta tiene que estar conectada y corre una consulta a la vez por cuenta.
 - **Contexto propio.** Si en tus consultas una palabra significa algo propio de tu negocio, podés explicárselo al modelo con la opción `askHints` del `config.json` (se agrega al prompt solo cuando la consulta nombra esas palabras; ver la [guía del daemon](demonio-y-horarios.md)). Solo lo usa esta pestaña, no el digest.
-- **Límites.** La consulta admite hasta 1000 caracteres. No usa tu prompt personalizado: tiene sus propias instrucciones. Tampoco transcribe antes los audios pendientes: un audio que el digest todavía no transcribió figura como "audio sin transcribir", y la respuesta puede sugerir escucharlo.
+- **Límites.** La consulta admite hasta 4000 caracteres y conserva los saltos de línea. No usa tu prompt personalizado: tiene sus propias instrucciones. Tampoco transcribe antes los audios pendientes: un audio que el digest todavía no transcribió figura como "audio sin transcribir", y la respuesta puede sugerir escucharlo.
 
 ## El asistente de primer uso
 
