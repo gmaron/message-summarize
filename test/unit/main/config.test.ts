@@ -12,6 +12,7 @@ import {
   loadEffectiveConfig,
   mergeConfigJson,
   parseConfig,
+  validateEffective,
 } from '../../../src/main/config.js'
 
 const BA = 'America/Argentina/Buenos_Aires'
@@ -41,6 +42,7 @@ describe('parseConfig defaults', () => {
       },
       localOnlyPatterns: [],
       askHints: [],
+      askPresets: [],
       promptFile: null,
       concurrency: 4,
       fullHistoryOnLink: false,
@@ -771,6 +773,71 @@ describe('loadEffectiveConfig', () => {
     expect(await languageHint(two.rootFile, two.accountFile)).toBe('en')
     const three = setup('{nope', '{nope')
     expect(await languageHint(three.rootFile, three.accountFile)).toBe('es')
+  })
+})
+
+describe('askPresets', () => {
+  const preset = { name: 'Pedidos', text: 'Armá la lista de pedidos.' }
+
+  it('defaults to none: the web then offers the defaults of the language', () => {
+    const empty = parse({})
+    expect(empty.ok && empty.value.askPresets).toEqual([])
+    expect(JSON.parse(defaultConfigJson(BA)).askPresets).toEqual([])
+  })
+
+  it('reads a list of presets, trimming name and text', () => {
+    const result = parse({ askPresets: [preset, { name: '  Turnos ', text: ' qué turnos hay \n' }] })
+    expect(result.ok && result.value.askPresets).toEqual([preset, { name: 'Turnos', text: 'qué turnos hay' }])
+  })
+
+  it('accepts the limits exactly: 20 presets, a name of 60 and a text of 4000 characters', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ name: `n${i}`, text: 't' }))
+    expect(parse({ askPresets: many }).ok).toBe(true)
+    expect(parse({ askPresets: [{ name: 'n'.repeat(60), text: 't'.repeat(4000) }] }).ok).toBe(true)
+  })
+
+  it.each([
+    ['not a list', 'x', [{ option: 'askPresets', code: 'notArray' }]],
+    ['too many', Array.from({ length: 21 }, () => preset), [{ option: 'askPresets', code: 'tooManyPresets' }]],
+    ['an entry that is not an object', ['x'], [{ option: 'askPresets[0]', code: 'invalidPreset' }]],
+    [
+      'an extra key (a mode is not a preset field)',
+      [{ ...preset, mode: 'x' }],
+      [{ option: 'askPresets[0]', code: 'invalidPreset' }],
+    ],
+    ['a name that is not text', [{ name: 1, text: 't' }], [{ option: 'askPresets[0]', code: 'invalidPreset' }]],
+    ['an empty name', [{ name: ' ', text: 't' }], [{ option: 'askPresets[0].name', code: 'emptyPresetName' }]],
+    [
+      'a long name',
+      [{ name: 'n'.repeat(61), text: 't' }],
+      [{ option: 'askPresets[0].name', code: 'presetNameTooLong' }],
+    ],
+    ['an empty text', [{ name: 'n', text: '' }], [{ option: 'askPresets[0].text', code: 'emptyPresetText' }]],
+    [
+      'a long text',
+      [{ name: 'n', text: 't'.repeat(4001) }],
+      [{ option: 'askPresets[0].text', code: 'presetTextTooLong' }],
+    ],
+    [
+      'two bad entries, each named',
+      [{ name: '', text: 't' }, preset, { name: 'n', text: '' }],
+      [
+        { option: 'askPresets[0].name', code: 'emptyPresetName' },
+        { option: 'askPresets[2].text', code: 'emptyPresetText' },
+      ],
+    ],
+  ])('rejects %s', (_name, askPresets, issues) => {
+    const result = parse({ askPresets })
+    expect(!result.ok && result.error).toEqual(issues)
+  })
+
+  it('the account replaces the installation (it does not add to it)', () => {
+    const root = { askPresets: [{ name: 'Root', text: 'r' }] }
+    const account = { askPresets: [{ name: 'Mine', text: 'm' }] }
+    const merged = validateEffective(root, account, 'root.json', 'account.json')
+    expect(merged.ok && merged.value.askPresets).toEqual([{ name: 'Mine', text: 'm' }])
+    const inherited = validateEffective(root, {}, 'root.json', 'account.json')
+    expect(inherited.ok && inherited.value.askPresets).toEqual([{ name: 'Root', text: 'r' }])
   })
 })
 

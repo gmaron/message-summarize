@@ -300,6 +300,36 @@ ALTER TABLE messages ADD COLUMN dl_needs_reupload INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX messages_by_transcribe_status ON messages (transcribe_status) WHERE transcribe_status IS NOT NULL;
 `
 
+/**
+ * Migration 7 (the "Ask" history): the requests of the owner and their answers, so they survive a restart. The text of the
+ * question and of the answer is private chat-derived data: it lives only in this table (never in a log or an event), and
+ * the program keeps the latest 50 (`SqliteAskHistory`).
+ * - state: running while the answer is being written; a request found running after a restart ended with the process.
+ * - selection / period: what was asked of which messages and over which period (the window is `since`..`until`).
+ * - chats: the filter of the request, a JSON list of patterns.
+ * - deliver / outbox_id: whether the answer was queued for the owner's own chat, and the id of the LAST part queued (the
+ *   request is delivered when that part is marked sent in the outbox).
+ * - result: the report as JSON (answer, provider, counts). error: a fixed code, never a message.
+ */
+const SCHEMA_V7 = `
+CREATE TABLE asks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at  INTEGER NOT NULL,
+  finished_at INTEGER,
+  state       TEXT NOT NULL CHECK (state IN ('running', 'done', 'failed')),
+  question    TEXT NOT NULL,
+  selection   TEXT NOT NULL,
+  period      TEXT NOT NULL,
+  since       INTEGER NOT NULL,
+  until       INTEGER NOT NULL,
+  chats       TEXT NOT NULL,
+  deliver     INTEGER NOT NULL,
+  outbox_id   INTEGER,
+  result      TEXT,
+  error       TEXT
+);
+`
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, description: 'Initial schema', sql: SCHEMA_V1 },
   { version: 2, description: 'Account identity', sql: SCHEMA_V2 },
@@ -307,6 +337,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 4, description: 'Audio transcription', sql: SCHEMA_V4 },
   { version: 5, description: 'Raw content and typed message details', sql: SCHEMA_V5 },
   { version: 6, description: 'Audio queue claims and media re-upload', sql: SCHEMA_V6 },
+  { version: 7, description: 'Ask history', sql: SCHEMA_V7 },
 ]
 
 /** The highest migration version applied to this database, 0 for a database with none. */

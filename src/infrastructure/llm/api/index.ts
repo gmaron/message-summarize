@@ -8,7 +8,9 @@ export {
   DEFAULT_ANTHROPIC_MAX_TOKENS,
 } from './anthropic-summarizer.js'
 export {
+  ANSWER_MAX_TOKENS,
   type ApiCommonOptions,
+  DEFAULT_ANSWER_TIMEOUT_MS,
   DEFAULT_API_TIMEOUT_MS,
   MAX_RESPONSE_BYTES,
   RESPONSE_TOO_LARGE,

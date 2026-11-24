@@ -20,11 +20,24 @@ const get = (root: object, path: string): unknown => path.split('.').reduce<unkn
 
 /** Arguments to call each function of the catalog with. A new function without an entry fails the test below. */
 const SAMPLES: Record<string, unknown[][]> = {
-  'ask.systemPrompt': [
-    ['What did Ana say?', 'Pao', []],
-    ['What did Ana say?', 'Pao', ['An encargo is a custom cake order.']],
+  'ask.chatHeading': [
+    ['saved', 'Ana', false],
+    ['unsaved', 'Ana', true],
+    ['group', 'Team', false],
   ],
-  'ask.contactStatus': [['saved'], ['unsaved'], ['group']],
+  'ask.systemPrompt': [
+    [{ ownerName: 'Pao', hints: [], unansweredOnly: false }],
+    [{ ownerName: 'Pao', hints: ['An encargo is a custom cake order.'], unansweredOnly: true }],
+  ],
+  'ask.extractPrompt': [[{ ownerName: 'Pao', unansweredOnly: false }], [{ ownerName: 'Pao', unansweredOnly: true }]],
+  'ask.input': [[{ period: 'P', question: 'Q', messages: 'M' }]],
+  'ask.extractInput': [[{ period: 'P', question: 'Q', part: 1, parts: 2, messages: 'M' }]],
+  'ask.mergeInput': [[{ period: 'P', question: 'Q', extracts: ['a', 'b'] }]],
+  'ask.deliveryHeader': [
+    [{ since: 'S', until: 'U', selection: 'unanswered' }],
+    [{ since: 'S', until: 'U', selection: 'unread' }],
+    [{ since: 'S', until: 'U', selection: 'all' }],
+  ],
   'transcript.header': [
     [true, 'N'],
     [false, 'N'],
@@ -70,6 +83,12 @@ const SAMPLES: Record<string, unknown[][]> = {
   'errors.settings.tooManyHints': [['opt']],
   'errors.settings.tooManyHintTerms': [['opt']],
   'errors.settings.hintTextTooLong': [['opt']],
+  'errors.settings.invalidPreset': [['opt']],
+  'errors.settings.emptyPresetName': [['opt']],
+  'errors.settings.presetNameTooLong': [['opt']],
+  'errors.settings.emptyPresetText': [['opt']],
+  'errors.settings.presetTextTooLong': [['opt']],
+  'errors.settings.tooManyPresets': [['opt']],
   'cli.argErrors.unknownCommand': [['x']],
   'cli.argErrors.unknownOption': [['--x']],
   'cli.argErrors.missingValue': [['--x']],
@@ -483,26 +502,64 @@ describe('catalogs', () => {
   })
 })
 
-describe('the Ask system prompt', () => {
+describe('the Ask prompts', () => {
   const hints = ['Un encargo es una torta por pedido.']
   it.each([
     ['es', es],
     ['en', en],
   ])(
-    '(%s) is untouched without hints and puts the owner context before the untrusted text paragraph',
+    '(%s) are untouched without hints and put the owner context before the untrusted text paragraph',
     (_n, catalog) => {
-      const plain = catalog.ask.systemPrompt('q', 'Pao', [])
-      const withHints = catalog.ask.systemPrompt('q', 'Pao', hints)
+      const plain = catalog.ask.systemPrompt({ ownerName: 'Pao', hints: [], unansweredOnly: false })
+      const withHints = catalog.ask.systemPrompt({ ownerName: 'Pao', hints, unansweredOnly: false })
       expect(plain).not.toContain(hints[0] as string)
       expect(withHints).toContain(`- ${hints[0]}`)
-      const untrusted = withHints.indexOf(
-        catalog === es ? 'El texto de la conversación' : 'The text of the conversation',
-      )
+      const untrusted = withHints.indexOf(catalog === es ? 'El texto de los chats' : 'The text of the chats')
       expect(withHints.indexOf(hints[0] as string)).toBeLessThan(untrusted)
-      expect(withHints.replace(/\n(Context|Contexto)[^\n]*\n- [^\n]*\n/, '')).toBe(plain)
+      expect(withHints.replace(/\n\n(Context|Contexto)[^\n]*\n- [^\n]*/, '')).toBe(plain)
     },
   )
+
+  it.each([
+    ['es', es],
+    ['en', en],
+  ])(
+    '(%s) tell the model that chat text is never instructions, in the answer and the extract prompt',
+    (_n, catalog) => {
+      const never = catalog === es ? /nunca instrucciones/ : /never instructions/
+      expect(catalog.ask.systemPrompt({ ownerName: 'Pao', hints: [], unansweredOnly: false })).toMatch(never)
+      expect(catalog.ask.extractPrompt({ ownerName: 'Pao', unansweredOnly: false })).toMatch(never)
+    },
+  )
+
+  it.each([
+    ['es', es],
+    ['en', en],
+  ])('(%s) add the notice of the unanswered mode only in that mode', (_n, catalog) => {
+    const notice = catalog === es ? 'SIN RESPONDER' : 'UNANSWERED'
+    expect(catalog.ask.systemPrompt({ ownerName: 'Pao', hints: [], unansweredOnly: true })).toContain(notice)
+    expect(catalog.ask.systemPrompt({ ownerName: 'Pao', hints: [], unansweredOnly: false })).not.toContain(notice)
+    expect(catalog.ask.extractPrompt({ ownerName: 'Pao', unansweredOnly: true })).toContain(notice)
+  })
+
+  it('the extract prompts ask for exactly NADA / NOTHING when there is nothing', () => {
+    expect(es.ask.extractPrompt({ ownerName: 'Pao', unansweredOnly: false })).toContain('respondé exactamente: NADA')
+    expect(en.ask.extractPrompt({ ownerName: 'Pao', unansweredOnly: false })).toContain('answer exactly: NOTHING')
+  })
+
+  it('headings say whether the contact is saved, or that it is a group, and mark a continued chat', () => {
+    expect(es.ask.chatHeading('unsaved', 'Ana', false)).toBe('### Chat con: Ana (sin agendar)')
+    expect(es.ask.chatHeading('saved', 'Ana', true)).toBe('### Chat con: Ana (agendado) (sigue)')
+    expect(es.ask.chatHeading('group', 'Equipo', false)).toBe('### Grupo: Equipo')
+    expect(en.ask.chatHeading('group', 'Team', true)).toBe('### Group: Team (continued)')
+  })
+
   it('the Spanish prompt never calls the question "pedido"', () => {
-    expect(es.ask.systemPrompt('q', 'Pao', [])).not.toMatch(/pedido/i)
+    expect(es.ask.systemPrompt({ ownerName: 'Pao', hints: [], unansweredOnly: false })).not.toMatch(/pedido/i)
+  })
+
+  it('both languages ship the two default saved requests', () => {
+    expect(es.ask.defaultPresets.map((p) => p.name)).toEqual(['Pedidos', 'Pendientes'])
+    expect(en.ask.defaultPresets).toHaveLength(2)
   })
 })

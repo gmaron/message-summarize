@@ -1,7 +1,8 @@
+import type { Answerer, AnswerRequest, AnswerResult } from '../../../application/ports/answerer.js'
 import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
 import { err, ok } from '../../../domain/result.js'
 import { STRICT_SUMMARY_JSON_SCHEMA } from '../summary-schema.js'
-import { type ApiCommonOptions, runApiCall, withSchemaInPrompt } from './api-call.js'
+import { type ApiCall, type ApiCommonOptions, runApiAnswer, runApiCall, withSchemaInPrompt } from './api-call.js'
 
 export const OPENAI_BASE_URL = 'https://api.openai.com/v1'
 
@@ -35,7 +36,8 @@ export function isOpenAiHost(baseUrl: string): boolean {
  * Summarizes with the Chat Completions API of OpenAI or of a compatible server (RF-40). The only host contacted is the
  * one in `baseUrl` (RNF-01); the key goes in the Authorization header, and only when there is one.
  */
-export class OpenAiCompatibleSummarizer implements Summarizer {
+export class OpenAiCompatibleSummarizer implements Summarizer, Answerer {
+  readonly local = false
   private readonly baseUrl: string
 
   constructor(private readonly options: OpenAiCompatibleOptions) {
@@ -43,32 +45,47 @@ export class OpenAiCompatibleSummarizer implements Summarizer {
   }
 
   summarize(request: SummarizeRequest): Promise<SummarizeResult> {
+    return runApiCall(this.call(request, false))
+  }
+
+  /** Free text: plain Chat Completions, with no response format and no schema in the prompt. */
+  answer(request: AnswerRequest): Promise<AnswerResult> {
+    return runApiAnswer(this.call({ systemPrompt: request.systemPrompt, transcript: request.input }, true))
+  }
+
+  private call(request: Pick<SummarizeRequest, 'systemPrompt' | 'transcript'>, free: boolean): ApiCall {
     const mode = this.options.structuredOutput ?? 'json_schema'
-    return runApiCall({
+    return {
       provider: 'openai',
       reportedAs: isOpenAiHost(this.baseUrl) ? 'openai' : 'openai-compatible',
       options: this.options,
       keyRequired: isOpenAiHost(this.baseUrl),
       summarizeRequest: request,
+      free,
       build: (key, prompt) => ({
         url: `${this.baseUrl}/chat/completions`,
         headers: key === undefined ? ({} as Record<string, string>) : { authorization: `Bearer ${key}` },
         body: {
           model: this.options.model,
           messages: [
-            { role: 'system', content: mode === 'json_schema' ? prompt.system : withSchemaInPrompt(prompt.system) },
+            {
+              role: 'system',
+              content: free || mode === 'json_schema' ? prompt.system : withSchemaInPrompt(prompt.system),
+            },
             { role: 'user', content: prompt.user },
           ],
-          ...(mode === 'json_schema'
-            ? {
-                response_format: {
-                  type: 'json_schema',
-                  json_schema: { name: 'chat_summary', strict: true, schema: STRICT_SUMMARY_JSON_SCHEMA },
-                },
-              }
-            : mode === 'json_object'
-              ? { response_format: { type: 'json_object' } }
-              : {}),
+          ...(free
+            ? {}
+            : mode === 'json_schema'
+              ? {
+                  response_format: {
+                    type: 'json_schema',
+                    json_schema: { name: 'chat_summary', strict: true, schema: STRICT_SUMMARY_JSON_SCHEMA },
+                  },
+                }
+              : mode === 'json_object'
+                ? { response_format: { type: 'json_object' } }
+                : {}),
         },
       }),
       extract: (body) => {
@@ -78,6 +95,6 @@ export class OpenAiCompatibleSummarizer implements Summarizer {
         if (typeof message?.content !== 'string') return err('openai returned no message content')
         return ok(message.content)
       },
-    })
+    }
   }
 }

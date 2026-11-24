@@ -1,42 +1,63 @@
 import { type AskHint, matchAskHints } from '../domain/ask-hints.js'
+import { type AskSelection, isUsefulMessage, lastUsefulOwn, pickUnanswered } from '../domain/ask-selection.js'
+import {
+  ASK_EXTRACT_CONCURRENCY,
+  ASK_MAX_TOTAL_CHARS,
+  ASK_PART_CHARS,
+  type AskBlock,
+  buildParts,
+  cleanQuestion,
+  isNothing,
+  totalChars,
+} from '../domain/ask-text.js'
 import { isExcluded } from '../domain/exclusion.js'
 import { findMassTexts, isMassMessage } from '../domain/mass.js'
 import type { Message, Participant } from '../domain/model.js'
 import { resolveConversationName } from '../domain/names.js'
 import { err, ok, type Result } from '../domain/result.js'
 import type { DigestSettings } from '../domain/settings.js'
-import { parseSummaryResponse } from '../domain/summary.js'
 import { CONTEXT_MESSAGES, selectUnreadTail } from '../domain/unread.js'
 import type { SummaryWindow } from '../domain/window.js'
+import { type AnswerFailureClass, classifyAnswerFailure } from './answer-failure.js'
 import { assertConcurrency, mapWithConcurrency } from './concurrency.js'
+import type { Answerer } from './ports/answerer.js'
 import type { DigestSource } from './ports/digest-source.js'
 import type { Renderers, TranscriptEntry } from './ports/rendering.js'
-import type { Summarizer } from './ports/summarizer.js'
 
-/**
- * The most conversations one request reads. A wider one is read in pages of this size, the most recent incoming message
- * first; the report says how many were left out and the next page continues over the same window (`offset`).
- */
-export const MAX_ASK_CONVERSATIONS = 80
-/** The longest question accepted, in characters. */
-export const MAX_QUESTION_CHARS = 1000
-/** What the model writes in `resumen` when a conversation has nothing to do with the request. */
-export const NOTHING_RELEVANT = '-'
+/** What the model is told and shown, in the language of the installation (an adapter fills it from the catalogs). */
+export interface AskTexts {
+  /** The line that opens a chat: its kind and name; `continued` marks a chat that goes on from the previous part. */
+  chatHeading(kind: 'saved' | 'unsaved' | 'group', name: string, continued: boolean): string
+  /** The line between what was already answered (or read) and what is pending. */
+  readonly contextMarker: { readonly unanswered: string; readonly unread: string }
+  /** The system prompt of the call that writes the answer. `hints` are the owner's texts that apply to the request. */
+  systemPrompt(input: { ownerName: string; hints: readonly string[]; unansweredOnly: boolean }): string
+  /** The system prompt of a call that only extracts what is useful from one part. */
+  extractPrompt(input: { ownerName: string; unansweredOnly: boolean }): string
+  /** What the single call gets: the period, the request and the messages. */
+  input(input: { period: string; question: string; messages: string }): string
+  extractInput(input: { period: string; question: string; part: number; parts: number; messages: string }): string
+  /** What the final call gets: the extracts of every part that had something. */
+  mergeInput(input: { period: string; question: string; extracts: readonly string[] }): string
+  /** The answer when no part had anything for the request (no call is made then). */
+  readonly nothingFound: string
+}
 
 export interface AskChatsDeps {
   readonly source: DigestSource
-  /** The same composed summarizer of the digest: its fallback, retries and local-only routing (RF-43) apply as they are. */
-  readonly summarizer: Summarizer
+  /** The same providers as the digest, with their free-text mode and the fallback to the backup. */
+  readonly answerer: Answerer
   readonly renderers: Renderers
-  /**
-   * The system prompt of a request, in the language of the installation. Gets the cleaned question, the owner name and
-   * the texts of the owner's hints that apply to the question (empty: none).
-   */
-  readonly systemPrompt: (question: string, ownerName: string | null, hints: readonly string[]) => string
-  /** One line placed before each chat: saved or unsaved contact (individual chats) or a group. */
-  readonly contactStatus: (status: 'saved' | 'unsaved' | 'group') => string
+  readonly texts: AskTexts
+  /** What the prompts call the owner when the account has no `ownerName` ("the owner"). */
+  readonly ownerNameFallback: string
   /** Ids of the owner's own chat(s): never read (the same fallback filter as the digest). Default: none. */
   readonly ownConversationIds?: () => readonly string[]
+  /**
+   * The patterns of the "local only" conversations in force now (RF-43). Their text goes into a request only when the
+   * answerer says it never leaves the machine. Default: none.
+   */
+  readonly localOnlyPatterns?: () => readonly string[]
 }
 
 export interface AskChatsRequest {
@@ -44,82 +65,72 @@ export interface AskChatsRequest {
   readonly window: SummaryWindow
   /** Only conversations that match one of these patterns (a name, a phone number or `id:<id>`). Empty: all of them. */
   readonly chats?: readonly string[]
+  /** Which messages of each chat are read. */
+  readonly selection: AskSelection
   readonly settings: DigestSettings
-  /** The owner's context for questions that mention certain words. Only a request uses it, never the digest. */
+  /** The owner's context for requests that mention certain words. Only a request uses it, never the digest. */
   readonly askHints?: readonly AskHint[]
-  readonly concurrency?: number
-  /** How many of the ranked conversations were already read by earlier pages. Default 0. */
-  readonly offset?: number
+  /** Told after each part is read and when the final answer starts: `done` of `total` parts. */
+  readonly onProgress?: (progress: AskProgress) => void
 }
 
-/** What one conversation answered to the request. */
-export interface AskItem {
-  readonly name: string
-  readonly answer: string
-  readonly todos: readonly string[]
-  readonly needsReply: boolean
-  readonly messageCount: number
+export interface AskProgress {
+  readonly phase: 'reading' | 'writing'
+  readonly done: number
+  readonly total: number
 }
 
 export interface AskReport {
   readonly window: SummaryWindow
-  /** Conversations that were read in this page. */
-  readonly consulted: number
-  /** Conversations that could be read in total: with incoming messages in the period, not excluded, matching the filter. */
-  readonly candidates: number
-  /** The conversations of the ranking that earlier pages already read. */
-  readonly offset: number
-  /** The conversations that had something for the request. Empty is a valid answer. */
-  readonly items: readonly AskItem[]
-  /** Conversations that could not be read by the provider. Their names are private: only the count is kept. */
-  readonly failed: number
-  /** How many conversations each provider answered. */
-  readonly providers: Readonly<Record<string, number>>
+  readonly selection: AskSelection
+  /** Conversations whose messages went into the request. */
+  readonly chats: number
+  readonly messages: number
+  /** Conversations left out because they are "local only" and the provider is external (RF-43). Only the count. */
+  readonly leftOutLocalOnly: number
+  /** How many parts the text was read in (1: one call). */
+  readonly parts: number
+  /** Model calls made. */
+  readonly calls: number
+  /** Who wrote the final answer. */
+  readonly provider: string
+  /** The answer, in simple markdown. Private text. */
+  readonly answer: string
 }
 
-export type AskChatsError = { readonly kind: 'emptyQuestion' } | { readonly kind: 'invalidWindow' }
+export type AskChatsError =
+  | { readonly kind: 'emptyQuestion' }
+  | { readonly kind: 'invalidWindow' }
+  /** Nothing to read: no chat has messages for the selection in the period. */
+  | { readonly kind: 'noMessages'; readonly leftOutLocalOnly: number }
+  /** More text than a request can read: the owner has to shorten the period or choose chats. */
+  | { readonly kind: 'tooMuch'; readonly chars: number }
+  /** A model call failed; `failure` is only the class of the reason, never its text. */
+  | { readonly kind: 'answerFailed'; readonly failure: AnswerFailureClass }
 
 export type AskChats = (request: AskChatsRequest) => Promise<Result<AskReport, AskChatsError>>
 
-/** "-" alone, even with blanks, quotes or a final period around it ("- ", "\"-\"", "-."). */
-// Any single dash (hyphen, en dash, em dash, minus...): models told to write "-" sometimes use another one.
-const NOTHING_WRAPPED = /^[\s"'«»“”‘’`.]*[-‐‑‒–—―−][\s"'«»“”‘’`.]*$/
-
-function isNothingRelevant(answer: string): boolean {
-  return answer === NOTHING_RELEVANT || NOTHING_WRAPPED.test(answer)
-}
-
-// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is removed
-const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
-
-/** The question as the model gets it: no control characters, blanks collapsed, cut at `MAX_QUESTION_CHARS`. */
-export function cleanQuestion(question: string): string {
-  return question.replace(CONTROL, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_QUESTION_CHARS)
-}
-
 /**
- * Answers a free request of the owner ("who asked me for something", "what did Ana say about the delivery") over the
- * conversations of a period. Nothing is saved and nothing moves (no pointer, no history, no outbox): it only reads.
+ * Answers a free request of the owner ("who asked me for something", "what is pending") over the chats of a period, with
+ * ONE answer written by a model that sees all the chats together. Nothing is saved and nothing moves (no pointer, no
+ * digest history, no outbox): it only reads.
  *
- * It asks each conversation through the SAME summarizer the digest uses, with a system prompt that carries the request,
- * so every guarantee of the digest holds without a new provider path: the consent, the fallback, the retries and the
- * conversations marked "local only", which never reach an external provider. The answer of each conversation travels in
- * the `resumen` field of the schema every provider already forces; a conversation with nothing for the request says
- * `NOTHING_RELEVANT` and is left out.
+ * The text is every selected chat under its own heading. Up to `ASK_PART_CHARS` it is one call. Larger, it is split into
+ * parts: one extract call per part (a few at a time) that returns only what is useful, then one final call that merges
+ * the extracts. More than `ASK_MAX_TOTAL_CHARS` is refused. Exclusions come first and cannot be overridden by the chat
+ * filter; the owner's own chat and chats where only the owner wrote are never read; mass messages are left out; and
+ * "local only" conversations never reach a provider that is not on the machine (RF-43).
  */
 export function createAskChats(deps: AskChatsDeps): AskChats {
-  const { source, summarizer, renderers } = deps
+  const { source, answerer, renderers, texts } = deps
 
   return async (request) => {
     const question = cleanQuestion(request.question)
     if (question === '') return err({ kind: 'emptyQuestion' })
-    const { window, settings } = request
+    const { window, settings, selection } = request
     if (!(window.since < window.until)) return err({ kind: 'invalidWindow' })
-    const concurrency = request.concurrency ?? 4
-    assertConcurrency(concurrency)
 
     const ownIds = new Set(deps.ownConversationIds?.() ?? [])
-    const offset = Number.isFinite(request.offset) ? Math.max(0, Math.floor(request.offset ?? 0)) : 0
     const conversations = (await source.conversationsWithMessages(window)).filter((c) => !ownIds.has(c.id))
     // The same selection as the digest: mass messages do not count, and a chat where only the owner wrote has nothing to ask.
     const mass = conversations.length === 0 ? new Set<string>() : findMassTexts(await source.ownMessageTexts())
@@ -132,8 +143,7 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
     for (const conversation of conversations) {
       let messages = await source.messagesInWindow(conversation.id, window)
       let context: readonly Message[] = []
-      // The account's "unread only" applies as in the digest: only the unread tail of each chat, with a few messages before it.
-      if (settings.unreadOnly) {
+      if (selection === 'unread') {
         const state = await source.unreadState(conversation.id)
         const limit = state.kind === 'count' ? state.count : 0
         const lastIncomingMessages = limit > 0 ? await source.lastIncoming(conversation.id, limit) : []
@@ -141,6 +151,23 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
         messages = tail.messages
         if (tail.contextBefore !== null) {
           context = await source.messagesBefore(conversation.id, tail.contextBefore, CONTEXT_MESSAGES)
+        }
+      } else if (selection === 'unanswered') {
+        // Where the owner last answered (any time, not only in the window): what is after it is what is pending.
+        const own = await source.lastOwn(conversation.id, OWN_LOOKBACK)
+        // What is pending does not stop at the start of the window: read from the owner's last answer on.
+        const lastOwn = lastUsefulOwn(own, mass)
+        // Never wrote (an individual chat): everything of the chat is pending. A group where they never wrote is skipped.
+        const from = lastOwn === undefined ? (conversation.isGroup ? window.since : 0) : Math.min(window.since, lastOwn)
+        if (from < window.since) {
+          messages = await source.messagesInWindow(conversation.id, { since: from, until: window.until })
+        }
+        const pick = pickUnanswered(conversation.isGroup, messages, own, mass, window.since)
+        messages = pick.messages
+        if (pick.contextBefore !== null) {
+          context = (await source.messagesBefore(conversation.id, pick.contextBefore, pick.contextLimit)).filter(
+            isUsefulMessage,
+          )
         }
       }
       // Mass messages are removed after the unread tail, so they can still show up as context (as in the digest).
@@ -160,95 +187,132 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
 
     const filters = (request.chats ?? []).map((c) => c.trim()).filter((c) => c !== '')
     const named = loaded
-      .map(({ conversation, messages, context, lastIncoming }) => ({
-        conversation,
-        messages,
-        context,
-        lastIncoming,
-        ...resolveConversationName(conversation, personOf(conversation.participantId), {
+      .map((item) => ({
+        ...item,
+        ...resolveConversationName(item.conversation, personOf(item.conversation.participantId), {
           unnamedGroup: renderers.transcript.unnamedGroup,
         }),
       }))
       // The privacy exclusions come first and cannot be overridden by the filter of the request.
       .filter((c) => !isExcluded(settings.excludePatterns, c.conversation.id, c.name))
       .filter((c) => filters.length === 0 || isExcluded(filters, c.conversation.id, c.name))
-    // The most recent incoming message first; the id breaks ties so every page of the same window agrees.
-    named.sort(
+    // RF-43: the text of a request goes to one provider and mixes chats, so a "local only" chat is in it only when
+    // the provider never sends anything out. Otherwise it is left out and only counted.
+    const localOnly = deps.localOnlyPatterns?.() ?? []
+    const allowed = named.filter((c) => answerer.local || !isExcluded(localOnly, c.conversation.id, c.name))
+    const leftOutLocalOnly = named.length - allowed.length
+    // The most recent incoming message first; the id breaks ties so the order is the same every time.
+    allowed.sort(
       (a, b) =>
         b.lastIncoming - a.lastIncoming ||
         (a.conversation.id < b.conversation.id ? -1 : a.conversation.id > b.conversation.id ? 1 : 0),
     )
-    const candidates = named.length
-    const page = named.slice(offset, offset + MAX_ASK_CONVERSATIONS)
+    if (allowed.length === 0) return err({ kind: 'noMessages', leftOutLocalOnly })
 
-    const systemPrompt = deps.systemPrompt(
-      question,
-      settings.ownerName,
-      matchAskHints(request.askHints ?? [], question),
-    )
-    const outcomes = await mapWithConcurrency(page, concurrency, async (item) => {
-      try {
-        const entries: TranscriptEntry[] = item.messages.map((m) => ({
-          message: { ...m, copies: 0 },
-          participant: m.fromMe ? null : personOf(m.senderId),
-          isMass: false,
-        }))
-        const body = renderers.transcript.render({
-          name: item.name,
-          isGroup: item.conversation.isGroup,
-          messages: entries,
-          context: item.context.map((m) => ({
-            message: { ...m, copies: 0 },
-            participant: m.fromMe ? null : personOf(m.senderId),
-            isMass: isMassMessage(mass, m),
-          })),
-          ownerName: settings.ownerName,
-          maxChars: settings.maxCharsPerConversation,
-        })
-        // Only an individual chat has an address-book status; a group says it is a group, so it is never an "unsaved contact".
-        const status = item.conversation.isGroup ? 'group' : item.saved ? 'saved' : 'unsaved'
-        const transcript = `${deps.contactStatus(status)}\n${body}`
-        const raw = await summarizer.summarize({
-          conversation: { id: item.conversation.id, name: item.name, isGroup: item.conversation.isGroup },
-          systemPrompt,
-          transcript,
-        })
-        if (typeof raw !== 'object' || raw === null || raw.ok !== true) return null
-        const parsed = parseSummaryResponse(raw.value)
-        if (!parsed.ok) return null
-        const provider = typeof raw.provider === 'string' && raw.provider !== '' ? raw.provider : 'unknown'
-        const answer = parsed.value.summary.trim()
-        const relevant = answer !== '' && !isNothingRelevant(answer)
-        return {
-          provider,
-          item: relevant
-            ? {
-                name: item.name,
-                answer,
-                todos: parsed.value.todos.filter((t) => t.trim() !== ''),
-                needsReply: parsed.value.needsReply,
-                messageCount: item.messages.length,
-              }
-            : null,
-        }
-      } catch {
+    const entryOf = (m: Message): TranscriptEntry => ({
+      message: { ...m, copies: 0 },
+      participant: m.fromMe ? null : personOf(m.senderId),
+      isMass: isMassMessage(mass, m),
+    })
+    const blocks: AskBlock[] = allowed.map((item) => {
+      const kind = item.conversation.isGroup ? 'group' : item.saved ? 'saved' : 'unsaved'
+      const render = (list: readonly Message[]) =>
+        renderers.transcript.lines({ entries: list.map(entryOf), ownerName: settings.ownerName })
+      const marker = selection === 'unanswered' ? texts.contextMarker.unanswered : texts.contextMarker.unread
+      const lines =
+        item.context.length > 0
+          ? [...render(item.context), marker, ...render(item.messages)]
+          : [...render(item.messages)]
+      return { heading: (continued) => texts.chatHeading(kind, item.name, continued), lines }
+    })
+    // A provider with a smaller limit of its own (a context window, an argument) gets smaller parts.
+    const partChars = Math.min(ASK_PART_CHARS, answerer.maxPartChars ?? ASK_PART_CHARS)
+    const parts = buildParts(blocks, partChars)
+    const chars = totalChars(parts)
+    if (chars > ASK_MAX_TOTAL_CHARS) return err({ kind: 'tooMuch', chars })
+
+    const period = `${renderers.transcript.formatDateTime(window.since)} – ${renderers.transcript.formatDateTime(window.until)}`
+    const ownerName = settings.ownerName?.trim() ? settings.ownerName : deps.ownerNameFallback
+    const unansweredOnly = selection === 'unanswered'
+    const hints = matchAskHints(request.askHints ?? [], question)
+    const messageCount = allowed.reduce((n, c) => n + c.messages.length, 0)
+    const report = (answer: string, provider: string, calls: number): Result<AskReport, AskChatsError> =>
+      ok({
+        window,
+        selection,
+        chats: allowed.length,
+        messages: messageCount,
+        leftOutLocalOnly,
+        parts: parts.length,
+        calls,
+        provider,
+        answer,
+      })
+
+    const systemPrompt = texts.systemPrompt({ ownerName, hints, unansweredOnly })
+    const failed = (failure: AnswerFailureClass): Result<AskReport, AskChatsError> =>
+      err({ kind: 'answerFailed', failure })
+    if (parts.length === 1) {
+      const result = await callAnswerer(answerer, {
+        systemPrompt,
+        input: texts.input({ period, question, messages: parts[0] ?? '' }),
+      })
+      return result.ok ? report(result.text, result.provider, 1) : failed(result.failure)
+    }
+
+    const concurrency = ASK_EXTRACT_CONCURRENCY
+    assertConcurrency(concurrency)
+    let done = 0
+    let firstFailure: AnswerFailureClass | null = null
+    request.onProgress?.({ phase: 'reading', done, total: parts.length })
+    const extractPrompt = texts.extractPrompt({ ownerName, unansweredOnly })
+    const extracts = await mapWithConcurrency(parts, concurrency, async (part, index) => {
+      // One failed part fails the request: no new call is started after it (those already running finish).
+      if (firstFailure !== null) return null
+      const result = await callAnswerer(answerer, {
+        systemPrompt: extractPrompt,
+        input: texts.extractInput({ period, question, part: index + 1, parts: parts.length, messages: part }),
+      })
+      if (!result.ok) {
+        firstFailure ??= result.failure
         return null
       }
+      done += 1
+      request.onProgress?.({ phase: 'reading', done, total: parts.length })
+      return result
     })
+    if (firstFailure !== null) return failed(firstFailure)
+    const useful = extracts.flatMap((e) => (e === null || isNothing(e.text) ? [] : [e.text]))
+    // Nothing found in any part: there is nothing to merge, so no final call is made.
+    if (useful.length === 0) return report(texts.nothingFound, extracts[0]?.provider ?? 'unknown', parts.length)
+    request.onProgress?.({ phase: 'writing', done: parts.length, total: parts.length })
+    const final = await callAnswerer(answerer, {
+      systemPrompt,
+      input: texts.mergeInput({ period, question, extracts: useful }),
+    })
+    return final.ok ? report(final.text, final.provider, parts.length + 1) : failed(final.failure)
+  }
+}
 
-    const items: AskItem[] = []
-    const providers: Record<string, number> = {}
-    let failed = 0
-    for (const outcome of outcomes) {
-      if (outcome === null) {
-        failed += 1
-        continue
-      }
-      providers[outcome.provider] = (providers[outcome.provider] ?? 0) + 1
-      if (outcome.item !== null) items.push(outcome.item)
+/** How many of the owner's latest messages of a chat are looked at to find where they last answered. */
+const OWN_LOOKBACK = 100
+
+type Called = { ok: true; text: string; provider: string } | { ok: false; failure: AnswerFailureClass }
+
+async function callAnswerer(answerer: Answerer, request: Parameters<Answerer['answer']>[0]): Promise<Called> {
+  try {
+    const result = await answerer.answer(request)
+    if (typeof result !== 'object' || result === null) return { ok: false, failure: 'other' }
+    // The reason is text from the provider: only its class is kept.
+    if (result.ok !== true) return { ok: false, failure: classifyAnswerFailure(String(result.error ?? '')) }
+    const text = result.text.trim()
+    if (text === '') return { ok: false, failure: 'other' }
+    return {
+      ok: true,
+      text,
+      provider: typeof result.provider === 'string' && result.provider !== '' ? result.provider : 'unknown',
     }
-    // The most urgent first: what needs a reply, then the busiest conversation.
-    items.sort((a, b) => Number(b.needsReply) - Number(a.needsReply) || b.messageCount - a.messageCount)
-    return ok({ window, consulted: page.length, candidates, offset, items, failed, providers })
+  } catch {
+    return { ok: false, failure: 'other' }
   }
 }

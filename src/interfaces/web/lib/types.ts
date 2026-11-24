@@ -156,10 +156,14 @@ export interface LinkSnapshot {
   readonly error?: LinkErrorCode
 }
 
-/** One request of the "Ask" tab. `items` and `question` are text written from chats of third parties or the user: render as text only. */
+/** Where the delivery of an answer to the owner's own chat stands. `off`: it was not asked for. */
+export type AskDelivery = 'off' | 'queued' | 'sent' | 'notQueued' | 'discarded'
+
+/** One request of the "Ask" tab. `question` and `result.answer` are text derived from chats of third parties or the user: render as text only. */
 export interface AskView {
   readonly id: number
   readonly question: string
+  readonly selection: 'unanswered' | 'unread' | 'all'
   readonly period: 'today' | 'h24' | 'd3' | 'd7'
   readonly chats: readonly string[]
   readonly state: 'running' | 'done' | 'failed'
@@ -167,21 +171,30 @@ export interface AskView {
   readonly finishedAt?: number
   readonly since: number
   readonly until: number
-  readonly consulted?: number
-  readonly candidates?: number
-  readonly offset?: number
-  readonly remaining?: number
-  readonly next?: number
-  readonly continuedBy?: number
-  readonly failedChats?: number
-  readonly items?: readonly {
-    readonly name: string
+  readonly progress?: { readonly phase: 'reading' | 'writing'; readonly done: number; readonly total: number }
+  readonly deliver: boolean
+  readonly delivery: AskDelivery
+  readonly result?: {
     readonly answer: string
-    readonly todos: readonly string[]
-    readonly needsReply: boolean
-    readonly messageCount: number
-  }[]
+    readonly provider: string
+    readonly chats: number
+    readonly messages: number
+    readonly leftOutLocalOnly: number
+    readonly parts: number
+  }
   readonly error?: string
+}
+
+/** A saved request of the account. */
+export interface AskPreset {
+  readonly name: string
+  readonly text: string
+}
+
+export interface AskPresets {
+  readonly presets: readonly AskPreset[]
+  /** True when these are the defaults of the language and the account has none of its own. */
+  readonly defaults: boolean
 }
 
 export type DigestEventState = 'started' | 'deferred' | 'done' | 'empty' | 'failed' | 'busy'

@@ -117,6 +117,26 @@ export class SqliteDigestStore implements DigestStore {
     return Number(result.changes) === 1
   }
 
+  /** Queues parts that belong to no digest, in one transaction. Returns the id of the last one, or null for no parts. */
+  enqueueOutbox(parts: readonly string[]): number | null {
+    if (parts.length === 0) return null
+    return inTransaction(this.db, () => {
+      const insert = this.db.prepare('INSERT INTO outbox (digest_id, text, created_at) VALUES (NULL, ?, ?)')
+      const createdAt = this.now()
+      let last = 0
+      for (const part of parts) last = Number(insert.run(part, createdAt).lastInsertRowid)
+      return last
+    })
+  }
+
+  outboxStatus(id: number): 'queued' | 'sent' | 'gone' {
+    const row = this.db.prepare('SELECT sent_at FROM outbox WHERE id = ?').get(id) as
+      | { sent_at: number | null }
+      | undefined
+    if (row === undefined) return 'gone'
+    return row.sent_at === null ? 'queued' : 'sent'
+  }
+
   /** Deletes every part not delivered yet (unlinking). Returns how many. Delivered parts stay. */
   discardPendingOutbox(): number {
     return Number(this.db.prepare('DELETE FROM outbox WHERE sent_at IS NULL').run().changes)

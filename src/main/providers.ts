@@ -1,7 +1,9 @@
+import type { Answerer } from '../application/ports/answerer.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import {
   AnthropicSummarizer,
   ClaudeCliSummarizer,
+  composeAnswerer,
   composeSummarizer,
   DisabledCliSummarizer,
   GeminiSummarizer,
@@ -42,7 +44,7 @@ export function buildProvider(
   env: NodeJS.ProcessEnv,
   secrets?: SecretFiles,
   baseUrls: ProviderBaseUrls = {},
-): Summarizer {
+): Summarizer & Answerer {
   const { provider } = config
   const keyOf = (name: KeyProvider) => (): string | undefined =>
     resolveApiKey(name, {
@@ -141,5 +143,20 @@ export function buildSummarizer(
     ...(provider.backup === null ? {} : { backup: buildProvider(provider.backup, config, env, secrets) }),
     ...(local === undefined ? {} : { local }),
     localOnlyPatterns,
+  })
+}
+
+/**
+ * The answerer of the configuration (the "Ask" tab): the primary provider and the backup (RF-42), the same adapters as the
+ * summarizer with their free-text mode. There is no per-conversation routing here: the text of a request mixes chats, so
+ * the use case itself keeps the "local only" conversations (RF-43) out unless `local` says the text never leaves the
+ * machine (every provider of the chain is Ollama). Null when no provider was chosen.
+ */
+export function buildAnswerer(config: AppConfig, env: NodeJS.ProcessEnv, secrets?: SecretFiles): Answerer | null {
+  const { provider } = config
+  if (provider.primary === null) return null
+  return composeAnswerer({
+    primary: buildProvider(provider.primary, config, env, secrets),
+    ...(provider.backup === null ? {} : { backup: buildProvider(provider.backup, config, env, secrets) }),
   })
 }

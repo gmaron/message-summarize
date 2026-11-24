@@ -121,7 +121,6 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
     ctx,
     host,
     onEvent: (event) => bus.publish('ask', event),
-    accountStamp: (id) => installation.accounts().find((row) => row.id === id)?.createdAt ?? null,
   })
   let publishing = false
   let again = false
@@ -180,14 +179,13 @@ export async function startWeb(options: StartWebOptions): Promise<WebHandle | nu
   const removeBusyCheck = host.addBusyCheck((id) => previews.isBusy(id) || asks.isBusy(id))
   const unsubscribeChange = host.onChange(() => {
     previews.prune()
-    asks.prune()
     void publishAccounts()
   })
   const unsubscribeLink = host.onLink((event) => {
     // A new link may bind another number: what was summarized before is not that account's any more.
     if (event.type === 'link') {
       previews.forget(event.account)
-      asks.forget(event.account)
+      void asks.forget(event.account)
     }
     if (event.type === 'qr') {
       const seq = (qrCount.get(event.account) ?? 0) + 1

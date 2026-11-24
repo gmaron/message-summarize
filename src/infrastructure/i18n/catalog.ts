@@ -1,3 +1,4 @@
+import type { AskTexts } from '../../application/ask-chats.js'
 import type { MessageKind } from '../../domain/model.js'
 import type { PromptPresetId } from '../../domain/prompt.js'
 import type { ScheduleIssue } from '../../domain/schedule.js'
@@ -63,7 +64,8 @@ export type WebErrorCode =
   | 'setupCompleted'
   | 'wrongStep'
   | 'emptyQuestion'
-  | 'nothingToContinue'
+  | 'noMessages'
+  | 'tooMuch'
   | 'questionTooLong'
 
 /** Why a configuration option is not valid (`issues` of a 422 `invalidConfig`): codes, never text. The same as the CLI's. */
@@ -226,15 +228,15 @@ export interface Catalog {
     failedChats(count: number): string
   }
 
-  /** The free requests of the owner over the chats (the "Ask" tab of the web). */
-  readonly ask: {
+  /** The free requests of the owner over the chats (the "Ask" tab of the web): what the model reads and is told. */
+  readonly ask: AskTexts & {
     /**
-     * The system prompt of one conversation for a request: the cleaned question, the owner name and the texts of the
-     * owner's hints that apply to the question (none: the prompt has no section for them).
+     * The first message of the delivery to the owner's own chat: what was asked and over which period. `since` and `until`
+     * are already formatted dates; `selection` says which messages were read.
      */
-    systemPrompt(question: string, ownerName: string, hints: readonly string[]): string
-    /** One line before the transcript of a chat: whether the contact is in the owner's address book, or that it is a group. */
-    contactStatus(status: 'saved' | 'unsaved' | 'group'): string
+    deliveryHeader(input: { since: string; until: string; selection: 'unanswered' | 'unread' | 'all' }): string
+    /** The saved requests offered when the account has none of its own. */
+    readonly defaultPresets: readonly { readonly name: string; readonly text: string }[]
   }
 
   /** Texts of the local web: the page shown while it is not built, the errors of its API and the whole interface. */
@@ -897,35 +899,55 @@ export interface WebTexts {
       readonly title: string
       readonly questionLabel: string
       readonly placeholder: string
+      /** `{count}` of `{max}` characters typed. */
+      readonly questionCount: string
+      readonly presetsLabel: string
+      readonly presetsDefaultsNote: string
+      readonly presetSaveTitle: string
+      readonly presetNameLabel: string
+      readonly presetNamePlaceholder: string
+      readonly presetSave: string
+      readonly presetSaved: string
+      readonly presetRemove: string
+      readonly presetsFull: string
+      readonly selectionLabel: string
+      readonly selections: {
+        readonly unanswered: { readonly label: string; readonly hint: string }
+        readonly unread: { readonly label: string; readonly hint: string }
+        readonly all: { readonly label: string; readonly hint: string }
+      }
       readonly periodLabel: string
       readonly periods: { readonly today: string; readonly h24: string; readonly d3: string; readonly d7: string }
       readonly chatsLabel: string
       readonly chatsPlaceholder: string
-      readonly shortcutsLabel: string
-      readonly shortcuts: readonly { readonly label: string; readonly question: string }[]
+      readonly deliverLabel: string
+      readonly deliverHint: string
       readonly submit: string
       readonly running: string
-      /** `{read}`, `{answered}`: the pieces below, already with their plural. */
+      /** `{done}` of `{total}` parts read. */
+      readonly progressReading: string
+      readonly progressWriting: string
+      /** `{chats}`, `{messages}`: already with their plural. */
       readonly stats: string
-      /** `{read}`, `{answered}`, `{failed}`. */
-      readonly statsFailed: string
-      /** Pieces of the stats: `{count}` in the plural forms. */
-      readonly statsReadOne: string
-      readonly statsReadMany: string
-      readonly statsAnsweredOne: string
-      readonly statsAnsweredMany: string
-      readonly statsFailedOne: string
-      readonly statsFailedMany: string
-      readonly nothing: string
-      /** `{from}`, `{to}`, `{total}`, `{left}`: a page did not read every chat of the period. */
-      readonly partial: string
-      /** `{count}`: the button that reads the next chats of the same request. */
-      readonly continue: string
-      readonly needsReply: string
+      readonly statsChatsOne: string
+      /** `{count}`. */
+      readonly statsChatsMany: string
+      readonly statsMessagesOne: string
+      /** `{count}`. */
+      readonly statsMessagesMany: string
+      /** `{count}`: chats "local only" that were not sent to an external provider. */
+      readonly leftOutLocalOnly: string
+      readonly delivery: {
+        readonly queued: string
+        readonly sent: string
+        readonly notQueued: string
+        readonly discarded: string
+      }
       readonly copy: string
       readonly copied: string
       readonly remove: string
       readonly historyTitle: string
+      readonly historyEmpty: string
       readonly privateNote: string
       readonly mic: string
       readonly micListening: string

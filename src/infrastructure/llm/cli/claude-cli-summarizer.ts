@@ -1,3 +1,4 @@
+import type { Answerer, AnswerRequest, AnswerResult } from '../../../application/ports/answerer.js'
 import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
 import type { Result } from '../../../domain/result.js'
 import { parseSummaryResponse } from '../../../domain/summary.js'
@@ -11,6 +12,8 @@ export interface ClaudeCliOptions {
   readonly model: string
   /** Default 3 minutes. */
   readonly timeoutMs?: number
+  /** One free-text answer. Default 10 minutes. */
+  readonly answerTimeoutMs?: number
   /** Time between SIGTERM and SIGKILL when the timeout fires. Default 5 seconds. */
   readonly killGraceMs?: number
   /** Where the child environment is taken from. Default `process.env`. Only the names in CHILD_ENV_NAMES are used. */
@@ -61,15 +64,14 @@ export const CLAUDE_REQUIRED_FLAGS = [
  * use `--bare`: it skips the OAuth/keychain login. A CLI too old to know these flags exits non-zero without JSON, and
  * `verify` refuses to run it at all. This matches RF-49: the CLI is only used when it can be verified to run this way.
  */
-export function claudeArgs(model: string, systemPrompt: string): string[] {
+export function claudeArgs(model: string, systemPrompt: string, schema: boolean = true): string[] {
   return [
     '-p',
     '--model',
     model,
     '--system-prompt',
     systemPrompt,
-    '--json-schema',
-    SUMMARY_JSON_SCHEMA_TEXT,
+    ...(schema ? ['--json-schema', SUMMARY_JSON_SCHEMA_TEXT] : []),
     '--output-format',
     'json',
     '--tools',
@@ -120,11 +122,34 @@ function interpretClaude(output: { stdout: string; stderr: string; code: number 
   return { ok: true, value: structured }
 }
 
+/** A free-text answer: the `result` of the JSON the CLI prints. Never quotes the output (it can echo chat text). */
+function interpretClaudeAnswer(
+  output: { stdout: string; stderr: string; code: number | null },
+  sent: string,
+): { ok: true; text: string } | { ok: false; error: string } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(output.stdout)
+  } catch {
+    const detail = output.stderr.trim()
+      ? excerpt(redactSent(output.stderr, sent))
+      : `stdout was ${output.stdout.length} chars`
+    return { ok: false, error: `claude exited with code ${output.code}: ${detail}` }
+  }
+  const out = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<string, unknown>
+  if (out.is_error === true) {
+    return { ok: false, error: `claude: ${excerpt(redactSent(String(out.result ?? out.subtype ?? 'error'), sent))}` }
+  }
+  if (typeof out.result !== 'string' || out.result.trim() === '') return { ok: false, error: 'claude returned no text' }
+  return { ok: true, text: out.result }
+}
+
 /** The name this adapter reports as the provider of a summary. */
 export const CLAUDE_CLI_PROVIDER = 'claude-cli'
 
 /** Summarizes with Claude Code in headless mode, with no tools, in an empty temporary directory (RF-47..49). */
-export class ClaudeCliSummarizer implements Summarizer {
+export class ClaudeCliSummarizer implements Summarizer, Answerer {
+  readonly local = false
   private readonly inner: CliSummarizer
 
   constructor(options: ClaudeCliOptions) {
@@ -139,11 +164,20 @@ export class ClaudeCliSummarizer implements Summarizer {
         stdin: correction === null ? request.transcript : request.transcript + CORRECTION,
       }),
       interpret: interpretClaude,
+      // The same sandbox (no tools, MCP or session, an empty directory, a timeout); only the schema is left out.
+      answer: {
+        call: (request: AnswerRequest) => ({
+          args: claudeArgs(options.model, request.systemPrompt, false),
+          stdin: request.input,
+        }),
+        interpret: interpretClaudeAnswer,
+      },
     }
     this.inner = new CliSummarizer({
       adapter,
       ...(options.env === undefined ? {} : { env: options.env }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+      ...(options.answerTimeoutMs === undefined ? {} : { answerTimeoutMs: options.answerTimeoutMs }),
       ...(options.killGraceMs === undefined ? {} : { killGraceMs: options.killGraceMs }),
       maxOutputChars: MAX_OUTPUT_CHARS,
       ...(options.verify === true ? { verify: () => verifyClaudeCli(command, options.env ?? process.env) } : {}),
@@ -153,5 +187,10 @@ export class ClaudeCliSummarizer implements Summarizer {
   async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const result: Result<unknown, string> = await this.inner.summarize(request)
     return result.ok ? { ok: true, value: result.value, provider: CLAUDE_CLI_PROVIDER } : result
+  }
+
+  async answer(request: AnswerRequest): Promise<AnswerResult> {
+    const result = await this.inner.answer(request)
+    return result.ok ? { ok: true, text: result.value, provider: CLAUDE_CLI_PROVIDER } : result
   }
 }

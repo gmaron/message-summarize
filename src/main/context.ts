@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { Answerer } from '../application/ports/answerer.js'
 import type { Clock } from '../application/ports/clock.js'
 import type { ServiceInstaller } from '../application/ports/service-installer.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
@@ -103,6 +104,8 @@ export interface CommandContext {
   readonly linkTiming: LinkTiming
   /** Replaces the configured providers. For tests. */
   readonly summarizer?: Summarizer | null
+  /** Replaces the free-text answerer of the Ask tab. For tests. */
+  readonly answerer?: Answerer | null
   /** Replaces the transcriber built from the configuration (null: none). For tests. */
   readonly transcriber?: Transcriber | null
   /** How long `msum digest` waits for pending audios and how often it looks while observing a daemon. For tests. */

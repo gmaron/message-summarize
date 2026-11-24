@@ -1,77 +1,104 @@
 import { describe, expect, it } from 'vitest'
-import {
-  type AskChatsRequest,
-  cleanQuestion,
-  createAskChats,
-  MAX_ASK_CONVERSATIONS,
-  MAX_QUESTION_CHARS,
-  NOTHING_RELEVANT,
-} from '../../../src/application/ask-chats.js'
-import type { SummarizeRequest, Summarizer } from '../../../src/application/ports/summarizer.js'
-import { err, ok } from '../../../src/domain/result.js'
+import { classifyAnswerFailure } from '../../../src/application/answer-failure.js'
+import { type AskChatsRequest, type AskProgress, createAskChats } from '../../../src/application/ask-chats.js'
+import type { Answerer, AnswerRequest, AnswerResult } from '../../../src/application/ports/answerer.js'
+import { ASK_PART_CHARS, MAX_QUESTION_CHARS } from '../../../src/domain/ask-text.js'
+import { err } from '../../../src/domain/result.js'
 import { DEFAULT_SETTINGS, type DigestSettings } from '../../../src/domain/settings.js'
-import { composeSummarizer, LOCAL_ONLY_UNAVAILABLE } from '../../../src/infrastructure/llm/index.js'
+import { getCatalog } from '../../../src/infrastructure/i18n/index.js'
 import { createRenderers } from '../../../src/infrastructure/rendering/index.js'
-import { FakeSummarizer, InMemorySource, VALID_RESPONSE } from '../../support/application-fakes.js'
+import { InMemorySource } from '../../support/application-fakes.js'
 import { conversation, message } from '../domain/factories.js'
 import { BA, ba } from '../rendering/support.js'
 
 const renderers = createRenderers('en', BA)
+const texts = getCatalog('en').ask
 const SINCE = ba(3, 10, 0, 0)
 const UNTIL = ba(3, 10, 12, 0)
 const at = (hour: number, minute = 0) => ba(3, 10, hour, minute)
-
 const settings = (overrides: Partial<DigestSettings> = {}): DigestSettings => ({ ...DEFAULT_SETTINGS, ...overrides })
 
-const answer = (resumen: string, extra: Record<string, unknown> = {}) => ok({ ...VALID_RESPONSE, resumen, ...extra })
+const ANA = '9911963367943'
+const BETO = '9911963367944'
+const CARLA = '9911963367945'
+
+class FakeAnswerer implements Answerer {
+  readonly calls: AnswerRequest[] = []
+  inFlight = 0
+  maxInFlight = 0
+  constructor(
+    readonly local = false,
+    private readonly handler: (request: AnswerRequest, call: number) => AnswerResult | Promise<AnswerResult> = (r) => ({
+      ok: true,
+      text: `ANSWER(${r.input.length})`,
+      provider: 'fake',
+    }),
+  ) {}
+  async answer(request: AnswerRequest): Promise<AnswerResult> {
+    const call = this.calls.push(request) - 1
+    this.inFlight++
+    this.maxInFlight = Math.max(this.maxInFlight, this.inFlight)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      return await this.handler(request, call)
+    } finally {
+      this.inFlight--
+    }
+  }
+}
 
 const request = (overrides: Partial<AskChatsRequest> = {}): AskChatsRequest => ({
   question: 'who asked me for money?',
   window: { since: SINCE, until: UNTIL },
+  selection: 'all',
   settings: settings(),
   ...overrides,
 })
 
 /** A saved contact "<name>" with an individual conversation "<id>" and `count` incoming messages. */
-function addChat(source: InMemorySource, id: string, name: string, count = 1) {
+function addChat(source: InMemorySource, id: string, name: string, count = 1, hour = 1) {
   source.addConversation(conversation({ id, name, participantId: id, address: `+${id}` }))
   source.addParticipant({ id, savedName: name, publicName: null })
   for (let i = 0; i < count; i++) {
     source.addMessages(
-      message({ id: `${id}-${i}`, conversationId: id, senderId: id, timestamp: at(1, i), text: `${name} says ${i}` }),
+      message({
+        id: `${id}-${i}`,
+        conversationId: id,
+        senderId: id,
+        timestamp: at(hour, i),
+        text: `${name} says ${i}`,
+      }),
     )
   }
 }
 
-function setup(options: { summarizer?: Summarizer; ownConversationIds?: () => readonly string[] } = {}) {
+const own = (id: string, n: string, hour: number, text: string, minute = 0) =>
+  message({ id: `${id}-own-${n}`, conversationId: id, senderId: null, fromMe: true, timestamp: at(hour, minute), text })
+
+function setup(options: Partial<{ answerer: FakeAnswerer; own: string[]; localOnly: string[] }> = {}) {
   const source = new InMemorySource()
-  const summarizer = options.summarizer ?? new FakeSummarizer(() => answer('Asked for a loan.'))
+  const answerer = options.answerer ?? new FakeAnswerer()
   const run = createAskChats({
     source,
-    summarizer,
+    answerer,
     renderers,
-    systemPrompt: (question, owner, hints) =>
-      `ASK[${question}] for ${owner ?? 'nobody'}${hints.length === 0 ? '' : ` HINTS[${hints.join('|')}]`}`,
-    contactStatus: (status) => `STATUS[${status}]`,
-    ...(options.ownConversationIds === undefined ? {} : { ownConversationIds: options.ownConversationIds }),
+    texts,
+    ownerNameFallback: 'the owner',
+    ownConversationIds: () => options.own ?? [],
+    localOnlyPatterns: () => options.localOnly ?? [],
   })
-  return { source, summarizer, run }
+  return { source, answerer, run }
 }
 
-describe('cleanQuestion', () => {
-  it('trims, collapses blanks, drops control characters and caps the length', () => {
-    expect(cleanQuestion('  who\n\tasked\u0000me   ')).toBe('who asked me')
-    expect(cleanQuestion('a'.repeat(MAX_QUESTION_CHARS + 500))).toHaveLength(MAX_QUESTION_CHARS)
-  })
-})
+const input = (answerer: FakeAnswerer, call = 0) => answerer.calls[call]?.input ?? ''
 
 describe('AskChats: the request', () => {
-  it('rejects an empty question, also one of only blanks and control characters, without reading anything', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
+  it('rejects an empty question, also one of only blanks and control characters, without reading or asking anything', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
     expect(await run(request({ question: '' }))).toEqual(err({ kind: 'emptyQuestion' }))
     expect(await run(request({ question: ' \n\u0001 ' }))).toEqual(err({ kind: 'emptyQuestion' }))
-    expect((summarizer as FakeSummarizer).calls).toEqual([])
+    expect(answerer.calls).toEqual([])
   })
 
   it('rejects a window that does not start before it ends', async () => {
@@ -79,483 +106,657 @@ describe('AskChats: the request', () => {
     expect(await run(request({ window: { since: UNTIL, until: UNTIL } }))).toEqual(err({ kind: 'invalidWindow' }))
   })
 
-  it('rejects an invalid concurrency', async () => {
-    const { source, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    await expect(run(request({ concurrency: 0 }))).rejects.toThrow()
+  it('has nothing to ask when no chat has messages for the selection', async () => {
+    const { answerer, run } = setup()
+    expect(await run(request())).toEqual(err({ kind: 'noMessages', leftOutLocalOnly: 0 }))
+    expect(answerer.calls).toEqual([])
   })
 
-  it('passes the trimmed and capped question to the system prompt, with the owner name', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    const long = `  ${'q'.repeat(MAX_QUESTION_CHARS + 200)}  `
-    await run(request({ question: long, settings: settings({ ownerName: 'Lucía' }) }))
-    const prompt = (summarizer as FakeSummarizer).calls[0]?.systemPrompt
-    expect(prompt).toBe(`ASK[${'q'.repeat(MAX_QUESTION_CHARS)}] for Lucía`)
-  })
-
-  it('adds the texts of the hints that the question mentions, only those, in order', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    const askHints = [
-      { when: ['encargo', 'encargos'], text: 'An encargo is a custom cake order.' },
-      { when: ['turno'], text: 'A turno is a pickup slot.' },
-      { when: ['Cumpleaños'], text: 'Birthdays need a candle.' },
-    ]
-    await run(request({ question: 'qué ENCARGOS hay para el cumpleanos de Ana', askHints }))
-    await run(request({ question: 'qué dijo Ana', askHints }))
-    await run(request({ question: 'qué encargo y turno hay', askHints }))
-    const prompts = (summarizer as FakeSummarizer).calls.map((c) => c.systemPrompt)
-    expect(prompts[0]).toBe(
-      'ASK[qué ENCARGOS hay para el cumpleanos de Ana] for nobody HINTS[An encargo is a custom cake order.|Birthdays need a candle.]',
+  it('makes ONE call with the system prompt, the period, the question and every chat under its own heading', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez', 2, 1)
+    addChat(source, BETO, 'Beto Ruiz', 1, 5)
+    const result = await run(request({ settings: settings({ ownerName: 'Lucía' }) }))
+    expect(answerer.calls).toHaveLength(1)
+    const sent = input(answerer)
+    expect(answerer.calls[0]?.systemPrompt).toContain('You are the assistant of Lucía')
+    expect(sent).toContain('Request: who asked me for money?')
+    expect(sent).toContain('Period: 10/03')
+    // The chat with the most recent incoming message comes first.
+    expect(sent.indexOf('### Chat with: Beto Ruiz (saved)')).toBeLessThan(
+      sent.indexOf('### Chat with: Ana Gómez (saved)'),
     )
-    expect(prompts[1]).toBe('ASK[qué dijo Ana] for nobody')
-    expect(prompts[2]).toContain('HINTS[An encargo is a custom cake order.|A turno is a pickup slot.]')
+    expect(sent).toContain('Ana Gómez says 1')
+    expect(result.ok && result.value).toMatchObject({
+      chats: 2,
+      messages: 3,
+      parts: 1,
+      calls: 1,
+      provider: 'fake',
+      leftOutLocalOnly: 0,
+      selection: 'all',
+    })
+    expect(result.ok && result.value.answer).toMatch(/^ANSWER\(/)
   })
 
-  it('matches the hints against the cleaned question', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    await run(request({ question: ' qué\n\u0000encargo ', askHints: [{ when: ['qué encargo'], text: 'H' }] }))
-    expect((summarizer as FakeSummarizer).calls[0]?.systemPrompt).toContain('HINTS[H]')
-  })
-
-  it('calls the summarizer once per conversation with its id, name and transcript', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Beto Ruiz')
-    const result = await run(request())
-    const calls = (summarizer as FakeSummarizer).calls
-    expect(calls).toHaveLength(2)
-    expect(calls.map((c) => c.conversation.name).sort()).toEqual(['Ana Gómez', 'Beto Ruiz'])
-    expect(calls.find((c) => c.conversation.id === '9911963367943')?.transcript).toContain('Ana Gómez says 0')
-    expect(result.ok && result.value.consulted).toBe(2)
-  })
-
-  it('leaves out messages outside the window and conversations without any', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
+  it('labels an unsaved contact and a group, and uses the owner label for own messages and audio transcripts', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: BETO, name: null, participantId: BETO, address: `+${BETO}` }))
+    source.addParticipant({ id: BETO, savedName: null, publicName: 'Beto' })
+    source.addMessages(message({ id: 'u1', conversationId: BETO, senderId: BETO, timestamp: at(1), text: 'hola' }))
+    source.addMessages(own(BETO, '1', 2, 'dale'))
     source.addMessages(
-      message({ id: 'old', conversationId: '9911963367944', senderId: '9911963367944', timestamp: SINCE - 1000 }),
-    )
-    const result = await run(request())
-    expect((summarizer as FakeSummarizer).calls).toHaveLength(1)
-    expect(result.ok && result.value.consulted).toBe(1)
-  })
-})
-
-describe('AskChats: contact status', () => {
-  it('marks an individual chat as saved or unsaved in the transcript, and a group as a group', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    source.addConversation(
-      conversation({ id: '9911963367944', name: null, participantId: '9911963367944', address: '+9911963367944' }),
-    )
-    source.addParticipant({ id: '9911963367944', savedName: null, publicName: 'Beto' })
-    source.addMessages(
-      message({ id: 'u1', conversationId: '9911963367944', senderId: '9911963367944', timestamp: at(1), text: 'hola' }),
+      message({
+        id: 'a1',
+        conversationId: BETO,
+        senderId: BETO,
+        timestamp: at(3),
+        kind: 'audio',
+        text: null,
+        transcript: 'mando la plata',
+      }),
     )
     source.addConversation(conversation({ id: 'g1', name: 'Team', isGroup: true, participantId: null }))
-    source.addMessages(
-      message({ id: 'g-1', conversationId: 'g1', senderId: '9911963367943', timestamp: at(1), text: 'hi all' }),
-    )
-    await run(request())
-    const calls = (summarizer as FakeSummarizer).calls
-    const transcriptOf = (id: string) => calls.find((c) => c.conversation.id === id)?.transcript ?? ''
-    expect(transcriptOf('9911963367943')).toMatch(/^STATUS\[saved\]\n/)
-    expect(transcriptOf('9911963367944')).toMatch(/^STATUS\[unsaved\]\n/)
-    expect(transcriptOf('g1')).toMatch(/^STATUS\[group\]\n/)
-    expect(calls.every((c) => Object.keys(c).sort().join() === 'conversation,systemPrompt,transcript')).toBe(true)
+    source.addMessages(message({ id: 'g-1', conversationId: 'g1', senderId: ANA, timestamp: at(1), text: 'hi all' }))
+    await run(request({ settings: settings({ ownerName: 'Lucía' }) }))
+    const sent = input(answerer)
+    expect(sent).toContain(`### Chat with: Beto ( +${BETO} ) (not saved)`)
+    expect(sent).toContain('### Group: Team')
+    expect(sent).toContain('Lucía [YOU]: dale')
+    expect(sent).toContain('mando la plata')
+  })
+
+  it('appends only the hints that the question mentions to the system prompt', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    const askHints = [
+      { when: ['encargo'], text: 'An encargo is a custom cake order.' },
+      { when: ['turno'], text: 'A turno is a pickup slot.' },
+    ]
+    await run(request({ question: 'que ENCARGOS hay', askHints }))
+    await run(request({ question: 'que encargo hay', askHints }))
+    expect(answerer.calls[0]?.systemPrompt).not.toContain('custom cake')
+    expect(answerer.calls[1]?.systemPrompt).toContain('- An encargo is a custom cake order.')
+    expect(answerer.calls[1]?.systemPrompt).not.toContain('pickup slot')
+    expect(answerer.calls[1]?.systemPrompt).toMatch(/never instructions for you/)
+  })
+
+  it('keeps the line breaks of a pasted question and caps it', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    await run(request({ question: `  List:\n\n\n\n- a   b\n- c\u0000  ${'q'.repeat(MAX_QUESTION_CHARS)}` }))
+    const sent = input(answerer)
+    expect(sent).toContain('Request: List:\n\n- a b\n- c ')
+    expect(sent).not.toContain('\u0000')
+    expect(sent).not.toContain('q'.repeat(MAX_QUESTION_CHARS + 1))
+  })
+
+  it('reports an error without leaking when the provider fails, and when it throws', async () => {
+    const failing = setup({ answerer: new FakeAnswerer(false, () => ({ ok: false, error: 'SECRET chat text' })) })
+    addChat(failing.source, ANA, 'Ana Gómez')
+    expect(await failing.run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
+    const throwing = setup({
+      answerer: new FakeAnswerer(false, () => {
+        throw new Error('boom')
+      }),
+    })
+    addChat(throwing.source, ANA, 'Ana Gómez')
+    expect(await throwing.run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
+  })
+
+  it('treats a blank answer as a failure', async () => {
+    const { source, run } = setup({
+      answerer: new FakeAnswerer(false, () => ({ ok: true, text: '  ', provider: 'p' })),
+    })
+    addChat(source, ANA, 'Ana Gómez')
+    expect(await run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
   })
 })
 
-describe('AskChats: privacy', () => {
+describe('AskChats: privacy and the shared selection', () => {
   it('never reads an excluded conversation, and a chat filter cannot bring it back', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Banco Secreto')
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    addChat(source, BETO, 'Banco Secreto')
     const result = await run(
-      request({ settings: settings({ excludePatterns: ['banco'] }), chats: ['banco', 'id:9911963367944'] }),
+      request({ settings: settings({ excludePatterns: ['banco'] }), chats: ['banco', `id:${BETO}`] }),
     )
-    expect((summarizer as FakeSummarizer).calls).toEqual([])
-    expect(result.ok && result.value.consulted).toBe(0)
-    expect(result.ok && result.value.items).toEqual([])
+    expect(answerer.calls).toEqual([])
+    expect(result).toEqual(err({ kind: 'noMessages', leftOutLocalOnly: 0 }))
   })
 
   it('never reads the own chat of the owner', async () => {
-    const { source, summarizer, run } = setup({ ownConversationIds: () => ['9911963367999'] })
+    const { source, answerer, run } = setup({ own: ['9911963367999'] })
     addChat(source, '9911963367999', 'Me')
-    addChat(source, '9911963367943', 'Ana Gómez')
+    addChat(source, ANA, 'Ana Gómez')
     await run(request())
-    expect((summarizer as FakeSummarizer).calls.map((c) => c.conversation.id)).toEqual(['9911963367943'])
+    expect(input(answerer)).toContain('Ana Gómez')
+    expect(input(answerer)).not.toContain('Me says')
   })
 
   it('keeps only the conversations that match the chat filter (a name, a number or an id)', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Beto Ruiz')
-    addChat(source, '9911963367945', 'Carla Díaz')
-    await run(request({ chats: [' ana ', '', 'id:9911963367945'] }))
-    const ids = (summarizer as FakeSummarizer).calls.map((c) => c.conversation.id).sort()
-    expect(ids).toEqual(['9911963367943', '9911963367945'])
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    addChat(source, BETO, 'Beto Ruiz')
+    addChat(source, CARLA, 'Carla Díaz')
+    await run(request({ chats: [' ana ', '', `id:${CARLA}`] }))
+    expect(input(answerer)).toContain('Ana Gómez')
+    expect(input(answerer)).toContain('Carla Díaz')
+    expect(input(answerer)).not.toContain('Beto Ruiz')
   })
 
-  it('RF-43: a local-only conversation never reaches the external provider, not even when the local one fails', async () => {
-    const external = new FakeSummarizer(() => answer('external answer'))
-    const local = new FakeSummarizer(() => err('local failed'))
-    const composed = composeSummarizer({ primary: external, backup: external, local, localOnlyPatterns: ['banco'] })
-    const { source, run } = setup({ summarizer: composed })
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Banco Secreto')
-    const result = await run(request())
-    expect(external.calls.map((c) => c.conversation.name)).toEqual(['Ana Gómez'])
-    expect(local.calls.map((c) => c.conversation.name)).toEqual(['Banco Secreto'])
-    expect(result.ok && result.value.failed).toBe(1)
-    expect(result.ok && result.value.items.map((i) => i.name)).toEqual(['Ana Gómez'])
-  })
-
-  it('RF-43: without a local provider a local-only conversation fails and is not sent anywhere', async () => {
-    const external = new FakeSummarizer(() => answer('external answer'))
-    const composed = composeSummarizer({ primary: external, localOnlyPatterns: ['banco'] })
-    const { source, run } = setup({ summarizer: composed })
-    addChat(source, '9911963367944', 'Banco Secreto')
-    const result = await run(request())
-    expect(LOCAL_ONLY_UNAVAILABLE).toBeTruthy()
-    expect(external.calls).toEqual([])
-    expect(result.ok && result.value.failed).toBe(1)
-    expect(result.ok && result.value.items).toEqual([])
-  })
-})
-
-describe('AskChats: the selection (as the digest)', () => {
   it('skips the conversations where only the owner wrote', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    source.addConversation(conversation({ id: '9911963367944', name: 'Beto Ruiz', participantId: '9911963367944' }))
-    source.addMessages(
-      message({
-        id: 'o1',
-        conversationId: '9911963367944',
-        fromMe: true,
-        senderId: null,
-        timestamp: at(2),
-        text: 'Hi Beto',
-      }),
-    )
-    const result = await run(request())
-    expect(result.ok && result.value.candidates).toBe(1)
-    expect(result.ok && result.value.consulted).toBe(1)
-    expect((summarizer as FakeSummarizer).calls.map((c) => c.conversation.name)).toEqual(['Ana Gómez'])
-  })
-
-  it('drops mass messages, so a chat with only a mass message and own text is skipped, and a mixed one keeps its incoming', async () => {
-    const { source, summarizer, run } = setup()
-    const blast = 'Big sale this weekend only, write me to order your pieces now!'
-    for (const id of ['9911963367001', '9911963367002', '9911963367003']) {
-      source.addConversation(conversation({ id, name: `Client ${id}`, participantId: id }))
-      source.addMessages(
-        message({ id: `m-${id}`, conversationId: id, fromMe: true, senderId: null, timestamp: at(2), text: blast }),
-      )
-    }
-    // a mass message plus an incoming reply: the chat stays, and the transcript has no mass text
-    source.addParticipant({ id: '9911963367001', savedName: 'Client 1', publicName: null })
-    source.addMessages(
-      message({
-        id: 'r1',
-        conversationId: '9911963367001',
-        senderId: '9911963367001',
-        timestamp: at(3),
-        text: 'How much?',
-      }),
-    )
-    const result = await run(request())
-    expect(result.ok && result.value.candidates).toBe(1)
-    const calls = (summarizer as FakeSummarizer).calls
-    expect(calls).toHaveLength(1)
-    expect(calls[0]?.transcript).toContain('How much?')
-    expect(calls[0]?.transcript).not.toContain('Big sale')
-  })
-
-  it('with "unread only" reads just the unread tail, with the messages before it as context, and skips read chats', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez', 3)
-    addChat(source, '9911963367944', 'Beto Ruiz', 2)
-    // Ana: 1 unread (her last message); Beto: nothing unread
-    source.setUnread('9911963367943', { kind: 'count', count: 1 })
-    source.setUnread('9911963367944', { kind: 'count', count: 0 })
-    const result = await run(request({ settings: settings({ unreadOnly: true }) }))
-    expect(result.ok && result.value.candidates).toBe(1)
-    const calls = (summarizer as FakeSummarizer).calls
-    expect(calls.map((c) => c.conversation.name)).toEqual(['Ana Gómez'])
-    // the unread message is there, and the earlier ones only as context
-    expect(calls[0]?.transcript).toContain('Ana Gómez says 2')
-    expect(calls[0]?.transcript).toContain('Ana Gómez says 0')
-    const items = result.ok ? result.value.items : []
-    expect(items[0]?.messageCount).toBe(1)
-  })
-
-  it('without "unread only" reads every chat with incoming messages, read or not', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Beto Ruiz')
-    source.setUnread('9911963367944', { kind: 'count', count: 0 })
-    const result = await run(request({ settings: settings({ unreadOnly: false }) }))
-    expect(result.ok && result.value.candidates).toBe(2)
-    expect((summarizer as FakeSummarizer).calls).toHaveLength(2)
-  })
-
-  it('still applies the exclusions before the chat filter', async () => {
-    const { source, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    const result = await run(request({ chats: ['Ana'], settings: settings({ excludePatterns: ['Ana'] }) }))
-    expect(result.ok && result.value.candidates).toBe(0)
-  })
-})
-
-describe('AskChats: the pages', () => {
-  const idOf = (i: number) => `99119633${String(i).padStart(5, '0')}`
-
-  it('reads a page of the maximum, ranked by the latest incoming message, and reports candidates and offset', async () => {
-    const { source, summarizer, run } = setup()
-    const total = MAX_ASK_CONVERSATIONS + 5
-    // chat i has its incoming message at minute i: the highest i is the most recent
-    for (let i = 0; i < total; i++) {
-      source.addConversation(conversation({ id: idOf(i), name: `Person ${i}`, participantId: idOf(i) }))
-      source.addParticipant({ id: idOf(i), savedName: `Person ${i}`, publicName: null })
-      source.addMessages(
-        message({
-          id: `m${i}`,
-          conversationId: idOf(i),
-          senderId: idOf(i),
-          timestamp: at(1, i % 60) + Math.floor(i / 60) * 3600_000,
-          text: `says ${i}`,
-        }),
-      )
-    }
-    const result = await run(request())
-    expect(result.ok && [result.value.consulted, result.value.candidates, result.value.offset]).toEqual([
-      MAX_ASK_CONVERSATIONS,
-      total,
-      0,
-    ])
-    const names = (summarizer as FakeSummarizer).calls.map((c) => c.conversation.name)
-    expect(names).toHaveLength(MAX_ASK_CONVERSATIONS)
-    // the 5 oldest are the ones left out
-    for (let i = 0; i < 5; i++) expect(names).not.toContain(`Person ${i}`)
-    expect(names).toContain(`Person ${total - 1}`)
-  })
-
-  it('ranks by the latest INCOMING message: an own reply later does not move a chat up; ties go by conversation id', async () => {
-    const { source } = setup()
-    for (const [id, name] of [
-      ['b', 'Bea'],
-      ['a', 'Ana'],
-      ['c', 'Cora'],
-    ] as const) {
-      source.addConversation(conversation({ id, name, participantId: id }))
-      source.addParticipant({ id, savedName: name, publicName: null })
-    }
-    source.addMessages(
-      message({ id: '1', conversationId: 'a', senderId: 'a', timestamp: at(1), text: 'old a' }),
-      message({ id: '2', conversationId: 'a', fromMe: true, senderId: null, timestamp: at(9), text: 'my late reply' }),
-      message({ id: '3', conversationId: 'b', senderId: 'b', timestamp: at(5), text: 'b' }),
-      message({ id: '4', conversationId: 'c', senderId: 'c', timestamp: at(5), text: 'c' }),
-    )
-    const seen: string[] = []
-    const ranked = createAskChats({
-      source,
-      summarizer: new FakeSummarizer((r) => {
-        seen.push(r.conversation.name)
-        return answer('x')
-      }),
-      renderers,
-      systemPrompt: () => 'p',
-      contactStatus: () => 's',
-    })
-    await ranked(request({ concurrency: 1 }))
-    expect(seen).toEqual(['Bea', 'Cora', 'Ana'])
-  })
-
-  it('an offset returns the next slice of the same ranking', async () => {
-    const { source, summarizer, run } = setup()
-    const total = MAX_ASK_CONVERSATIONS + 5
-    for (let i = 0; i < total; i++) {
-      source.addConversation(conversation({ id: idOf(i), name: `Person ${i}`, participantId: idOf(i) }))
-      source.addParticipant({ id: idOf(i), savedName: `Person ${i}`, publicName: null })
-      source.addMessages(
-        message({
-          id: `m${i}`,
-          conversationId: idOf(i),
-          senderId: idOf(i),
-          timestamp: at(1, i % 60) + Math.floor(i / 60) * 3600_000,
-          text: `says ${i}`,
-        }),
-      )
-    }
-    const result = await run(request({ offset: MAX_ASK_CONVERSATIONS }))
-    expect(result.ok && [result.value.consulted, result.value.candidates, result.value.offset]).toEqual([
-      5,
-      total,
-      MAX_ASK_CONVERSATIONS,
-    ])
-    expect((summarizer as FakeSummarizer).calls.map((c) => c.conversation.name).sort()).toEqual(
-      [0, 1, 2, 3, 4].map((i) => `Person ${i}`).sort(),
-    )
-  })
-
-  it('treats a negative or non-finite offset as 0', async () => {
-    for (const offset of [-5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      const { source, run } = setup()
-      addChat(source, '9911963367943', 'Ana Gómez')
-      const result = await run(request({ offset }))
-      expect(result.ok && [result.value.consulted, result.value.offset]).toEqual([1, 0])
-    }
-  })
-
-  it('an offset past the end reads nothing', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
-    const result = await run(request({ offset: 10 }))
-    expect(result.ok && [result.value.consulted, result.value.candidates]).toEqual([0, 1])
-    expect((summarizer as FakeSummarizer).calls).toEqual([])
-  })
-
-  it('counts candidates after the exclusions and the filter', async () => {
-    const { source, run } = setup()
-    for (let i = 0; i <= MAX_ASK_CONVERSATIONS; i++) addChat(source, idOf(i), `Person ${i}`)
-    const result = await run(request({ chats: ['Person 80'] }))
-    expect(result.ok && result.value.candidates).toBe(1)
-  })
-})
-
-describe('AskChats: the answers', () => {
-  it('omits the conversations that answer "-" or nothing, but still counts them as consulted and answered by a provider', async () => {
-    const summarizer = new FakeSummarizer((r) => {
-      if (r.conversation.name === 'Ana Gómez')
-        return ok({ ...VALID_RESPONSE, resumen: ` ${NOTHING_RELEVANT} `, provider: 'x' })
-      if (r.conversation.name === 'Beto Ruiz') return answer('   ')
-      return answer('Carla asked for a loan.')
-    })
-    const { source, run } = setup({ summarizer })
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Beto Ruiz')
-    addChat(source, '9911963367945', 'Carla Díaz')
-    const result = await run(request())
-    expect(result.ok && result.value.items.map((i) => i.name)).toEqual(['Carla Díaz'])
-    expect(result.ok && result.value.consulted).toBe(3)
-    expect(result.ok && result.value.failed).toBe(0)
-    expect(result.ok && result.value.providers).toEqual({ unknown: 3 })
-  })
-
-  it('also treats a single dash of any kind, wrapped in quotes or a period, as nothing, but not a real answer that starts with a dash', async () => {
-    const answers: Record<string, string> = {
-      'Ana Gómez': '"-"',
-      'Beto Ruiz': '-.',
-      'Carla Díaz': '- Wants a loan',
-      'Dani Paz': '«-»',
-      'Eva Sol': '—',
-      'Fede Luz': '– ',
-      'Gabi Mar': '——',
-    }
-    const { source, run } = setup({ summarizer: new FakeSummarizer((r) => answer(answers[r.conversation.name] ?? '')) })
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Beto Ruiz')
-    addChat(source, '9911963367945', 'Carla Díaz')
-    addChat(source, '9911963367946', 'Dani Paz')
-    addChat(source, '9911963367947', 'Eva Sol')
-    addChat(source, '9911963367948', 'Fede Luz')
-    addChat(source, '9911963367949', 'Gabi Mar')
-    const result = await run(request())
-    expect(result.ok && result.value.items.map((i) => i.name).sort()).toEqual(['Carla Díaz', 'Gabi Mar'])
-  })
-
-  it('returns an empty list as a valid answer when nothing is relevant', async () => {
-    const { source, run } = setup({ summarizer: new FakeSummarizer(() => answer(NOTHING_RELEVANT)) })
-    addChat(source, '9911963367943', 'Ana Gómez')
-    const result = await run(request())
-    expect(result.ok && result.value.items).toEqual([])
-    expect(result.ok && result.value.consulted).toBe(1)
-  })
-
-  it('carries the todos without blanks, needsReply, the message count and the provider', async () => {
-    const summarizer = new FakeSummarizer(() => ({
-      ok: true as const,
-      provider: 'claude-cli',
-      value: { ...VALID_RESPONSE, resumen: 'Wants money.', pendientes: ['Reply', '  '], necesita_respuesta: true },
-    }))
-    const { source, run } = setup({ summarizer })
-    addChat(source, '9911963367943', 'Ana Gómez', 3)
-    const result = await run(request())
-    expect(result.ok && result.value.items).toEqual([
-      { name: 'Ana Gómez', answer: 'Wants money.', todos: ['Reply'], needsReply: true, messageCount: 3 },
-    ])
-    expect(result.ok && result.value.providers).toEqual({ 'claude-cli': 1 })
-  })
-
-  it('orders the conversations that await a reply first, then the busiest', async () => {
-    const summarizer = new FakeSummarizer((r) => {
-      const needs = r.conversation.name === 'Carla Díaz' || r.conversation.name === 'Dani Paz'
-      return answer(`about ${r.conversation.name}`, { necesita_respuesta: needs })
-    })
-    const { source, run } = setup({ summarizer })
-    addChat(source, '9911963367943', 'Ana Gómez', 5)
-    addChat(source, '9911963367944', 'Beto Ruiz', 2)
-    addChat(source, '9911963367945', 'Carla Díaz', 1)
-    addChat(source, '9911963367946', 'Dani Paz', 3)
-    const result = await run(request())
-    expect(result.ok && result.value.items.map((i) => i.name)).toEqual([
-      'Dani Paz',
-      'Carla Díaz',
-      'Ana Gómez',
-      'Beto Ruiz',
-    ])
-  })
-
-  it('counts as failed a provider error, an invalid answer, a thrown error and a malformed result, and keeps the others', async () => {
-    const summarizer = new FakeSummarizer((r): never | ReturnType<typeof answer> => {
-      switch (r.conversation.name) {
-        case 'Ana Gómez':
-          return err('provider down') as never
-        case 'Beto Ruiz':
-          return ok({ resumen: 5 }) as never
-        case 'Carla Díaz':
-          throw new Error('boom')
-        case 'Dani Paz':
-          return null as never
-        default:
-          return answer('fine')
-      }
-    })
-    const { source, run } = setup({ summarizer })
-    addChat(source, '9911963367943', 'Ana Gómez')
-    addChat(source, '9911963367944', 'Beto Ruiz')
-    addChat(source, '9911963367945', 'Carla Díaz')
-    addChat(source, '9911963367946', 'Dani Paz')
-    addChat(source, '9911963367947', 'Eva Soto')
-    const result = await run(request())
-    expect(result.ok && result.value.failed).toBe(4)
-    expect(result.ok && result.value.consulted).toBe(5)
-    expect(result.ok && result.value.items.map((i) => i.name)).toEqual(['Eva Soto'])
-    expect(JSON.stringify(result)).not.toContain('provider down')
-  })
-
-  it('respects the concurrency of the request', async () => {
-    const summarizer = new FakeSummarizer(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5))
-      return answer('ok')
-    })
-    const { source, run } = setup({ summarizer })
-    for (let i = 0; i < 6; i++) addChat(source, `99119633${String(i).padStart(5, '0')}`, `Person ${i}`)
-    await run(request({ concurrency: 2 }))
-    expect(summarizer.maxInFlight).toBeLessThanOrEqual(2)
-    expect(summarizer.calls).toHaveLength(6)
-  })
-
-  it('only reads: the requests it sends carry no state of the digest', async () => {
-    const { source, summarizer, run } = setup()
-    addChat(source, '9911963367943', 'Ana Gómez')
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    source.addConversation(conversation({ id: BETO, name: 'Beto', participantId: BETO }))
+    source.addMessages(own(BETO, '1', 1, 'anyone there?'))
     await run(request())
-    const call: SummarizeRequest | undefined = (summarizer as FakeSummarizer).calls[0]
-    expect(Object.keys(call ?? {}).sort()).toEqual(['conversation', 'systemPrompt', 'transcript'])
+    expect(input(answerer)).not.toContain('Beto')
+  })
+
+  it('drops mass messages: a chat with only a mass message and own text is skipped, a mixed one keeps its incoming', async () => {
+    const { source, answerer, run } = setup()
+    const promo = 'Big sale this weekend, everything half price at the shop, come visit us!'
+    for (const id of [ANA, BETO, CARLA, '9911963367946']) {
+      source.addConversation(conversation({ id, name: `Chat ${id}`, participantId: id }))
+      source.addMessages(own(id, 'mass', 1, promo))
+    }
+    source.addMessages(message({ id: 'in', conversationId: ANA, senderId: ANA, timestamp: at(2), text: 'I want one' }))
+    await run(request())
+    expect(input(answerer)).toContain('I want one')
+    expect(input(answerer)).not.toContain('Big sale')
+    expect(input(answerer)).not.toContain(`Chat ${BETO}`)
+  })
+
+  it('leaves out messages outside the window and conversations without any', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    source.addConversation(conversation({ id: BETO, name: 'Beto Ruiz', participantId: BETO }))
+    source.addMessages(
+      message({ id: 'old', conversationId: BETO, senderId: BETO, timestamp: SINCE - 1, text: 'too old' }),
+    )
+    await run(request())
+    expect(input(answerer)).not.toContain('Beto')
+  })
+})
+
+describe('AskChats: which messages are read', () => {
+  /** Ana: three old messages, the owner's reply, then two new messages. */
+  function threads(source: InMemorySource) {
+    source.addConversation(conversation({ id: ANA, name: 'Ana Gómez', participantId: ANA }))
+    source.addParticipant({ id: ANA, savedName: 'Ana Gómez', publicName: null })
+    const m = (n: string, hour: number, text: string) =>
+      message({ id: n, conversationId: ANA, senderId: ANA, timestamp: at(hour), text, read: true })
+    source.addMessages(
+      m('a1', 1, 'old one'),
+      m('a2', 2, 'old two'),
+      m('a3', 3, 'old three'),
+      m('a0', 0, 'older than the context'),
+    )
+    source.addMessages(own(ANA, 'r', 4, 'I will check'))
+    source.addMessages(m('b1', 5, 'any news?'), m('b2', 6, 'please answer'))
+  }
+
+  it('unanswered: what others wrote after the last own message, with 3 earlier messages and the marker line', async () => {
+    const { source, answerer, run } = setup()
+    threads(source)
+    const result = await run(request({ selection: 'unanswered' }))
+    const sent = input(answerer)
+    expect(sent).toContain('any news?')
+    expect(sent).toContain('please answer')
+    // 3 earlier messages of context: the last 3 before the pending ones (a2, a3 and the owner's reply).
+    expect(sent).toContain('old two')
+    expect(sent).toContain('old three')
+    expect(sent).toContain('I will check')
+    expect(sent).not.toContain('old one')
+    expect(sent).not.toContain('older than')
+    expect(sent.indexOf('I will check')).toBeLessThan(sent.indexOf('the above was already answered'))
+    expect(sent.indexOf('the above was already answered')).toBeLessThan(sent.indexOf('any news?'))
+    expect(answerer.calls[0]?.systemPrompt).toMatch(/IMPORTANT: from each chat I give you only what is UNANSWERED/)
+    expect(result.ok && result.value.messages).toBe(2)
+  })
+
+  it('unanswered: finds the last own message even when it is before the window', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: ANA, name: 'Ana Gómez', participantId: ANA }))
+    source.addMessages(
+      message({ id: 'x1', conversationId: ANA, senderId: ANA, timestamp: at(1), text: 'new one' }),
+      own(ANA, 'long-ago', 0, 'ok', 0),
+    )
+    await run(request({ selection: 'unanswered', window: { since: at(0, 30), until: UNTIL } }))
+    expect(input(answerer)).toContain('new one')
+  })
+
+  it('unanswered: nothing is pending when the owner answered last, and the chat is skipped', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez', 2, 1)
+    source.addMessages(own(ANA, 'last', 9, 'done'))
+    expect(await run(request({ selection: 'unanswered' }))).toEqual(err({ kind: 'noMessages', leftOutLocalOnly: 0 }))
+    expect(answerer.calls).toEqual([])
+  })
+
+  it('unanswered: a group where the owner never wrote is skipped, an individual chat where they never wrote is all pending', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: 'g1', name: 'Neighbors', isGroup: true, participantId: null }))
+    source.addMessages(
+      message({ id: 'g-1', conversationId: 'g1', senderId: ANA, timestamp: at(1), text: 'water cut tomorrow' }),
+    )
+    addChat(source, BETO, 'Beto Ruiz', 2)
+    await run(request({ selection: 'unanswered' }))
+    const sent = input(answerer)
+    expect(sent).not.toContain('Neighbors')
+    expect(sent).not.toContain('water cut')
+    expect(sent).toContain('Beto Ruiz says 0')
+    expect(sent).not.toContain('the above was already answered')
+  })
+
+  it('unanswered: a mass message of the owner does not count as an answer', async () => {
+    const { source, answerer, run } = setup()
+    const promo = 'Big sale this weekend, everything half price at the shop, come visit us!'
+    for (const id of [BETO, CARLA, '9911963367946']) {
+      source.addConversation(conversation({ id, name: `Chat ${id}`, participantId: id }))
+      source.addMessages(own(id, 'mass', 8, promo))
+    }
+    source.addConversation(conversation({ id: 'g1', name: 'Group', isGroup: true, participantId: null }))
+    source.addMessages(own('g1', 'real', 0, 'I spoke here'))
+    source.addMessages(message({ id: 'g1-in', conversationId: 'g1', senderId: ANA, timestamp: at(1), text: 'ping' }))
+    source.addMessages(own('g1', 'mass', 2, promo))
+    source.addMessages(message({ id: 'g1-in2', conversationId: 'g1', senderId: ANA, timestamp: at(3), text: 'pong' }))
+    await run(request({ selection: 'unanswered', chats: ['group'] }))
+    // Both pings are pending: the promo (mass) is not a reply.
+    expect(input(answerer)).toContain('ping')
+    expect(input(answerer)).toContain('pong')
+  })
+
+  it('unread: only the unread tail with context, as the digest does', async () => {
+    const { source, answerer, run } = setup()
+    threads(source)
+    source.setUnread(ANA, { kind: 'count', count: 2 })
+    const all = source.allMessages().map((x) => (x.id === 'b1' || x.id === 'b2' ? { ...x, read: false } : x))
+    source.replaceMessages([...all])
+    await run(request({ selection: 'unread' }))
+    const sent = input(answerer)
+    expect(sent).toContain('any news?')
+    expect(sent).toContain('the above was already read')
+    expect(sent).toContain('I will check')
+  })
+
+  it('unread: a chat with nothing unread is skipped', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    source.setUnread(ANA, { kind: 'count', count: 0 })
+    expect(await run(request({ selection: 'unread' }))).toEqual(err({ kind: 'noMessages', leftOutLocalOnly: 0 }))
+    expect(answerer.calls).toEqual([])
+  })
+
+  it('all: every message of the window, own included, with no marker', async () => {
+    const { source, answerer, run } = setup()
+    threads(source)
+    await run(request({ selection: 'all' }))
+    const sent = input(answerer)
+    for (const text of ['older than the context', 'old one', 'I will check', 'any news?']) expect(sent).toContain(text)
+    expect(sent).not.toContain('already')
+    expect(answerer.calls[0]?.systemPrompt).not.toContain('UNANSWERED')
+  })
+})
+
+describe('AskChats: unanswered also reaches before the window', () => {
+  const day = (d: number, hour: number, minute = 0) => ba(3, d, hour, minute)
+  const today = { since: day(10, 0), until: day(10, 12) }
+
+  /** Ana ordered on Monday the 9th at 20:00, the owner never replied, and Ana wrote "?" on Tuesday the 10th at 09:00. */
+  function monday(source: InMemorySource) {
+    source.addConversation(conversation({ id: ANA, name: 'Ana Gómez', participantId: ANA }))
+    source.addParticipant({ id: ANA, savedName: 'Ana Gómez', publicName: null })
+    source.addMessages(
+      message({
+        id: 'o',
+        conversationId: ANA,
+        senderId: ANA,
+        timestamp: day(9, 20),
+        text: 'ORDER: two cakes for Friday',
+      }),
+      message({ id: 'q', conversationId: ANA, senderId: ANA, timestamp: day(10, 9), text: '?' }),
+    )
+  }
+  const ownAt = (n: string, timestamp: number, text: string) => ({ ...own(ANA, n, 0, text), timestamp })
+
+  it('an order of Monday with no reply is pending in a request about today, not "already answered" context', async () => {
+    const { source, answerer, run } = setup()
+    monday(source)
+    const result = await run(request({ selection: 'unanswered', window: today }))
+    const sent = input(answerer)
+    expect(sent).toContain('ORDER: two cakes for Friday')
+    expect(sent).toContain('[09/03, 20:00]')
+    expect(sent).not.toContain('already answered')
+    expect(result.ok && result.value.messages).toBe(2)
+  })
+
+  it('with an older answer: that answer is the context above the marker, and everything after it is below', async () => {
+    const { source, answerer, run } = setup()
+    monday(source)
+    source.addMessages(
+      message({ id: 'b', conversationId: ANA, senderId: ANA, timestamp: day(9, 17), text: 'do you do cakes?' }),
+      ownAt('yes', day(9, 18), 'yes, of course'),
+    )
+    await run(request({ selection: 'unanswered', window: today }))
+    const sent = input(answerer)
+    const marker = sent.indexOf('the above was already answered')
+    expect(marker).toBeGreaterThan(0)
+    expect(sent.indexOf('yes, of course')).toBeLessThan(marker)
+    expect(sent.indexOf('do you do cakes?')).toBeLessThan(marker)
+    expect(sent.indexOf('ORDER: two cakes')).toBeGreaterThan(marker)
+    expect(sent.lastIndexOf('?')).toBeGreaterThan(marker)
+  })
+
+  it("every message above the marker is at or before the owner's last answer", async () => {
+    const { source, answerer, run } = setup()
+    monday(source)
+    source.addMessages(
+      message({ id: 'c1', conversationId: ANA, senderId: ANA, timestamp: day(9, 10), text: 'CTX-1' }),
+      message({ id: 'c2', conversationId: ANA, senderId: ANA, timestamp: day(9, 11), text: 'CTX-2' }),
+      ownAt('r', day(9, 12), 'REPLY'),
+    )
+    await run(request({ selection: 'unanswered', window: today }))
+    const sent = input(answerer)
+    const above = sent.slice(0, sent.indexOf('the above was already answered'))
+    expect(above).toContain('CTX-1')
+    expect(above).toContain('CTX-2')
+    expect(above).toContain('REPLY')
+    expect(above).not.toContain('ORDER')
+  })
+
+  it('a chat with nothing pending inside the window is not dragged in by an old unanswered message', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: ANA, name: 'Ana Gómez', participantId: ANA }))
+    source.addMessages(
+      message({ id: 'old', conversationId: ANA, senderId: ANA, timestamp: day(9, 20), text: 'OLD UNANSWERED' }),
+      ownAt('today', day(10, 8), 'answered today'),
+    )
+    source.addConversation(conversation({ id: BETO, name: 'Beto Ruiz', participantId: BETO }))
+    source.addMessages(
+      message({ id: 'x', conversationId: BETO, senderId: BETO, timestamp: day(10, 8), text: 'Beto pending' }),
+    )
+    await run(request({ selection: 'unanswered', window: today }))
+    expect(input(answerer)).toContain('Beto pending')
+    expect(input(answerer)).not.toContain('OLD UNANSWERED')
+  })
+
+  it('an individual chat where the owner never wrote has everything pending, with no "answered" context', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: BETO, name: 'Beto Ruiz', participantId: BETO }))
+    source.addMessages(
+      message({ id: 'x1', conversationId: BETO, senderId: BETO, timestamp: day(9, 8), text: 'LAST WEEK' }),
+      message({ id: 'x2', conversationId: BETO, senderId: BETO, timestamp: day(10, 8), text: 'TODAY' }),
+    )
+    await run(request({ selection: 'unanswered', window: today }))
+    expect(input(answerer)).toContain('TODAY')
+    expect(input(answerer)).toContain('LAST WEEK')
+    expect(input(answerer)).not.toContain('already answered')
+  })
+
+  it('reads only the latest 200 pending messages of a chat, and then shows no context above them', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: BETO, name: 'Beto Ruiz', participantId: BETO }))
+    for (let i = 0; i < 250; i++) {
+      source.addMessages(
+        message({
+          id: `m${i}`,
+          conversationId: BETO,
+          senderId: BETO,
+          timestamp: day(5, 1) + i * 60_000,
+          text: `PENDING-${i};`,
+        }),
+      )
+    }
+    source.addMessages(message({ id: 'now', conversationId: BETO, senderId: BETO, timestamp: day(10, 8), text: 'NOW' }))
+    const result = await run(request({ selection: 'unanswered', window: today }))
+    const sent = input(answerer)
+    expect(result.ok && result.value.messages).toBe(200)
+    expect(sent).toContain('NOW')
+    expect(sent).toContain('PENDING-249;')
+    expect(sent).not.toContain('PENDING-50;')
+    expect(sent).not.toContain('already answered')
+  })
+})
+
+describe('AskChats: failure classes and part limits', () => {
+  it.each([
+    ['anthropic timed out after 600s', 'timeout'],
+    ['anthropic answered 429: SECRET (gave up after 3 retries)', 'rateLimit'],
+    ['no API key for gemini: set it with "msum secret set gemini"', 'auth'],
+    ['openai answered 401: SECRET', 'auth'],
+    ['claude was not found', 'verifyFailed'],
+    ['ollama: the text does not fit the context window', 'tooLarge'],
+    ['could not reach ollama: SECRET', 'unavailable'],
+    ['claude exited with code 1: SECRET', 'other'],
+  ])('classifies %j as %s and never keeps its text', async (reason, failure) => {
+    const { source, run } = setup({ answerer: new FakeAnswerer(false, () => ({ ok: false, error: reason })) })
+    addChat(source, ANA, 'Ana Gómez')
+    const result = await run(request())
+    expect(result).toEqual(err({ kind: 'answerFailed', failure }))
+    expect(JSON.stringify(result)).not.toContain('SECRET')
+  })
+
+  it('classifies a fallback chain by the first reason', () => {
+    expect(classifyAnswerFailure('anthropic timed out after 600s; fallback: could not reach ollama')).toBe('timeout')
+  })
+
+  it('a thrown error is class other', async () => {
+    const { source, run } = setup({
+      answerer: new FakeAnswerer(false, () => {
+        throw new Error('SECRET')
+      }),
+    })
+    addChat(source, ANA, 'Ana Gómez')
+    expect(await run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
+  })
+
+  it('stops launching extract calls after one fails', async () => {
+    const answerer = new FakeAnswerer(false, () => ({ ok: false, error: 'anthropic timed out after 600s' }))
+    const { source, run } = setup({ answerer })
+    for (let i = 0; i < 9; i++) {
+      const id = `99119633679${40 + i}`
+      addChat(source, id, `Chat ${i}`, 1, 1)
+      source.addMessages(
+        message({ id: `${id}-big`, conversationId: id, senderId: id, timestamp: at(2, i), text: 'w'.repeat(100_000) }),
+      )
+    }
+    expect(await run(request())).toEqual(err({ kind: 'answerFailed', failure: 'timeout' }))
+    // the first three were already running together; nothing after them was started
+    expect(answerer.calls.length).toBeLessThanOrEqual(3)
+  })
+
+  it('cuts the text into parts that fit the smaller limit of the answerer', async () => {
+    const answerer = Object.assign(new FakeAnswerer(), { maxPartChars: 30_000 })
+    const { source, run } = setup({ answerer })
+    for (let i = 0; i < 4; i++) {
+      const id = `99119633679${40 + i}`
+      addChat(source, id, `Chat ${i}`, 1, 1)
+      source.addMessages(
+        message({ id: `${id}-big`, conversationId: id, senderId: id, timestamp: at(2, i), text: 'w'.repeat(20_000) }),
+      )
+    }
+    const result = await run(request())
+    const extracts = answerer.calls.filter((c) => c.systemPrompt.includes('ONE PART'))
+    expect(extracts.length).toBeGreaterThanOrEqual(3)
+    for (const call of extracts) expect(call.input.length).toBeLessThan(30_000 + 2_000)
+    expect(result.ok && result.value.parts).toBe(extracts.length)
+  })
+
+  it('without a limit of its own the part is the usual 150 000 characters: 100 000 stay in one call', async () => {
+    const answerer = new FakeAnswerer()
+    const { source, run } = setup({ answerer })
+    addChat(source, ANA, 'Ana Gómez')
+    source.addMessages(
+      message({ id: 'big', conversationId: ANA, senderId: ANA, timestamp: at(2), text: 'w'.repeat(100_000) }),
+    )
+    await run(request())
+    expect(answerer.calls).toHaveLength(1)
+  })
+})
+
+describe('AskChats: RF-43, conversations marked "local only"', () => {
+  it('never puts them in the text for an external provider, and counts them', async () => {
+    const { source, answerer, run } = setup({ localOnly: ['beto'] })
+    addChat(source, ANA, 'Ana Gómez')
+    addChat(source, BETO, 'Beto Ruiz')
+    const result = await run(request())
+    expect(input(answerer)).toContain('Ana Gómez')
+    expect(input(answerer)).not.toContain('Beto')
+    expect(input(answerer)).not.toContain('Ruiz says')
+    expect(result.ok && result.value.leftOutLocalOnly).toBe(1)
+  })
+
+  it('makes no call when every chat is local only, and says how many were left out', async () => {
+    const { source, answerer, run } = setup({ localOnly: [`id:${BETO}`] })
+    addChat(source, BETO, 'Beto Ruiz')
+    expect(await run(request())).toEqual(err({ kind: 'noMessages', leftOutLocalOnly: 1 }))
+    expect(answerer.calls).toEqual([])
+  })
+
+  it('also in the parts of a large request', async () => {
+    const answerer = new FakeAnswerer(false)
+    const { source, run } = setup({ answerer, localOnly: ['beto'] })
+    addChat(source, ANA, 'Ana Gómez')
+    source.addMessages(
+      message({ id: 'big', conversationId: ANA, senderId: ANA, timestamp: at(2), text: 'x'.repeat(ASK_PART_CHARS) }),
+    )
+    addChat(source, BETO, 'Beto Ruiz')
+    await run(request())
+    expect(answerer.calls.every((c) => !c.input.includes('Beto'))).toBe(true)
+  })
+
+  it('includes them when the answerer is local (nothing leaves the machine)', async () => {
+    const { source, answerer, run } = setup({ answerer: new FakeAnswerer(true), localOnly: ['beto'] })
+    addChat(source, ANA, 'Ana Gómez')
+    addChat(source, BETO, 'Beto Ruiz')
+    const result = await run(request())
+    expect(input(answerer)).toContain('Beto Ruiz')
+    expect(result.ok && result.value.leftOutLocalOnly).toBe(0)
+  })
+})
+
+describe('AskChats: a request too big for one call', () => {
+  /** Three chats of about 100 000 characters each: three parts (a part holds one). */
+  function big(source: InMemorySource, count = 3, size = 100_000) {
+    for (let i = 0; i < count; i++) {
+      const id = `99119633679${40 + i}`
+      addChat(source, id, `Chat ${i}`, 1, 1)
+      source.addMessages(
+        message({
+          id: `${id}-big`,
+          conversationId: id,
+          senderId: id,
+          timestamp: at(2, 10 + i),
+          text: `${'w'.repeat(size)}`,
+        }),
+      )
+    }
+  }
+
+  it('reads it in parts: one extract call per part (3 at a time), then ONE final call that merges the useful extracts', async () => {
+    const answerer = new FakeAnswerer(false, (r) =>
+      r.systemPrompt.includes('ONE PART')
+        ? {
+            ok: true,
+            text: r.input.includes('Chat 1') ? 'NOTHING' : `found in ${r.input.includes('Chat 0') ? 'zero' : 'two'}`,
+            provider: 'p',
+          }
+        : { ok: true, text: 'FINAL', provider: 'final-provider' },
+    )
+    const { source, run } = setup({ answerer })
+    big(source)
+    const progress: AskProgress[] = []
+    const result = await run(request({ onProgress: (p) => progress.push(p) }))
+    expect(answerer.calls).toHaveLength(4)
+    const extracts = answerer.calls.filter((c) => c.systemPrompt.includes('ONE PART'))
+    expect(extracts).toHaveLength(3)
+    expect(extracts[0]?.input).toMatch(/Part 1 of 3/)
+    expect(answerer.maxInFlight).toBeLessThanOrEqual(3)
+    expect(answerer.maxInFlight).toBeGreaterThan(1)
+    // The final call gets only what was found; NOTHING is filtered out.
+    const final = answerer.calls.find((c) => !c.systemPrompt.includes('ONE PART'))
+    expect(final?.input).toContain('found in zero')
+    expect(final?.input).toContain('found in two')
+    expect(final?.input).not.toContain('NOTHING')
+    expect(final?.input).toContain('Request: who asked me for money?')
+    expect(final?.systemPrompt).toContain('You are the assistant')
+    expect(result.ok && result.value).toMatchObject({ answer: 'FINAL', provider: 'final-provider', parts: 3, calls: 4 })
+    expect(progress.map((p) => `${p.phase}:${p.done}/${p.total}`)).toEqual([
+      'reading:0/3',
+      'reading:1/3',
+      'reading:2/3',
+      'reading:3/3',
+      'writing:3/3',
+    ])
+  })
+
+  it('does not make the final call when no part had anything', async () => {
+    const answerer = new FakeAnswerer(false, () => ({ ok: true, text: ' nothing. ', provider: 'p' }))
+    const { source, run } = setup({ answerer })
+    big(source, 2)
+    const result = await run(request())
+    expect(answerer.calls).toHaveLength(2)
+    expect(result.ok && result.value.answer).toBe(texts.nothingFound)
+  })
+
+  it('fails when an extract fails, or when the final call does', async () => {
+    const failExtract = setup({
+      answerer: new FakeAnswerer(false, (_r, call) =>
+        call === 1 ? { ok: false, error: 'x' } : { ok: true, text: 'a', provider: 'p' },
+      ),
+    })
+    big(failExtract.source, 2)
+    expect(await failExtract.run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
+    const failFinal = setup({
+      answerer: new FakeAnswerer(false, (r) =>
+        r.systemPrompt.includes('ONE PART') ? { ok: true, text: 'a', provider: 'p' } : { ok: false, error: 'x' },
+      ),
+    })
+    big(failFinal.source, 2)
+    expect(await failFinal.run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
+  })
+
+  it('splits a chat bigger than a part, repeating its heading with the continued mark', async () => {
+    const answerer = new FakeAnswerer()
+    const { source, run } = setup({ answerer })
+    addChat(source, ANA, 'Ana Gómez', 1)
+    for (let i = 0; i < 5; i++) {
+      source.addMessages(
+        message({
+          id: `l${i}`,
+          conversationId: ANA,
+          senderId: ANA,
+          timestamp: at(2, i),
+          text: `${'z'.repeat(60_000)}`,
+        }),
+      )
+    }
+    await run(request())
+    const extracts = answerer.calls.filter((c) => c.systemPrompt.includes('ONE PART'))
+    expect(extracts.length).toBeGreaterThan(1)
+    expect(extracts[0]?.input).toContain('### Chat with: Ana Gómez (saved)\n')
+    expect(extracts[1]?.input).toContain('### Chat with: Ana Gómez (saved) (continued)')
+    for (const call of extracts) expect(call.input.length).toBeLessThan(ASK_PART_CHARS + 2_000)
+  })
+
+  it('refuses more than 1 200 000 characters, without calling any model', async () => {
+    const answerer = new FakeAnswerer()
+    const { source, run } = setup({ answerer })
+    big(source, 13, 100_000)
+    const result = await run(request())
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.error.kind).toBe('tooMuch')
+    expect(answerer.calls).toEqual([])
+  })
+
+  it('accepts a request just under the cap', async () => {
+    const answerer = new FakeAnswerer()
+    const { source, run } = setup({ answerer })
+    big(source, 11, 100_000)
+    const result = await run(request())
+    expect(result.ok).toBe(true)
+    expect(answerer.calls.length).toBeGreaterThan(2)
   })
 })

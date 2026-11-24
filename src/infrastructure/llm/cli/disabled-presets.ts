@@ -1,3 +1,4 @@
+import type { Answerer, AnswerResult } from '../../../application/ports/answerer.js'
 import type { Summarizer } from '../../../application/ports/summarizer.js'
 import { err, type Result } from '../../../domain/result.js'
 import { describeUnverified } from './cli-summarizer.js'
@@ -29,10 +30,15 @@ export type DisabledPreset = (typeof DISABLED_PRESETS)[number]
 export const verifyDisabledPreset = (): CliVerification => ({ ok: false, kind: 'disabled' })
 
 /** Fails every call at once, without running anything: the reason says the preset is disabled. */
-export class DisabledCliSummarizer implements Summarizer {
+export class DisabledCliSummarizer implements Summarizer, Answerer {
+  readonly local = false
   constructor(private readonly preset: DisabledPreset) {}
 
   async summarize(): Promise<Result<unknown, string>> {
     return err(describeUnverified(this.preset, { ok: false, kind: 'disabled' }))
+  }
+
+  async answer(): Promise<AnswerResult> {
+    return { ok: false, error: describeUnverified(this.preset, { ok: false, kind: 'disabled' }) }
   }
 }

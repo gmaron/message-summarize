@@ -38,14 +38,17 @@ The web does not configure transcription yet: it is turned on in `config.json` (
 
 ## Ask for something about your chats
 
-The "Ask" tab answers a request about the chats of a period (today, 24 hours, 3 or 7 days), for example "the list of orders I got this week, who asked for what and whether I answered". It only reads: it sends nothing to WhatsApp.
+The "Ask" tab answers a request about the chats of a period (today, 24 hours, 3 or 7 days), for example "the list of orders I got this week, who asked for what and whether I answered". It reads your chats and, if you leave the box ticked, sends the answer to your own WhatsApp; never to anyone else.
 
-- **How it answers.** It reads each conversation of the period on its own with your provider and shows only the ones that have something for your request, those waiting for your answer first. It does not combine several chats into one answer.
-- **Which chats.** The same ones a digest would summarize: excluded chats and your own chat are never read, even if you name them in the optional "Only these chats" filter (names or numbers, separated by commas). "Local only" chats are answered only by your local model, as in the digest. A period with more than 60 chats is rejected: choose fewer days or filter.
+- **How it answers.** It builds one text with the chosen chats, each under its own heading, and the model writes ONE answer seeing all the chats together (it says which chat each thing comes from). If the text is very long (over 150,000 characters) it reads it in parts and then merges what it found; the page shows the progress. More than 1,200,000 characters is not accepted: shorten the period or filter chats.
+- **Which messages.** "Unanswered" (what was written to you after your last reply in each chat, with 3 messages of context; a group where you never wrote does not count), "Unread" or "All". It starts from the account's "unread only" option. Excluded chats and your own chat are never read, even if you name them in the optional "Only these chats" filter (names or numbers, separated by commas).
+- **"Local only".** Those chats are not part of the request unless all your providers are local (Ollama); otherwise they are left out and the answer says how many.
+- **Send it to my WhatsApp.** It is ticked by default. The answer is converted to WhatsApp formatting and goes out through the same queue as the digest, only to your "Message yourself" chat, when the account is connected. The page says whether it is queued or already sent.
+- **Saved requests.** One click on a saved request puts it in the box; you can save the current request under a name and remove your own. They live in the `askPresets` option of the account's `config.json` (up to 20; see the [daemon guide](daemon-and-schedules.md)). If you saved none, the program offers "Orders" and "Pending".
 - **Dictation.** The microphone button uses your browser's speech recognition, not this program: depending on the browser, the audio may go to Google (Chrome) or Apple (Safari). Typing sends nothing anywhere. Some browsers, such as Firefox, cannot dictate.
-- **Where answers are kept.** Only in the daemon's memory, the last 20 per account, and they are lost when it restarts. Each one can be copied or deleted. The account must be connected, and only one request runs at a time per account.
+- **Where answers are kept.** In the account's database, on your computer: the latest 50, which survive a restart. Each one can be copied or deleted. The account must be connected, and only one request runs at a time per account.
 - **Your own context.** If a word in your requests means something specific to your business, you can explain it to the model with the `askHints` option of `config.json` (it is added to the prompt only when the request mentions those words; see the [daemon guide](daemon-and-schedules.md)). Only this tab uses it, not the digest.
-- **Limits.** A request takes up to 1000 characters. It does not use your custom prompt: it has its own instructions. Nor does it transcribe pending audio first: an audio the digest has not transcribed yet shows as "audio not transcribed", and the answer may suggest listening to it.
+- **Limits.** A request takes up to 4000 characters and keeps its line breaks. It does not use your custom prompt: it has its own instructions. Nor does it transcribe pending audio first: an audio the digest has not transcribed yet shows as "audio not transcribed", and the answer may suggest listening to it.
 
 ## The first-run wizard
 

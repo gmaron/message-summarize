@@ -16,6 +16,14 @@ export function createTranscriptRenderer(catalog: Catalog, timeZone: string): Tr
     hourCycle: 'h23',
     timeZone,
   })
+  const dateTime = new Intl.DateTimeFormat(catalog.dateLocale, {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  })
   const t = catalog.transcript
 
   const bodyOf = ({ message, isMass }: TranscriptEntry): string => {
@@ -40,15 +48,21 @@ export function createTranscriptRenderer(catalog: Catalog, timeZone: string): Tr
     return text !== '' && text.length <= QUOTED_EXCERPT_LENGTH ? `${t.replyTo(text)} ` : ''
   }
 
-  const renderLine = (entry: TranscriptEntry, ownerLabel: string): string => {
+  const renderLine = (entry: TranscriptEntry, ownerLabel: string, withDate = false): string => {
     const { message, participant } = entry
     const label = senderLabel(message, participant, { ownerLabel })
     const copies = message.copies > 0 ? t.copies(message.copies) : ''
-    return `[${time.format(message.timestamp)}] ${label}: ${replyPrefix(entry)}${bodyOf(entry)}${copies}`
+    const when = withDate ? dateTime.format(message.timestamp) : time.format(message.timestamp)
+    return `[${when}] ${label}: ${replyPrefix(entry)}${bodyOf(entry)}${copies}`
   }
 
   return {
     unnamedGroup: catalog.unnamedGroup,
+    lines(input) {
+      const ownerLabel = t.ownerLabel(input.ownerName?.trim() ? input.ownerName : catalog.defaultOwnerName)
+      return input.entries.map((entry) => renderLine(entry, ownerLabel, true))
+    },
+    formatDateTime: (timestamp) => dateTime.format(timestamp),
     render(input: ConversationTranscript): string {
       const ownerLabel = t.ownerLabel(input.ownerName?.trim() ? input.ownerName : catalog.defaultOwnerName)
       const lines = (entries: readonly TranscriptEntry[]): string =>

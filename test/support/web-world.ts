@@ -6,7 +6,7 @@ import { type BlockedReason, writeBlocked } from '../../src/main/blocked.js'
 import { DaemonHost, type DaemonHostTiming } from '../../src/main/daemon-host.js'
 import type { LogStore } from '../../src/main/log-store.js'
 import { startWeb, type WebHandle } from '../../src/main/web.js'
-import { type Harness, type HarnessOptions, ME, makeHarness, until } from './cli-harness.js'
+import { type FakeAnswerer, type Harness, type HarnessOptions, ME, makeHarness, until } from './cli-harness.js'
 
 export const BASE = { language: 'en', timezone: 'UTC', provider: { primary: 'claude-cli' } }
 export const TIMING: DaemonHostTiming = {
@@ -40,6 +40,8 @@ export interface World {
   eventsOf(name: string): SseEvent[]
   /** The summarizer of the harness (the one that answers when the world has no other). */
   summarizer(): { readonly requests: readonly unknown[] }
+  /** What answers the Ask tab: records its requests. */
+  answerer(): FakeAnswerer
   /** Makes the account look linked (what a finished `link` leaves). */
   linked(id: string, jid?: string): void
   /** What the connection factory does: how long it takes, whether it throws, how many times it was called. */
@@ -72,6 +74,8 @@ export async function world(
     config?: Record<string, unknown>
     /** What summarizes (default: the harness's, which always answers). */
     summarizer?: HarnessOptions['summarizer']
+    /** What answers the Ask tab (default: the harness's). */
+    answerer?: HarnessOptions['answerer']
     /** How long a finished preview is kept. */
     previewTtlMs?: number
     /** The runtimes build the configured providers (the harness's summarizer is not injected). */
@@ -90,9 +94,13 @@ export async function world(
     liveClock: true,
     ...(options.staticDir === undefined ? {} : { web: { staticDir: options.staticDir } }),
     ...(options.summarizer === undefined ? {} : { summarizer: options.summarizer }),
+    ...(options.answerer === undefined ? {} : { answerer: options.answerer }),
   })
   const conn = h.connection
-  if (options.realProviders === true) delete (h.ctx as { summarizer?: unknown }).summarizer
+  if (options.realProviders === true) {
+    delete (h.ctx as { summarizer?: unknown }).summarizer
+    delete (h.ctx as { answerer?: unknown }).answerer
+  }
   conn.user = { id: ME }
   const factory = { delayMs: 0, fails: false, calls: 0 }
   Object.assign(h.ctx, {
@@ -204,6 +212,7 @@ export async function world(
     },
     eventsOf: (name) => sse.filter((e) => e.event === name),
     summarizer: () => (options.summarizer ?? h.summarizer) as unknown as { requests: unknown[] },
+    answerer: () => (options.answerer ?? h.answerer) as unknown as FakeAnswerer,
     linked,
     factory,
   }

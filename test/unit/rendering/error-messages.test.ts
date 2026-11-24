@@ -25,6 +25,12 @@ const settingsCodes: SettingsIssueCode[] = [
   'tooManyHints',
   'tooManyHintTerms',
   'hintTextTooLong',
+  'invalidPreset',
+  'emptyPresetName',
+  'presetNameTooLong',
+  'emptyPresetText',
+  'presetTextTooLong',
+  'tooManyPresets',
 ]
 const windowCodes: WindowError[] = [
   'invalidEnd',

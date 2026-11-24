@@ -1,9 +1,11 @@
+import type { AnswerResult } from '../../../application/ports/answerer.js'
 import type { SummarizeRequest, SummarizeResult } from '../../../application/ports/summarizer.js'
 import { err, type Result } from '../../../domain/result.js'
 import { parseSummaryResponse } from '../../../domain/summary.js'
 import { excerpt, SUMMARY_JSON_SCHEMA_TEXT } from '../summary-schema.js'
 import {
   type Attempt,
+  DEFAULT_MAX_TOTAL_MS,
   DEFAULT_RETRY_BUDGET,
   parseRetryAfter,
   type RetryBudget,
@@ -28,9 +30,14 @@ export interface ApiCommonOptions {
   readonly retry?: RetryBudget
   /** Replaces the real timers and randomness of the retries. For tests. */
   readonly retryClock?: RetryClock
+  /** One attempt of a free-text answer (the "Ask" tab), which reads far more text and writes far more than a summary. Default 10 minutes. */
+  readonly answerTimeoutMs?: number
 }
 
 export const DEFAULT_API_TIMEOUT_MS = 3 * 60_000
+export const DEFAULT_ANSWER_TIMEOUT_MS = 10 * 60_000
+/** The most an answer may write, in tokens, where a provider asks for a limit. A summary needs a tiny fraction of it. */
+export const ANSWER_MAX_TOKENS = 16_000
 
 /** What an adapter asks `runApiCall` to send. */
 export interface BuiltRequest {
@@ -51,7 +58,12 @@ export interface ApiCall {
   readonly options: ApiCommonOptions
   /** A call with no key fails before any request is made (OpenAI-compatible servers may not need one). */
   readonly keyRequired: boolean
-  readonly summarizeRequest: SummarizeRequest
+  readonly summarizeRequest: PromptSource
+  /**
+   * A free-text answer: no schema is forced or validated, the timeout and the total deadline are the longer ones of an
+   * answer, and the adapter builds a request that asks for plain text.
+   */
+  readonly free?: boolean
   /** Builds the request. `key` is undefined only when the key is not required and there is none. */
   build(key: string | undefined, prompt: PromptParts): BuiltRequest
   /** The text of the answer inside the provider's JSON body. */
@@ -70,7 +82,10 @@ export interface PromptParts {
   readonly user: string
 }
 
-export function promptParts(request: SummarizeRequest): PromptParts {
+/** What the prompt parts are made of: a summary request, or an answer request with `input` as `transcript`. */
+export type PromptSource = Pick<SummarizeRequest, 'systemPrompt' | 'transcript'>
+
+export function promptParts(request: PromptSource): PromptParts {
   return { system: wellFormed(request.systemPrompt), user: wellFormed(request.transcript) }
 }
 
@@ -152,13 +167,47 @@ function unfence(text: string): string {
  * shaped like one removed (RNF-04), and never quotes the transcript.
  */
 export async function runApiCall(call: ApiCall): Promise<SummarizeResult> {
+  const text = await runApiText(call)
+  if (!text.ok) return text
+  const fail = (reason: string): SummarizeResult => err(redactSecrets(reason, [resolveKey(call.options.apiKey)]))
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(unfence(text.value))
+  } catch {
+    return fail(`${call.provider} returned content that is not JSON`)
+  }
+  const valid = parseSummaryResponse(parsed)
+  if (!valid.ok) return fail(`${call.provider} returned an invalid summary: ${valid.error.join(', ')}`)
+  return { ok: true, value: parsed, provider: call.reportedAs ?? call.provider }
+}
+
+/** One free-text answer over an HTTP API: the same key, retries, caps and redaction as a summary, without a schema. */
+export async function runApiAnswer(call: ApiCall): Promise<AnswerResult> {
+  const text = await runApiText({ ...call, free: true })
+  if (!text.ok) return text
+  if (text.value.trim() === '') return { ok: false, error: `${call.provider} returned an empty answer` }
+  return { ok: true, text: text.value, provider: call.reportedAs ?? call.provider }
+}
+
+/** The text a provider answered, after the key, the request, the retries and the caps; not yet interpreted. */
+async function runApiText(call: ApiCall): Promise<Result<string, string>> {
   const key = resolveKey(call.options.apiKey)
   const secrets = [key]
-  const fail = (reason: string): SummarizeResult => err(redactSecrets(reason, secrets))
+  const fail = (reason: string): Result<string, string> => err(redactSecrets(reason, secrets))
   if (key === undefined && call.keyRequired) {
     return fail(`no API key for ${call.provider}: set it with "msum secret set ${call.provider}"`)
   }
-  const timeoutMs = call.options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS
+  const timeoutMs =
+    call.free === true
+      ? (call.options.answerTimeoutMs ?? DEFAULT_ANSWER_TIMEOUT_MS)
+      : (call.options.timeoutMs ?? DEFAULT_API_TIMEOUT_MS)
+  const retryBudget = ((): RetryBudget => {
+    const budget = call.options.retry ?? DEFAULT_RETRY_BUDGET
+    // An answer may take several attempts' worth of time: the deadline of the call must not cut the first attempt short.
+    return call.free === true
+      ? { ...budget, maxTotalMs: Math.max(budget.maxTotalMs ?? DEFAULT_MAX_TOTAL_MS, timeoutMs * 2) }
+      : budget
+  })()
   const clock = call.options.retryClock ?? systemRetryClock
 
   try {
@@ -210,18 +259,8 @@ export async function runApiCall(call: ApiCall): Promise<SummarizeResult> {
         }
       }
     }
-    const result = await withRateLimitRetry(attempt, call.options.retry ?? DEFAULT_RETRY_BUDGET, clock)
-    if (!result.ok) return fail(result.error)
-
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(unfence(result.value))
-    } catch {
-      return fail(`${call.provider} returned content that is not JSON`)
-    }
-    const valid = parseSummaryResponse(parsed)
-    if (!valid.ok) return fail(`${call.provider} returned an invalid summary: ${valid.error.join(', ')}`)
-    return { ok: true, value: parsed, provider: call.reportedAs ?? call.provider }
+    const result = await withRateLimitRetry(attempt, retryBudget, clock)
+    return result.ok ? result : fail(result.error)
   } catch (e) {
     // Nothing here should throw; if it does, the reason still goes through the redaction.
     return fail(`${call.provider} call failed: ${e instanceof Error ? excerpt(e.message) : 'error'}`)

@@ -1,3 +1,4 @@
+import type { Answerer, AnswerRequest, AnswerResult } from '../../../application/ports/answerer.js'
 import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
 import type { Result } from '../../../domain/result.js'
 import { excerpt } from '../summary-schema.js'
@@ -13,6 +14,14 @@ import {
 
 /** The name this adapter reports as the provider of a summary (RF-74). */
 export const GENERIC_CLI_PROVIDER = 'generic-cli'
+
+/**
+ * The most bytes of UTF-8 a prompt may take when it travels as ONE argument. Linux refuses an argument over 128 KiB
+ * (MAX_ARG_STRLEN) with E2BIG, so the whole prompt (system prompt, request and chat text) is kept well under it.
+ */
+export const MAX_ARGUMENT_BYTES = 100_000
+/** Chat text per call for a command that takes the prompt as an argument: it leaves room for multi-byte characters. */
+const ARGUMENT_PART_CHARS = 50_000
 
 /** In the command template, an element that is exactly this text is replaced by the whole prompt. */
 export const PROMPT_PLACEHOLDER = '{{prompt}}'
@@ -34,6 +43,8 @@ export interface GenericCliOptions {
   readonly acknowledgeRisk: boolean
   /** Default 3 minutes. */
   readonly timeoutMs?: number
+  /** One free-text answer. Default 10 minutes. */
+  readonly answerTimeoutMs?: number
   readonly killGraceMs?: number
   readonly env?: NodeJS.ProcessEnv
 }
@@ -74,12 +85,18 @@ function interpretGeneric(
  * runs with the same containment as the presets (no shell, an empty directory, a minimal environment, a time limit, a
  * cap on the output), and it always asks for the schema in the prompt, validates, and retries once to correct (RF-48).
  */
-export class GenericCliSummarizer implements Summarizer {
+export class GenericCliSummarizer implements Summarizer, Answerer {
+  readonly local = false
   private readonly inner: CliSummarizer
+  /** Set only when the prompt goes as an argument: the use case then cuts the chat text into smaller parts. */
+  readonly maxPartChars?: number
+  private readonly viaArgument: boolean
 
   constructor(options: GenericCliOptions) {
     const problem = genericCommandProblem(options.command)
     const viaArgument = options.command.includes(PROMPT_PLACEHOLDER)
+    this.viaArgument = viaArgument
+    if (viaArgument) this.maxPartChars = ARGUMENT_PART_CHARS
     const adapter: CliAdapter = {
       label: 'generic',
       command: options.command[0] ?? '',
@@ -92,6 +109,24 @@ export class GenericCliSummarizer implements Summarizer {
         return viaArgument ? { args, stdin: '', sent: prompt } : { args, stdin: prompt }
       },
       interpret: interpretGeneric,
+      // No schema: the command is asked for plain text. The same containment and the same refusal without acknowledgment.
+      answer: {
+        call: (request: AnswerRequest) => {
+          const prompt = `${request.systemPrompt}\n\n---\n${request.input}`
+          const args = options.command.slice(1).map((element) => (element === PROMPT_PLACEHOLDER ? prompt : element))
+          return viaArgument ? { args, stdin: '', sent: prompt } : { args, stdin: prompt }
+        },
+        interpret: (output, sent) => {
+          if (output.code !== 0) {
+            const detail = output.stderr.trim()
+              ? excerpt(redactSent(output.stderr, sent))
+              : `stdout was ${output.stdout.length} chars`
+            return { ok: false, error: `generic exited with code ${output.code}: ${detail}` }
+          }
+          const text = output.stdout.trim()
+          return text === '' ? { ok: false, error: 'generic returned no text' } : { ok: true, text }
+        },
+      },
     }
     const unavailable = !options.acknowledgeRisk
       ? GENERIC_RISK_REFUSAL
@@ -102,6 +137,7 @@ export class GenericCliSummarizer implements Summarizer {
       adapter,
       ...(options.env === undefined ? {} : { env: options.env }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+      ...(options.answerTimeoutMs === undefined ? {} : { answerTimeoutMs: options.answerTimeoutMs }),
       ...(options.killGraceMs === undefined ? {} : { killGraceMs: options.killGraceMs }),
       ...(unavailable === undefined ? {} : { unavailable }),
     })
@@ -110,5 +146,20 @@ export class GenericCliSummarizer implements Summarizer {
   async summarize(request: SummarizeRequest): Promise<SummarizeResult> {
     const result: Result<unknown, string> = await this.inner.summarize(request)
     return result.ok ? { ok: true, value: result.value, provider: GENERIC_CLI_PROVIDER } : result
+  }
+
+  async answer(request: AnswerRequest): Promise<AnswerResult> {
+    // Measured in bytes, as the operating system does: a prompt that cannot be an argument is refused, never run.
+    if (this.viaArgument) {
+      const bytes = Buffer.byteLength(`${request.systemPrompt}\n\n---\n${request.input}`, 'utf8')
+      if (bytes > MAX_ARGUMENT_BYTES) {
+        return {
+          ok: false,
+          error: `generic: the prompt is too large to pass as an argument (${MAX_ARGUMENT_BYTES} bytes at most)`,
+        }
+      }
+    }
+    const result = await this.inner.answer(request)
+    return result.ok ? { ok: true, text: result.value, provider: GENERIC_CLI_PROVIDER } : result
   }
 }

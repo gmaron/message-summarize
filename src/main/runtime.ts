@@ -4,11 +4,13 @@ import { type AskChats, createAskChats } from '../application/ask-chats.js'
 import { type CaptureMessages, createCaptureMessages } from '../application/capture-messages.js'
 import { createGenerateDigest, type GenerateDigest } from '../application/generate-digest.js'
 import type { AccountIdentity } from '../application/ports/account-identity.js'
+import type { Answerer } from '../application/ports/answerer.js'
+import type { AskHistory } from '../application/ports/ask-history.js'
 import type { CaptureRepository } from '../application/ports/capture-repository.js'
 import type { Clock } from '../application/ports/clock.js'
 import type { StartDeadline } from '../application/ports/deadline.js'
 import type { DownloadQueue } from '../application/ports/download-queue.js'
-import type { OutboxRepository } from '../application/ports/outbox.js'
+import type { OutboxRepository, OwnChatQueue } from '../application/ports/outbox.js'
 import type { Renderers } from '../application/ports/rendering.js'
 import type { Summarizer } from '../application/ports/summarizer.js'
 import type { Transcriber } from '../application/ports/transcriber.js'
@@ -29,6 +31,7 @@ import {
   type Database,
   openDatabase,
   SqliteAccountIdentity,
+  SqliteAskHistory,
   SqliteCaptureRepository,
   SqliteCaptureWriter,
   SqliteDigestRuns,
@@ -42,7 +45,7 @@ import { resolveModelPath, WhisperCppTranscriber } from '../infrastructure/trans
 import { OwnConversationIds } from '../infrastructure/whatsapp/own-ids.js'
 import type { AppConfig } from './config.js'
 import type { AccountLayout } from './paths.js'
-import { buildSummarizer } from './providers.js'
+import { buildAnswerer, buildSummarizer } from './providers.js'
 
 export const systemClock: Clock = { now: () => Date.now() }
 
@@ -73,6 +76,8 @@ export interface RuntimeOptions {
   readonly clock?: Clock
   /** Replaces the configured providers. For tests. */
   readonly summarizer?: Summarizer | null
+  /** The free-text answerer of the Ask tab. Without it (and without a provider chosen) there is no Ask. For tests. */
+  readonly answerer?: Answerer | null
   /** Replaces the transcriber built from the configuration (null: none). For tests. */
   readonly transcriber?: Transcriber | null
   /** Replaces the real timers of the transcription wait. For tests. */
@@ -113,7 +118,9 @@ export interface Runtime {
   readonly store: SqliteDigestStore
   /** The history of digest runs (RF-74). */
   readonly runs: SqliteDigestRuns
-  readonly outbox: OutboxRepository
+  readonly outbox: OutboxRepository & OwnChatQueue
+  /** The persistent history of the Ask tab (the latest 50 requests). */
+  readonly askHistory: AskHistory
   readonly identity: AccountIdentity
   readonly repository: CaptureRepository
   readonly capture: CaptureMessages
@@ -226,19 +233,21 @@ export function createRuntime(options: RuntimeOptions): Runtime {
           ? buildSummarizer(next, env, layout, () => config.localOnlyPatterns)
           : options.summarizer
       const catalog = getCatalog(next.language)
+      const answerer = options.answerer === undefined ? buildAnswerer(next, env, layout) : options.answerer
       return {
         renderers,
         askChats:
-          summarizer === null
+          answerer === null
             ? null
             : createAskChats({
                 source,
-                summarizer,
+                answerer,
                 renderers,
-                systemPrompt: (question, ownerName, hints) =>
-                  catalog.ask.systemPrompt(question, ownerName ?? catalog.promptOwnerName, hints),
-                contactStatus: catalog.ask.contactStatus,
+                texts: catalog.ask,
+                ownerNameFallback: catalog.promptOwnerName,
                 ownConversationIds: () => ownIds.get(),
+                // Read through `config` on every request: a mark made meanwhile applies to the next one.
+                localOnlyPatterns: () => config.localOnlyPatterns,
               }),
         generateDigest:
           summarizer === null
@@ -282,6 +291,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       store,
       runs,
       outbox: new SqliteOutboxRepository(store),
+      askHistory: new SqliteAskHistory(db),
       identity,
       repository,
       capture,

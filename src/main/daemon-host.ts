@@ -564,6 +564,11 @@ export class DaemonHost {
     return unit === undefined || unit.daemon.blocked !== null ? undefined : unit.runtime
   }
 
+  /** Asks the account's unit to send what is queued for its own chat (an answer of the Ask tab); it does anyway on its next look. */
+  requestDelivery(id: string): void {
+    void this.units.get(id)?.daemon.deliver()
+  }
+
   /** True while a digest of the account's unit is running (scheduled or asked for). */
   isDigestBusy(id: string): boolean {
     return this.units.get(id)?.daemon.digestBusy === true
@@ -1385,6 +1390,7 @@ export class DaemonHost {
       env: this.ctx.env,
       clock: this.ctx.clock,
       ...(this.ctx.summarizer === undefined ? {} : { summarizer: this.ctx.summarizer }),
+      ...(this.ctx.answerer === undefined ? {} : { answerer: this.ctx.answerer }),
       ...(this.ctx.transcriber === undefined ? {} : { transcriber: this.ctx.transcriber }),
       onTranscription: (outcome) =>
         (outcome === 'transcribed' ? logger.info : logger.warn).call(logger, 'transcription.audio', {
