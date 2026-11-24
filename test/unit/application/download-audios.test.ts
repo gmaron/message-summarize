@@ -298,6 +298,46 @@ describe('the download worker over the durable queue (RF-15, RNF-08)', () => {
     expect(await t.repo.countDownloads()).toBe(0)
   })
 
+  it('a kick that arrives while the run is finding nothing is not lost', async () => {
+    const t = setup()
+    await queued(t.repo, 'a', 1000)
+    const lookUp = t.repo.nextDownload.bind(t.repo)
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let looks = 0
+    t.repo.nextDownload = async (now: number) => {
+      const found = await lookUp(now)
+      looks++
+      if (looks === 2) await held // the second look finds nothing, and the answer is held on its way back
+      return found
+    }
+    t.worker.kick()
+    await flush()
+    await queued(t.repo, 'b', 2000)
+    t.worker.kick()
+    release()
+    await t.worker.idle()
+    expect(t.downloader.started).toEqual(['a', 'b'])
+  })
+
+  it('works without anyone listening to its outcomes', async () => {
+    const repo = new InMemoryCaptureRepository()
+    const downloader = new FakeDownloader()
+    const worker = createDownloadAudios({
+      queue: repo,
+      downloader,
+      clock: { now: () => 1_000_000 },
+      wait: async () => {},
+    })
+    await queued(repo, 'a', 1000)
+    worker.kick()
+    await worker.idle()
+    expect(await repo.countDownloads()).toBe(0)
+    expect(downloader.started).toEqual(['a'])
+  })
+
   it('does nothing when the queue is empty', async () => {
     const t = setup()
     t.worker.kick()
@@ -379,6 +419,28 @@ describe('the download worker over the durable queue (RF-15, RNF-08)', () => {
       release()
       await stopping
       expect(state(t.repo, 'a')?.status).toBe('download_pending')
+    })
+
+    it('an audio that finishes while stopping is recorded, and the next one is not started', async () => {
+      const t = setup()
+      await queued(t.repo, 'a', 1000)
+      await queued(t.repo, 'b', 2000)
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      t.downloader.answer = async (item) => {
+        await held
+        return ok(`${item.messageId}.ogg`)
+      }
+      t.worker.kick()
+      await flush()
+      const stopping = t.worker.stop()
+      release()
+      await stopping
+      expect(t.downloader.started).toEqual(['a'])
+      expect(state(t.repo, 'a')?.status).toBe('pending')
+      expect(await t.repo.countDownloads()).toBe(1)
     })
 
     it('does nothing after stop', async () => {

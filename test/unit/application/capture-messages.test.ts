@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { MessageReceived } from '../../../src/application/capture-events.js'
 import {
   type CaptureMessagesDeps,
@@ -173,7 +173,7 @@ describe('CaptureMessages: exclusion (RF-14)', () => {
       expect(await repository.findConversation('c2')).not.toBeNull()
     })
     it('keeps storing metadata when only name patterns are set: they need the name', async () => {
-      const { capture, repository } = setup(['ana', 'id:other'])
+      const { capture, repository } = setup(['ana', 'c', 'id:other']) // 'c' is part of the id, but it is not an id pattern
       await capture.conversationMetadata(meta)
       expect(await repository.findConversation('c1')).not.toBeNull()
     })
@@ -448,6 +448,41 @@ describe('CaptureMessages: unread (RF-12) and own messages (RF-33)', () => {
     await capture.unreadChanged({ conversationId: 'c1', isGroup: false, state: { kind: 'count', count: 0 } })
     expect(await source.unreadState('c1')).toEqual({ kind: 'count', count: 0 })
     expect((await source.messagesInWindow('c1', all))[0]?.read).toBe(true)
+  })
+
+  it('marked as unread on the phone leaves the messages as they are: unread', async () => {
+    const { capture, source } = setup()
+    await capture.receiveMessage(received({ id: 'a' }))
+    await capture.unreadChanged({ conversationId: 'c1', isGroup: false, state: { kind: 'markedUnread' } })
+    expect((await source.messagesInWindow('c1', all))[0]?.read).toBe(false)
+  })
+
+  it('tells the repository what a new message does to the unread state: one more, read, or nothing', async () => {
+    const { capture, repository } = setup()
+    const effects = vi.spyOn(repository, 'insertMessage')
+    for (const other of ['x', 'y']) {
+      await repository.insertMessage(message({ id: `own-${other}`, conversationId: other, fromMe: true, text: MASS }))
+    }
+    effects.mockClear()
+    await capture.receiveMessage(received({ id: 'in' }))
+    await capture.receiveMessage(own({ id: 'reply', timestamp: 1_001 }))
+    await capture.receiveMessage(own({ id: 'mass', timestamp: 1_002, text: MASS }))
+    await capture.receiveMessage(received({ id: 'old' }, { origin: 'history' }))
+    expect(effects.mock.calls.map((call) => call[2])).toEqual(['increment', 'markRead', 'none', 'none'])
+  })
+
+  it('passes the isGroup hint of an unread event to a conversation it does not know yet', async () => {
+    const { capture, repository } = setup()
+    await capture.unreadChanged({ conversationId: 'g1', isGroup: true, state: { kind: 'count', count: 0 } })
+    await capture.unreadChanged({ conversationId: 'g2', isGroup: true, state: { kind: 'markedUnread' } })
+    await capture.unreadSnapshot({
+      conversationId: 'g3',
+      isGroup: true,
+      state: { kind: 'markedUnread' },
+      snapshotStartedAt: 1,
+    })
+    for (const id of ['g1', 'g2', 'g3'])
+      expect(await repository.findConversation(id), id).toMatchObject({ isGroup: true })
   })
 
   it('marked as unread on the phone is stored; positive counts and unknown are ignored', async () => {

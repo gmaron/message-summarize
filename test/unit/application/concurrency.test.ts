@@ -3,7 +3,9 @@ import { mapWithConcurrency } from '../../../src/application/concurrency.js'
 
 describe('mapWithConcurrency', () => {
   it.each([0, -2, 1.5, Number.NaN])('rejects an invalid limit (%s), even with no items', async (limit) => {
-    await expect(mapWithConcurrency([], limit, async () => 1)).rejects.toThrow(RangeError)
+    await expect(mapWithConcurrency([], limit, async () => 1)).rejects.toThrow(
+      new RangeError('concurrency must be a positive integer'),
+    )
   })
 
   it('returns the results in input order', async () => {

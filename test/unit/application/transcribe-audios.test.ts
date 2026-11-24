@@ -34,6 +34,8 @@ function setup(
     slot?: TranscriptionSlot
     repo?: InMemoryCaptureRepository
     mustObserve?: () => Promise<boolean>
+    /** Default 1000. `null`: not given to the use case. */
+    observePollMs?: number | null
   } = {},
 ) {
   const transcriber = new FakeTranscriber()
@@ -51,7 +53,7 @@ function setup(
     deleteMedia: async (ref) => {
       deleted.push(ref)
     },
-    observePollMs: 1_000,
+    ...(options.observePollMs === null ? {} : { observePollMs: options.observePollMs ?? 1_000 }),
     ...(options.mustObserve === undefined ? {} : { mustObserve: options.mustObserve }),
     ...(options.slot === undefined ? {} : { slot: options.slot }),
   })
@@ -124,6 +126,28 @@ describe('the background queue (RF-15)', () => {
     hold.open()
     await t.transcription.idle()
     expect(await t.repo.countPending()).toBe(0)
+    expect(await transcriptOf(t.repo, 'b')).toBe('/media/b.ogg')
+  })
+
+  it('a kick that arrives while the queue is finding nothing is not lost', async () => {
+    const t = setup()
+    await audio(t.repo, 'a', 1000)
+    t.transcriber.answer = async (r) => ok(r.audioPath)
+    const lookUp = t.repo.nextPending.bind(t.repo)
+    const hold = gate()
+    let looks = 0
+    t.repo.nextPending = async (range) => {
+      const found = await lookUp(range)
+      looks++
+      if (looks === 2) await hold.wait // the second look finds nothing, and the answer is held on its way back
+      return found
+    }
+    t.transcription.kick()
+    await flush()
+    await audio(t.repo, 'b', 2000)
+    t.transcription.kick()
+    hold.open()
+    await t.transcription.idle()
     expect(await transcriptOf(t.repo, 'b')).toBe('/media/b.ogg')
   })
 
@@ -265,6 +289,22 @@ describe('right before a digest: the audios of its window, with a bounded wait (
     expect(t.transcriber.maxInFlight).toBe(1)
   })
 
+  it('a queue that cannot be counted at the end is an error and counts as nothing left', async () => {
+    const t = setup()
+    await audio(t.repo, 'a', 1000)
+    t.transcriber.answer = async (r) => ok(r.audioPath)
+    const count = t.repo.countPending.bind(t.repo)
+    t.repo.countPending = async (range) => {
+      if (t.outcomes.includes('transcribed')) throw new Error('database is closed')
+      return count(range)
+    }
+    expect(await t.transcription.prepareWindow({ from: 0, until: 10_000 }, 60_000)).toEqual({
+      handled: 1,
+      remaining: 0,
+    })
+    expect(t.outcomes).toEqual(['transcribed', 'error'])
+  })
+
   it('stops waiting when the transcriber is unavailable, without the full wait', async () => {
     const t = setup()
     await audio(t.repo, 'a', 1000)
@@ -306,6 +346,40 @@ describe('stopping', () => {
     expect(await t.repo.countPending()).toBe(1)
     expect(t.repo.media.get(JSON.stringify(['c1', 'a']))?.status).toBe('pending')
     expect(t.outcomes).toEqual([])
+  })
+
+  it('does not settle while an audio is still in the air', async () => {
+    const t = setup()
+    await audio(t.repo, 'a', 1000)
+    const hold = gate()
+    t.transcriber.answer = async () => {
+      await hold.wait
+      return ok('late')
+    }
+    t.transcription.kick()
+    await flush()
+    let settled = false
+    const stopping = t.transcription.stop().then(() => {
+      settled = true
+    })
+    await flush()
+    await flush()
+    expect(settled).toBe(false)
+    hold.open()
+    await stopping
+    expect(settled).toBe(true)
+  })
+
+  it('settles with a transcriber that has no close, and with transcription off', async () => {
+    const bare = createTranscribeAudios({
+      store: new InMemoryCaptureRepository(),
+      transcriber: { transcribe: async () => ok('x') },
+      language: 'es',
+      mediaPath: (ref) => ref,
+      startDeadline: manualDeadlines().start,
+    })
+    await expect(bare.stop()).resolves.toBeUndefined()
+    await expect(setup({ off: true }).transcription.stop()).resolves.toBeUndefined()
   })
 
   it('a result that arrives after stop is discarded, even a good one', async () => {
@@ -466,6 +540,24 @@ describe('ONE transcription slot for the whole process (RNF-09)', () => {
     expect(most).toBe(2)
   })
 
+  it('an audio whose turn in the slot comes after the deadline is not started', async () => {
+    const slot = createTranscriptionSlot()
+    const t = setup({ slot })
+    await audio(t.repo, 'a', 1000)
+    const hold = gate()
+    const other = slot.run(() => hold.wait) // another account is transcribing
+    const preparing = t.transcription.prepareWindow({ from: 0, until: 10_000 }, 5_000)
+    await flush()
+    t.deadlines.expire()
+    expect(await preparing).toEqual({ handled: 0, remaining: 1 })
+    hold.open()
+    await other
+    await flush()
+    await flush()
+    expect(t.transcriber.calls).toEqual([])
+    expect(await t.repo.countPending()).toBe(1)
+  })
+
   it('stopping one account waits for its own work, not for the other account that shares the slot', async () => {
     const slot = createTranscriptionSlot()
     const a = setup({ slot })
@@ -586,6 +678,7 @@ describe('a process that is not the daemon only observes (prepareWindow observeO
     expect(await waiting).toEqual({ handled: 0, remaining: 0 })
     expect(t.transcriber.calls).toEqual([])
     expect(t.deleted).toEqual([])
+    expect(t.deadlines.cancelled()).toBe(3) // the two poll ticks and the overall limit: no timer is left behind
   })
 
   it('gives up at the bounded time: what the daemon has not done stays pending', async () => {
@@ -597,6 +690,7 @@ describe('a process that is not the daemon only observes (prepareWindow observeO
     expect(await waiting).toEqual({ handled: 0, remaining: 1 })
     expect(t.deadlines.started[0]).toBe(5_000)
     expect(t.transcriber.calls).toEqual([])
+    expect(t.deadlines.cancelled()).toBe(2)
   })
 
   it('does not wait at all when nothing of the window is pending', async () => {
@@ -607,6 +701,39 @@ describe('a process that is not the daemon only observes (prepareWindow observeO
       remaining: 0,
     })
     expect(t.deadlines.started).toEqual([60_000]) // only the overall limit, never a poll tick
+    expect(t.deadlines.cancelled()).toBe(1)
+  })
+
+  it('looks at the queue every second unless told otherwise, and every `observePollMs` when told', async () => {
+    const byDefault = setup({ observePollMs: null })
+    await audio(byDefault.repo, 'a', 1000)
+    const first = byDefault.transcription.prepareWindow({ from: 0, until: 10_000 }, 60_000, { observeOnly: true })
+    await flush()
+    byDefault.deadlines.expire()
+    await first
+    expect(byDefault.deadlines.started).toEqual([60_000, 1_000])
+
+    const custom = setup({ observePollMs: 250 })
+    await audio(custom.repo, 'a', 1000)
+    const second = custom.transcription.prepareWindow({ from: 0, until: 10_000 }, 60_000, { observeOnly: true })
+    await flush()
+    custom.deadlines.expire()
+    await second
+    expect(custom.deadlines.started).toEqual([60_000, 250])
+  })
+
+  it('a queue that cannot be read is an error, not an exception: it stops waiting and reports what it can', async () => {
+    const t = setup()
+    await audio(t.repo, 'a', 1000)
+    t.repo.countPending = async () => {
+      throw new Error('database is closed')
+    }
+    expect(await t.transcription.prepareWindow({ from: 0, until: 10_000 }, 60_000, { observeOnly: true })).toEqual({
+      handled: 0,
+      remaining: 0,
+    })
+    // once while waiting and once for the final count
+    expect(t.outcomes).toEqual(['error', 'error'])
   })
 
   it('with transcription off it does not wait either', async () => {

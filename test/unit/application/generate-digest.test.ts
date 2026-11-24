@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createGenerateDigest, type GenerateDigestRequest } from '../../../src/application/generate-digest.js'
 import type { Summarizer } from '../../../src/application/ports/summarizer.js'
+import type { UnreadState } from '../../../src/domain/model.js'
 import { err, ok, type Result } from '../../../src/domain/result.js'
 import { DEFAULT_SETTINGS, type DigestSettings } from '../../../src/domain/settings.js'
 import { FallbackSummarizer } from '../../../src/infrastructure/llm/index.js'
@@ -11,6 +12,7 @@ import {
   FixedClock,
   InMemorySource,
   InMemoryStore,
+  SpySource,
   VALID_RESPONSE,
 } from '../../support/application-fakes.js'
 import { conversation, message, participant, textOf } from '../domain/factories.js'
@@ -123,6 +125,19 @@ describe('GenerateDigest: empty window', () => {
     expect(summarizer.calls).toEqual([])
   })
 
+  it('reports no failures and no providers, and commits an empty run', async () => {
+    const { store, run } = setup()
+    const result = await run(request({ runId: 3 }))
+    expect(result.ok && result.value).toMatchObject({ summarized: 0, failed: [], providers: {} })
+    expect(store.commits[0]?.run).toMatchObject({
+      runId: 3,
+      summarized: 0,
+      failed: 0,
+      providers: {},
+      failedConversations: [],
+    })
+  })
+
   it('also counts as empty when every conversation is filtered out', async () => {
     const { source, store, run } = setup()
     addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
@@ -220,6 +235,38 @@ describe('GenerateDigest: failures', () => {
     // Every conversation failed: the digest with only the warning is still queued (frozen, golden 11).
     expect(store.outbox).toHaveLength(1)
     expect(store.pointer).toBe(UNTIL)
+  })
+
+  it('joins every schema error of a conversation in its reason', async () => {
+    const summarizer = new FakeSummarizer(() => ok({ ...VALID_RESPONSE, resumen: 5, prioridad: 'urgent' }))
+    const { source, run } = setup({ summarizer })
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
+    const result = await run(request())
+    expect(result.ok && result.value.failed[0]?.reason).toBe(
+      'invalid summary: resumen must be a string; prioridad must be alta, media or baja',
+    )
+  })
+
+  it.each([
+    ['null', null],
+    ['an object without ok', {}],
+    ['an object whose ok is not a boolean', { ok: 'yes', value: VALID_RESPONSE }],
+  ])('treats %s as an outcome that is not a result', async (_name, outcome) => {
+    const summarizer = new FakeSummarizer((() => outcome) as unknown as () => Result<unknown, string>)
+    const { source, run } = setup({ summarizer })
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'a']])
+    const result = await run(request())
+    expect(result.ok && result.value.failed.map((f) => f.reason)).toEqual([
+      'the summarizer returned something that is not a result',
+    ])
+  })
+
+  it('files an answer under "unknown" when the provider is not named, also when its name is empty', async () => {
+    const summarizer = new FakeSummarizer(() => ({ ok: true as const, value: VALID_RESPONSE, provider: '' }))
+    const { source, run } = setup({ summarizer })
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'a']])
+    const result = await run(request())
+    expect(result.ok && result.value.providers).toEqual({ unknown: 1 })
   })
 
   it('treats a throwing Summarizer as a failure of that conversation', async () => {
@@ -491,6 +538,94 @@ describe('GenerateDigest: concurrent runs', () => {
     addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
     await run(request({ from: undefined }))
     expect(store.commits[0]?.previousPointer).toBe(SINCE)
+  })
+})
+
+describe('GenerateDigest: what it reads (and spares)', () => {
+  const runOn = (source: SpySource) =>
+    createGenerateDigest({
+      source,
+      summarizer: new FakeSummarizer(),
+      store: new InMemoryStore(null),
+      clock: new FixedClock(UNTIL),
+      renderers,
+    })
+
+  it('reads no own messages when no conversation has messages in the window', async () => {
+    const source = new SpySource()
+    await runOn(source)(request())
+    expect(source.asked).toEqual(['conversationsWithMessages'])
+  })
+
+  it.each<[string, UnreadState]>([
+    ['unknown', { kind: 'unknown' }],
+    ['markedUnread', { kind: 'markedUnread' }],
+    ['a count of 0', { kind: 'count', count: 0 }],
+  ])('with "unread only" does not look for unread messages or context when the state is %s', async (_name, state) => {
+    const source = new SpySource()
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
+    source.setUnread('9911963367943', state)
+    await runOn(source)(request({ settings: settings({ unreadOnly: true }) }))
+    expect(source.asked).not.toContain('lastIncoming')
+    expect(source.asked).not.toContain('messagesBefore')
+  })
+
+  it('looks for the context before the unread tail only when there is a tail', async () => {
+    const source = new SpySource()
+    addChat(source, '9911963367943', 'Ana Gómez', [[at(1), 'hi']])
+    source.setUnread('9911963367943', { kind: 'count', count: 1 })
+    await runOn(source)(request({ settings: settings({ unreadOnly: true }) }))
+    expect(source.asked).toContain('lastIncoming')
+    expect(source.asked).toContain('messagesBefore')
+  })
+
+  it('asks for the participants of the chats and of the senders once each, never for a missing id', async () => {
+    const source = new SpySource()
+    source.addConversation(conversation({ id: 'ana', name: null, participantId: 'ana' }))
+    source.addConversation(conversation({ id: 'team', name: 'Team', isGroup: true, participantId: null }))
+    source.addMessages(
+      message({ id: '1', conversationId: 'ana', senderId: null, senderName: 'Ana', timestamp: at(1), text: 'hi' }),
+      message({ id: '2', conversationId: 'team', senderId: 'beto', timestamp: at(1), text: 'hola' }),
+      message({ id: '3', conversationId: 'team', senderId: 'carla', timestamp: at(2), text: 'chau' }),
+      message({ id: '4', conversationId: 'team', senderId: 'beto', timestamp: at(3), text: 'x' }),
+      message({ id: '5', conversationId: 'team', senderId: null, senderName: 'Unknown', timestamp: at(4), text: 'y' }),
+    )
+    await runOn(source)(request())
+    expect([...source.participantIds].sort()).toEqual(['ana', 'beto', 'carla'])
+  })
+
+  it('names a chat after its participant even when no message is from that participant', async () => {
+    const source = new SpySource()
+    const summarizer = new FakeSummarizer()
+    source.addConversation(conversation({ id: 'chat-1', name: null, participantId: 'p-ana' }))
+    source.addParticipant(participant({ id: 'p-ana', savedName: 'Ana Gómez' }))
+    source.addMessages(
+      message({ id: 'a', conversationId: 'chat-1', senderId: null, senderName: 'x', timestamp: at(1), text: 'hi' }),
+    )
+    await createGenerateDigest({
+      source,
+      summarizer,
+      store: new InMemoryStore(null),
+      clock: new FixedClock(UNTIL),
+      renderers,
+    })(request())
+    expect(summarizer.calls[0]?.conversation.name).toBe('Ana Gómez')
+  })
+
+  it('labels the senders of a group with their names', async () => {
+    const source = new SpySource()
+    const summarizer = new FakeSummarizer()
+    source.addConversation(conversation({ id: 'team', name: 'Team', isGroup: true, participantId: null }))
+    source.addParticipant(participant({ id: 'beto', savedName: 'Beto Ruiz' }))
+    source.addMessages(message({ id: 'a', conversationId: 'team', senderId: 'beto', timestamp: at(1), text: 'hola' }))
+    await createGenerateDigest({
+      source,
+      summarizer,
+      store: new InMemoryStore(null),
+      clock: new FixedClock(UNTIL),
+      renderers,
+    })(request())
+    expect(summarizer.calls[0]?.transcript).toContain('Beto Ruiz: hola')
   })
 })
 

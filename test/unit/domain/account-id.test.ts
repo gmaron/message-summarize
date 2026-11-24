@@ -14,6 +14,8 @@ describe('turning what a person writes into an account id', () => {
     ['José_María', 'jose-maria'],
     ['Año 2026!', 'ano-2026'],
     ['a.b/c\\d', 'abcd'],
+    ['a--b', 'a-b'],
+    ['a - b', 'a-b'],
   ])('%j becomes %j', (typed, id) => {
     expect(normalizeAccountId(typed)).toBe(id)
     expect(isValidAccountId(id)).toBe(true)
@@ -36,5 +38,25 @@ describe('turning what a person writes into an account id', () => {
       const id = normalizeAccountId(typed)
       expect(id === '' || isValidAccountId(id), typed).toBe(true)
     }
+  })
+})
+
+describe('the strict check the daemon applies to an id', () => {
+  it.each([
+    ['personal', true],
+    ['9-lives', true],
+    ['a'.repeat(32), true],
+    ['a'.repeat(33), false],
+    ['', false],
+    ['-a', false],
+    ['A', false],
+    ['a b', false],
+    ['a.b', false],
+    ['../x', false],
+    [42, false],
+    [null, false],
+    [undefined, false],
+  ])('%j is valid: %j', (value, valid) => {
+    expect(isValidAccountId(value)).toBe(valid)
   })
 })

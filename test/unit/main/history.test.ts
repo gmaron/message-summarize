@@ -345,6 +345,7 @@ describe('failureCode', () => {
     expect(failureCode('ollama timed out after 0.1s; fallback: down')).toBe('timeout')
     expect(failureCode('invalid summary: prioridad must be alta, media or baja')).toBe('invalidSummary')
     expect(failureCode('claude: Not logged in')).toBe('failed')
+    expect(failureCode('  localOnlyUnavailable  ; fallback: x')).toBe('localOnlyUnavailable')
   })
 
   it('decides a chained reason by the FIRST failure, and matches markers, not words inside a provider text', () => {
