@@ -144,6 +144,34 @@ export class InMemorySource implements DigestSource {
   }
 }
 
+/** An in-memory source that remembers what was asked of it, to check what a use case reads and what it spares. */
+export class SpySource extends InMemorySource {
+  readonly asked: string[] = []
+  participantIds: readonly string[] = []
+
+  override async conversationsWithMessages(window: SummaryWindow): Promise<readonly Conversation[]> {
+    this.asked.push('conversationsWithMessages')
+    return super.conversationsWithMessages(window)
+  }
+  override async ownMessageTexts(): ReturnType<InMemorySource['ownMessageTexts']> {
+    this.asked.push('ownMessageTexts')
+    return super.ownMessageTexts()
+  }
+  override async lastIncoming(...args: Parameters<InMemorySource['lastIncoming']>) {
+    this.asked.push('lastIncoming')
+    return super.lastIncoming(...args)
+  }
+  override async messagesBefore(...args: Parameters<InMemorySource['messagesBefore']>) {
+    this.asked.push('messagesBefore')
+    return super.messagesBefore(...args)
+  }
+  override async participants(ids: readonly string[]): Promise<ReadonlyMap<string, Participant>> {
+    this.asked.push('participants')
+    this.participantIds = ids
+    return super.participants(ids)
+  }
+}
+
 export class InMemoryStore implements DigestStore {
   pointer: number | null
   readonly commits: DigestCommit[] = []

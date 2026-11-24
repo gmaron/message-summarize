@@ -30,6 +30,14 @@ describe('selectUnreadTail', () => {
     expect(r).toEqual({ messages: [], contextBefore: null })
   })
 
+  it('a negative count (a sentinel, not a number of messages) is skipped like zero', () => {
+    const r = selectUnreadTail(count(-1), win, [
+      { id: 'd', read: false },
+      { id: 'c', read: false },
+    ])
+    expect(r).toEqual({ messages: [], contextBefore: null })
+  })
+
   it('starts at the first unread message in the window and asks for context before it', () => {
     const r = selectUnreadTail(count(2), win, [
       { id: 'd', read: false },

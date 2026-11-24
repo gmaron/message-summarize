@@ -82,6 +82,7 @@ describe('isExcluded', () => {
       expect(exactIdOf('id:')).toBe('')
       expect(hasIdPattern(['gym', 'ID:ABC@G.US'], 'abc@g.us')).toBe(true)
       expect(hasIdPattern(['gym', 'abc@g.us'], 'abc@g.us')).toBe(false)
+      expect(hasIdPattern(['id:abc@g.us'], '  ABC@g.us ')).toBe(true)
     })
   })
 })

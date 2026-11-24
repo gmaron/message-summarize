@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { codePointLength, findMassTexts, isMassAtReceipt } from '../../../src/domain/mass.js'
+import { codePointLength, findMassTexts, isMassAtReceipt, isMassMessage } from '../../../src/domain/mass.js'
 import { textOf } from './factories.js'
 
 const sentTo = (text: string | null, ...conversations: string[]) =>
@@ -71,5 +71,20 @@ describe('isMassAtReceipt', () => {
   it('measures in code points, like findMassTexts', () => {
     expect(isMassAtReceipt(`${textOf(37)}😀 `, 5)).toBe(false)
     expect(isMassAtReceipt(`${textOf(38)}😀 `, 5)).toBe(true)
+  })
+})
+
+describe('isMassMessage', () => {
+  const mass = new Set(['Big sale this weekend only'])
+
+  it('is true only for an own message whose text is one of the mass texts', () => {
+    expect(isMassMessage(mass, { fromMe: true, text: 'Big sale this weekend only' })).toBe(true)
+    expect(isMassMessage(mass, { fromMe: true, text: 'Another text' })).toBe(false)
+    expect(isMassMessage(mass, { fromMe: true, text: null })).toBe(false)
+  })
+
+  it('never takes a message from someone else for a mass one, even with the same text', () => {
+    expect(isMassMessage(mass, { fromMe: false, text: 'Big sale this weekend only' })).toBe(false)
+    expect(isMassMessage(mass, { fromMe: false, text: null })).toBe(false)
   })
 })

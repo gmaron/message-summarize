@@ -220,6 +220,18 @@ describe('DeliverPending', () => {
     expect(channel.attempts).toEqual(['one', 'two'])
   })
 
+  it('an outbox that breaks its contract rejects that run, and the next run is not left waiting for it', async () => {
+    const outbox = queued('one')
+    let broken = true
+    const real = outbox.pending.bind(outbox)
+    outbox.pending = async () => (broken ? (null as unknown as OutboxItem[]) : real())
+    const channel = new FakeChannel()
+    const deliver = new DeliverPending(outbox, channel)
+    await expect(deliver.run()).rejects.toThrow(TypeError)
+    broken = false
+    expect(await deliver.run()).toEqual({ delivered: 1, failure: null })
+  })
+
   it('can run again once the previous run ended, even after a failure', async () => {
     const outbox = queued('one')
     let fail = true
@@ -239,6 +251,7 @@ describe('DeliverPending', () => {
     })
     const deliver = new DeliverPending(outbox, channel)
     const first = deliver.run()
+    await new Promise((r) => setTimeout(r, 0)) // the run is going: the part is in the channel
     const second = deliver.run()
     gate.resolve()
     expect(await Promise.all([first, second])).toEqual([

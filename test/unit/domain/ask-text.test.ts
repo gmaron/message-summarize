@@ -30,6 +30,25 @@ describe('cleanQuestion', () => {
     expect(cleanQuestion('a \t \n \t b')).toBe('a\nb')
   })
 
+  it.each([
+    ['a lone carriage return is a line break', 'a\rb', 'a\nb'],
+    ['a control character is a blank, not nothing', 'a\u0001b', 'a b'],
+    ['a blank after a line break goes', 'a\n b', 'a\nb'],
+    ['a blank before a line break goes', 'a \nb', 'a\nb'],
+    [
+      'blanks at the start do not take room from the text',
+      ` ${'a'.repeat(MAX_QUESTION_CHARS + 5)}`,
+      'a'.repeat(MAX_QUESTION_CHARS),
+    ],
+    [
+      'no blank is left at the end after the cut',
+      `${'a'.repeat(MAX_QUESTION_CHARS - 1)} b`,
+      'a'.repeat(MAX_QUESTION_CHARS - 1),
+    ],
+  ])('%s', (_name, text, expected) => {
+    expect(cleanQuestion(text)).toBe(expected)
+  })
+
   it('is empty for blanks and control characters only', () => {
     expect(cleanQuestion(' \n\u0001\t ')).toBe('')
   })
@@ -100,6 +119,34 @@ describe('buildParts', () => {
     expect(parts.at(-1)).toBe('### Small\ns')
   })
 
+  it('a chat that fits exactly in what is left of the part stays in it; one character more starts the next', () => {
+    const blocks = [block('A', ['a'.repeat(10)]), block('B', ['b'.repeat(10)])]
+    expect(buildParts(blocks, 34)).toEqual([`### A\n${'a'.repeat(10)}\n\n### B\n${'b'.repeat(10)}`])
+    expect(buildParts(blocks, 33)).toEqual([`### A\n${'a'.repeat(10)}`, `### B\n${'b'.repeat(10)}`])
+  })
+
+  it('fills a piece of an oversized chat up to the limit and not one character more', () => {
+    const big = (second: number) => buildParts([block('Big', ['a'.repeat(44), 'b'.repeat(second), 'c'])], 60)
+    expect(big(7)).toEqual([`### Big\n${'a'.repeat(44)}\nbbbbbbb`, '### Big (sigue)\nc'])
+    expect(big(8)).toEqual([`### Big\n${'a'.repeat(44)}`, '### Big (sigue)\nbbbbbbbb\nc'])
+  })
+
+  it('keeps an empty line of an oversized chat, and a line as long as the room is not followed by an empty one', () => {
+    const parts = buildParts([block('Big', ['a'.repeat(20), '', 'b'.repeat(40), 'c'.repeat(44)])], 60)
+    expect(parts[0]).toBe(`### Big\n${'a'.repeat(20)}\n`)
+    expect(parts).toHaveLength(3)
+    expect(parts[2]).toBe(`### Big (sigue)\n${'c'.repeat(44)}`)
+  })
+
+  it('an oversized chat starts its own part: what came before is not mixed with its first piece', () => {
+    const parts = buildParts(
+      [block('Small', ['s']), block('Big', ['a'.repeat(30), 'b'.repeat(30), 'c'.repeat(30)])],
+      60,
+    )
+    expect(parts[0]).toBe('### Small\ns')
+    expect(parts[1]?.startsWith('### Big\n')).toBe(true)
+  })
+
   it('makes no part for nothing', () => {
     expect(buildParts([], 100)).toEqual([])
   })
@@ -127,6 +174,16 @@ describe('toWhatsApp', () => {
     expect(toWhatsApp('\n\nuno\n---\n\n\n\ndos\n\n')).toBe('uno\n\ndos')
   })
 
+  it.each([
+    ['a lone carriage return is a line break', '## T\rtext\rmore', '*T*\ntext\nmore'],
+    ['a title only at the start of a line', 'see ## here', 'see ## here'],
+    ['a title with several blanks after the marks', '##  Title', '*Title*'],
+    ['a bullet with several blanks after the dash', '-  item', '• item'],
+    ['a rule only when it is the whole line', 'a---b\nwait ---\n---not a rule\n----', 'a---b\nwait ---\n---not a rule'],
+  ])('%s', (_name, markdown, expected) => {
+    expect(toWhatsApp(markdown)).toBe(expected)
+  })
+
   it('does not touch a dash that is not a list marker', () => {
     expect(toWhatsApp('Ana - Beto, 3-4 piezas, -5')).toBe('Ana - Beto, 3-4 piezas, -5')
   })
@@ -140,6 +197,11 @@ describe('deliveryParts', () => {
     expect(parts.length).toBeGreaterThan(2)
     expect(parts.every((p) => p.length <= ASK_DELIVERY_PART_MAX)).toBe(true)
     expect(parts.slice(1).join('\n')).toBe(body)
+  })
+
+  it('cuts a line that is a whole number of parts without a last empty piece', () => {
+    expect(deliveryParts('H', 'abcdef', 3)).toEqual(['H', 'abc', 'def'])
+    expect(deliveryParts('H', 'abcdefg', 3)).toEqual(['H', 'abc', 'def', 'g'])
   })
 
   it('cuts a line longer than a part', () => {

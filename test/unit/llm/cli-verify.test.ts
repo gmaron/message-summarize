@@ -1,6 +1,6 @@
-import { existsSync, realpathSync, utimesSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, realpathSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative as relativePath } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   CHILD_ENV_NAMES,
@@ -252,5 +252,118 @@ describe('ClaudeCliSummarizer with verification (RF-49)', () => {
     const summarizer = new ClaudeCliSummarizer({ command: cli.path, model: 'sonnet', env: { PATH: process.env.PATH } })
     expect((await summarizer.summarize(REQUEST)).ok).toBe(true)
     expect(cli.calls('help')).toEqual([])
+  })
+})
+
+describe('verifyCli, the details that decide whether a CLI may run (RF-49)', () => {
+  it.skipIf(isWindows)('only a regular, executable file counts as the program', () => {
+    const cli = fake({ help: CLAUDE_HELP })
+    const name = cli.path.split('/').pop() ?? ''
+    const plain = join(cli.dir, 'plain-file')
+    writeFileSync(plain, '#!/bin/sh\n')
+    chmodSync(plain, 0o644)
+    mkdirSync(join(cli.dir, 'a-directory'), { mode: 0o755 })
+    expect(resolveExecutable('plain-file', { PATH: cli.dir })).toBeNull()
+    expect(resolveExecutable(plain, {})).toBeNull()
+    expect(resolveExecutable('a-directory', { PATH: cli.dir })).toBeNull()
+    expect(resolveExecutable(join(cli.dir, 'a-directory'), {})).toBeNull()
+    // a path with a directory is not looked up on the PATH, and an empty PATH entry is skipped
+    expect(resolveExecutable(cli.path, {})).toBe(cli.path)
+    expect(resolveExecutable(name, { PATH: `::${cli.dir}` })).toBe(cli.path)
+    expect(resolveExecutable(`./${name}`, { PATH: cli.dir })).toBeNull()
+  })
+
+  it.skipIf(isWindows)('a relative path with a directory is resolved from the current directory', () => {
+    const cli = fake({ help: CLAUDE_HELP })
+    const relative = relativePath(process.cwd(), cli.path)
+    expect(resolveExecutable(relative, {})).toBe(cli.path)
+  })
+
+  it.skipIf(isWindows)('a program that is not there is notFound, and is never run', async () => {
+    expect(await verifyCli({ ...spec(fake()), command: '/nonexistent-dir-for-test/cli' })).toEqual({
+      ok: false,
+      kind: 'notFound',
+    })
+  })
+
+  it.skipIf(isWindows)('a --help that does not finish within its time limit is unrunnable', async () => {
+    // a limit so short that the program cannot even start
+    const result = await verifyCli({ ...spec(fake({ help: CLAUDE_HELP })), timeoutMs: 1, killGraceMs: 50 })
+    expect(result).toEqual({ ok: false, kind: 'unrunnable' })
+  })
+
+  it.skipIf(isWindows)('the version is the first non-blank line, trimmed, or null when it cannot be read', async () => {
+    const spaced = fake({ help: CLAUDE_HELP, version: '\n  \n   claude 1.2.3   ' })
+    expect(await verifyCli(spec(spaced))).toMatchObject({ ok: true, version: 'claude 1.2.3' })
+    const blank = fake({ help: CLAUDE_HELP, version: '' })
+    clearVerificationCache()
+    expect(await verifyCli(spec(blank))).toMatchObject({ ok: true, version: null })
+  })
+
+  it.skipIf(isWindows)('a --version that fails still verifies, with no version', async () => {
+    const cli = fake({ help: CLAUDE_HELP, version: '1.0', versionCode: 3 })
+    expect(await verifyCli(spec(cli))).toEqual({ ok: true, path: cli.path, version: null })
+  })
+
+  it.skipIf(isWindows)('the verdict is per list of flags: a stricter list is not answered from the cache', async () => {
+    const cli = fake({ help: CLAUDE_HELP })
+    expect((await verifyCli(spec(cli))).ok).toBe(true)
+    const stricter = { ...spec(cli), requiredFlags: [...CLAUDE_REQUIRED_FLAGS, '--no-such-flag'] }
+    expect(await verifyCli(stricter)).toEqual({ ok: false, kind: 'missingFlags', flags: ['--no-such-flag'] })
+  })
+
+  it.skipIf(isWindows)('an unrunnable --help is looked at again exactly when the 60 seconds are over', async () => {
+    const cli = fake({ help: CLAUDE_HELP, helpCode: 1 })
+    let clock = 1_000_000
+    const timed = { ...spec(cli), now: () => clock }
+    await verifyCli(timed)
+    clock += UNRUNNABLE_TTL_MS
+    await verifyCli(timed)
+    expect(cli.calls('help')).toHaveLength(2)
+  })
+
+  it.skipIf(isWindows)('a verdict about the flags is kept for good (only an unrunnable --help expires)', async () => {
+    const cli = fake({ help: 'nothing useful' })
+    let clock = 1_000_000
+    const timed = { ...spec(cli), now: () => clock }
+    await verifyCli(timed)
+    clock += UNRUNNABLE_TTL_MS * 10
+    await verifyCli(timed)
+    expect(cli.calls('help')).toHaveLength(1)
+    clearVerificationCache()
+    await verifyCli(timed)
+    expect(cli.calls('help')).toHaveLength(2)
+  })
+})
+
+describe('the answer of ClaudeCliSummarizer with verification (RF-49)', () => {
+  const ASK = { systemPrompt: 'S', input: 'Ana: texto-del-chat-de-prueba' }
+  const ANSWER_STEP = { kind: 'text', text: JSON.stringify({ result: 'free text' }) } as const
+
+  it.skipIf(isWindows)('refuses a version without a hardening flag: the answer is never run', async () => {
+    const cli = fake({ help: 'Usage: claude -p --model', steps: [ANSWER_STEP] })
+    const summarizer = new ClaudeCliSummarizer({
+      command: cli.path,
+      model: 'm',
+      verify: true,
+      env: { PATH: process.env.PATH },
+    })
+    const result = await summarizer.answer(ASK)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('cannot be run without tools')
+    expect(cli.calls('run')).toEqual([])
+  })
+
+  it.skipIf(isWindows)('runs a verified version once, after one --help', async () => {
+    const cli = fake({ help: CLAUDE_HELP, steps: [ANSWER_STEP] })
+    const summarizer = new ClaudeCliSummarizer({
+      command: cli.path,
+      model: 'm',
+      verify: true,
+      env: { PATH: process.env.PATH },
+    })
+    expect(await summarizer.answer(ASK)).toEqual({ ok: true, text: 'free text', provider: 'claude-cli' })
+    expect(cli.calls('help')).toHaveLength(1)
+    expect(cli.calls('run')).toHaveLength(1)
   })
 })

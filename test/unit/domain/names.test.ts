@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   contactLabel,
   isMaskedName,
+  labelName,
   resolveConversationName,
   senderLabel,
   unmaskedName,
@@ -168,6 +169,27 @@ describe('contactLabel (the Ask answer: the number can be tapped in WhatsApp)', 
       expect(contactLabel(conversation(), participant({ publicName }), labels)).toBe('Ana - ( +9911963367943 )')
     }
   })
+  it.each([
+    ['a line break', 'Ana\nGomez', 'Ana Gomez'],
+    ['a "#"', 'Ana#Gomez', 'Ana Gomez'],
+    ['a plus sign', 'Ana+Gomez', 'Ana Gomez'],
+    ['a number', 'Ana1234567Gomez', 'Ana Gomez'],
+    ['empty parentheses', 'Ana()Gomez', 'Ana Gomez'],
+    ['empty parentheses left by a number', 'Ana(+9911963360000)Gomez', 'Ana Gomez'],
+    ['dashes and blanks at the ends', ' - -Ana Gomez- - ', 'Ana Gomez'],
+    ['only dashes', '--', ''],
+  ])('cleans a name with %s, leaving a blank where it was', (_name, typed, clean) => {
+    expect(labelName(typed)).toBe(clean)
+  })
+
+  it('takes an address as a phone number only when it is one from start to end', () => {
+    const alias = participant({ publicName: 'Ana' })
+    for (const address of ['abc+123', '+123abc', '+12 34', 'x+1']) {
+      expect(contactLabel(conversation({ address }), alias, labels)).toBe('Ana')
+    }
+    expect(contactLabel(conversation({ address: 'abc+123' }), null, labels)).toBe('abc+123')
+  })
+
   it('keeps short numbers that are part of a name', () => {
     expect(contactLabel(conversation(), participant({ savedName: 'Local 24 de Mayo' }), labels)).toBe(
       'Local 24 de Mayo - ( +9911963367943 )',

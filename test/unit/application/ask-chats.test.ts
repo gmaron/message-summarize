@@ -166,6 +166,49 @@ describe('AskChats: the request', () => {
     expect(sent).toContain('mando la plata')
   })
 
+  it('works without the optional dependencies: no own chats and no local-only patterns', async () => {
+    const source = new InMemorySource()
+    const answerer = new FakeAnswerer()
+    addChat(source, ANA, 'Ana Gómez')
+    const run = createAskChats({ source, answerer, renderers, texts, ownerNameFallback: 'the owner' })
+    expect((await run(request())).ok).toBe(true)
+  })
+
+  it('names the chat after its participant, also when none of the messages carries the participant id', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: ANA, name: null, participantId: 'p-ana', address: `+${ANA}` }))
+    source.addParticipant({ id: 'p-ana', savedName: 'Ana Gómez', publicName: null })
+    source.addMessages(message({ id: 'a1', conversationId: ANA, senderId: null, timestamp: at(1), text: 'hola' }))
+    await run(request())
+    expect(input(answerer)).toContain(`### Chat with: Ana Gómez - ( +${ANA} ) (saved)`)
+  })
+
+  it('shows the senders of a group by their saved names', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: 'g1', name: 'Team', isGroup: true, participantId: null }))
+    source.addParticipant({ id: BETO, savedName: 'Beto Ruiz', publicName: null })
+    source.addMessages(message({ id: 'g-1', conversationId: 'g1', senderId: BETO, timestamp: at(1), text: 'hola' }))
+    await run(request())
+    expect(input(answerer)).toContain('Beto Ruiz: hola')
+  })
+
+  it('calls a group with no name by the placeholder of the language', async () => {
+    const { source, answerer, run } = setup()
+    source.addConversation(conversation({ id: 'g1', name: null, isGroup: true, participantId: null }))
+    source.addMessages(message({ id: 'g-1', conversationId: 'g1', senderId: BETO, timestamp: at(1), text: 'hola' }))
+    await run(request())
+    expect(input(answerer)).toContain(`### Group: ${renderers.transcript.unnamedGroup}`)
+  })
+
+  it('calls the owner by the fallback when the account has no name, also when it is only blanks', async () => {
+    for (const ownerName of [null, '   ']) {
+      const { source, answerer, run } = setup()
+      addChat(source, ANA, 'Ana Gómez')
+      await run(request({ settings: settings({ ownerName }) }))
+      expect(answerer.calls[0]?.systemPrompt).toContain('You are the assistant of the owner')
+    }
+  })
+
   it('appends only the hints that the question mentions to the system prompt', async () => {
     const { source, answerer, run } = setup()
     addChat(source, ANA, 'Ana Gómez')
@@ -204,6 +247,28 @@ describe('AskChats: the request', () => {
     expect(await throwing.run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
   })
 
+  it.each([
+    ['an empty name', ''],
+    ['no name', undefined],
+  ])('files the answer under "unknown" for a provider with %s', async (_name, provider) => {
+    const answerer = new FakeAnswerer(false, () => ({ ok: true, text: 'fine', provider }) as AnswerResult)
+    const { source, run } = setup({ answerer })
+    addChat(source, ANA, 'Ana Gómez')
+    const result = await run(request())
+    expect(result.ok && result.value.provider).toBe('unknown')
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'ANSWER'],
+  ])('treats %s from the provider as a failure of class other', async (_name, result) => {
+    const answerer = new FakeAnswerer(false, () => result as unknown as AnswerResult)
+    const { source, run } = setup({ answerer })
+    addChat(source, ANA, 'Ana Gómez')
+    expect(await run(request())).toEqual(err({ kind: 'answerFailed', failure: 'other' }))
+  })
+
   it('treats a blank answer as a failure', async () => {
     const { source, run } = setup({
       answerer: new FakeAnswerer(false, () => ({ ok: true, text: '  ', provider: 'p' })),
@@ -232,6 +297,34 @@ describe('AskChats: privacy and the shared selection', () => {
     await run(request())
     expect(input(answerer)).toContain('Ana Gómez')
     expect(input(answerer)).not.toContain('Me says')
+  })
+
+  it('ignores blanks around a chat filter, and a filter of only blanks', async () => {
+    const { source, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    addChat(source, BETO, 'Beto Ruiz')
+    const padded = await run(request({ chats: ['  Ana  '] }))
+    expect(padded.ok && padded.value.chats).toBe(1)
+    const blank = await run(request({ chats: ['   ', ''] }))
+    expect(blank.ok && blank.value.chats).toBe(2)
+  })
+
+  it('puts the chats whose latest incoming message is at the same time in the order of their ids, whatever the order they were read in', async () => {
+    const { source, answerer, run } = setup()
+    // read order (first message of the window): z, m, a, b; all four have the same latest incoming message
+    for (const [i, id] of ['z', 'm', 'a', 'b'].entries()) {
+      source.addConversation(conversation({ id, name: id.toUpperCase(), participantId: id, address: `+${id}` }))
+      source.addParticipant({ id, savedName: id.toUpperCase(), publicName: null })
+      source.addMessages(
+        message({ id: `${id}-1`, conversationId: id, senderId: id, timestamp: at(1, i), text: 'first' }),
+        message({ id: `${id}-2`, conversationId: id, senderId: id, timestamp: at(5), text: 'last' }),
+      )
+    }
+    await run(request())
+    const sent = input(answerer)
+    const order = ['A', 'B', 'M', 'Z'].map((n) => sent.indexOf(`Chat with: ${n} `))
+    expect(order.every((i) => i >= 0)).toBe(true)
+    expect([...order].sort((x, y) => x - y)).toEqual(order)
   })
 
   it('keeps only the conversations that match the chat filter (a name, a number or an id)', async () => {
@@ -325,6 +418,43 @@ describe('AskChats: which messages are read', () => {
     )
     await run(request({ selection: 'unanswered', window: { since: at(0, 30), until: UNTIL } }))
     expect(input(answerer)).toContain('new one')
+  })
+
+  it('unanswered: a group is read from the last answer of the owner even when that answer is before the window', async () => {
+    const { source, answerer, run } = setup()
+    const day = (d: number, hour: number) => ba(3, d, hour, 0)
+    source.addConversation(conversation({ id: 'g1', name: 'Team', isGroup: true, participantId: null }))
+    source.addMessages(
+      { ...own('g1', '1', 0, 'my old reply'), timestamp: day(8, 9) },
+      message({
+        id: 'g-old',
+        conversationId: 'g1',
+        senderId: BETO,
+        timestamp: day(9, 20),
+        text: 'PENDING SINCE MONDAY',
+      }),
+      message({ id: 'g-new', conversationId: 'g1', senderId: BETO, timestamp: day(10, 9), text: 'and today' }),
+    )
+    await run(request({ selection: 'unanswered', window: { since: day(10, 0), until: day(10, 12) } }))
+    // below the marker: it is pending, not "already answered" context
+    const [above, below] = input(answerer).split(texts.contextMarker.unanswered)
+    expect(above).toContain('my old reply')
+    expect(above).not.toContain('PENDING SINCE MONDAY')
+    expect(below).toContain('PENDING SINCE MONDAY')
+  })
+
+  it('unanswered: the context above the marker leaves out what has nothing to read', async () => {
+    const { source, answerer, run } = setup()
+    addChat(source, ANA, 'Ana Gómez')
+    source.addMessages(
+      message({ id: 'st', conversationId: ANA, senderId: ANA, timestamp: at(0, 1), kind: 'sticker', text: null }),
+      own(ANA, '1', 0, 'my answer', 2),
+      message({ id: 'p', conversationId: ANA, senderId: ANA, timestamp: at(3), text: 'PENDING' }),
+    )
+    await run(request({ selection: 'unanswered' }))
+    const sent = input(answerer)
+    expect(sent).toContain('my answer')
+    expect(sent).not.toContain(getCatalog('en').transcript.kinds.sticker)
   })
 
   it('unanswered: nothing is pending when the owner answered last, and the chat is skipped', async () => {
@@ -690,6 +820,29 @@ describe('AskChats: a request too big for one call', () => {
       'reading:3/3',
       'writing:3/3',
     ])
+  })
+
+  it('gives the extract calls the name of the owner and, for unanswered, the note about what is pending', async () => {
+    const answerer = new FakeAnswerer(false, () => ({ ok: true, text: 'a', provider: 'p' }))
+    const { source, run } = setup({ answerer })
+    big(source, 2)
+    await run(request({ settings: settings({ ownerName: 'Lucía' }), selection: 'unanswered' }))
+    const extract = answerer.calls.find((c) => c.systemPrompt.includes('ONE PART'))?.systemPrompt ?? ''
+    expect(extract).toContain('You are the assistant of Lucía')
+    expect(extract).toContain('UNANSWERED')
+    const plain = new FakeAnswerer(false, () => ({ ok: true, text: 'a', provider: 'p' }))
+    const other = setup({ answerer: plain })
+    big(other.source, 2)
+    await other.run(request({ selection: 'all' }))
+    expect(plain.calls.find((c) => c.systemPrompt.includes('ONE PART'))?.systemPrompt).not.toContain('UNANSWERED')
+  })
+
+  it('when no part had anything, the answer is credited to the provider that read the parts', async () => {
+    const answerer = new FakeAnswerer(false, () => ({ ok: true, text: 'nothing', provider: 'reader' }))
+    const { source, run } = setup({ answerer })
+    big(source, 2)
+    const result = await run(request())
+    expect(result.ok && result.value.provider).toBe('reader')
   })
 
   it('does not make the final call when no part had anything', async () => {
