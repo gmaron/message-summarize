@@ -331,11 +331,28 @@ describe('the download worker over the durable queue (RF-15, RNF-08)', () => {
       clock: { now: () => 1_000_000 },
       wait: async () => {},
     })
-    await queued(repo, 'a', 1000)
+    for (const id of ['a', 'b', 'c']) await queued(repo, id, 1000)
     worker.kick()
     await worker.idle()
     expect(await repo.countDownloads()).toBe(0)
-    expect(downloader.started).toEqual(['a'])
+    expect(downloader.started).toEqual(['a', 'b', 'c'])
+  })
+
+  it('a store that fails after the file is stored gives the audio back, so the next kick finds it at once', async () => {
+    const t = setup()
+    await queued(t.repo, 'a', 1000)
+    const complete = t.repo.completeDownload.bind(t.repo)
+    let broken = true
+    t.repo.completeDownload = async (...args) => {
+      if (broken) throw new Error('database is closed')
+      return complete(...args)
+    }
+    await run(t)
+    expect(t.outcomes).toEqual(['error'])
+    broken = false
+    await run(t)
+    expect(t.downloader.started).toEqual(['a', 'a'])
+    expect(await t.repo.countDownloads()).toBe(0)
   })
 
   it('does nothing when the queue is empty', async () => {
