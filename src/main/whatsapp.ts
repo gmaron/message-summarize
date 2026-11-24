@@ -73,13 +73,10 @@ export const connectionFactoryWith =
               concurrency: runtime.config.transcription.downloadConcurrency,
               // A file that was stored joins the transcription queue: the daemon's transcription starts at once.
               onDownloaded: () => runtime.transcription.kick(),
-              // With a full history downloads outpace whisper: no new download is claimed while this many files wait
-              // for a transcriber, and the pool is woken again when a transcription frees its file (see below).
-              awaiting: async () => {
-                const stats = await runtime.audioQueueStats()
-                return stats.pending + stats.running
-              },
-              maxAwaiting: 4 * runtime.config.transcription.concurrency,
+              // Downloads are NOT held back by how far whisper is behind: the signed address of an audio expires within
+              // weeks (HTTP 403) and the phone may delete the file, so an audio is fetched as soon as possible and waits
+              // on disk. Only the size of the folder (`maxDirBytes`) bounds them: a full folder pauses the pool (nothing is
+              // failed) until a transcription frees room (see below).
               ...(hooks.onDownload === undefined ? {} : { onOutcome: hooks.onDownload }),
             },
           }

@@ -73,8 +73,8 @@ export interface DownloadAudiosDeps {
  *
  * - Success: the file is stored and the audio moves to the transcription queue.
  * - A permanent failure (too big, not audio...): recorded, never tried again.
- * - The server no longer has the media (404 or 410, `expired`): when the platform can do it and the key of the message was
- *   kept, the audio waits for the PHONE to upload it again. A second small pool asks for that: at most one request starts
+ * - The server no longer has the media (403, 404 or 410, `expired`): when the platform can do it and the key of the
+ *   message was kept, the audio waits for the PHONE to upload it again. A second small pool asks for that: at most one request starts
  *   per `reuploadIntervalMs`, each waits for the phone's answer, and an audio is asked for at most `maxReuploadAttempts`
  *   times (with a backoff when the phone does not answer). When the phone answers, the download goes on with the new
  *   place; when it says the file is gone, or the attempts are over, the audio fails as `expired`. Waiting for the phone

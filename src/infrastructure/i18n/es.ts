@@ -805,7 +805,7 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
       mediaFull: (usedMb, capMb) =>
         `los audios descargados ocupan ${usedMb} MB de los ${capMb} MB permitidos: no se aceptan audios nuevos hasta que se transcriban algunos`,
       mediaFullFix:
-        'los audios se borran al transcribirse, así que una carpeta llena significa que se acumulan: revisá que whisper, ffmpeg y el modelo funcionen (mirá arriba), o subí "transcription.maxMediaMb".',
+        'los audios se borran al transcribirse. Después de un historial completo la carpeta se llena mientras whisper se pone al día y las descargas solo esperan: es normal. Si no, se están acumulando: revisá que whisper, ffmpeg y el modelo funcionen (mirá arriba), o subí "transcription.maxMediaMb".',
       transcriptionOff: 'desactivada: los audios aparecen como "(audio sin transcribir)" y todo lo demás funciona',
       transcriptionOn: (language) => `activada (idioma: ${language === 'auto' ? 'detectado en cada audio' : language})`,
       whisperOk: (version) => (version === null ? 'encontrado' : `encontrado (${version})`),

@@ -803,7 +803,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
       mediaFull: (usedMb, capMb) =>
         `the downloaded audios take ${usedMb} MB of the ${capMb} MB allowed: new audios are refused until some are transcribed`,
       mediaFullFix:
-        'audios are deleted once transcribed, so a full folder means they are piling up: check that whisper, ffmpeg and the model work (see above), or raise "transcription.maxMediaMb".',
+        'audios are deleted once transcribed. Right after a full history the folder fills while whisper catches up, and downloads simply wait: that is normal. Otherwise they are piling up: check that whisper, ffmpeg and the model work (see above), or raise "transcription.maxMediaMb".',
       transcriptionOff: 'off: audios show as "(audio not transcribed)" and everything else works',
       transcriptionOn: (language) => `on (language: ${language === 'auto' ? 'detected for each audio' : language})`,
       whisperOk: (version) => (version === null ? 'found' : `found (${version})`),
