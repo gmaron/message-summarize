@@ -162,6 +162,7 @@ describe('contactLabel (the Ask answer: the number can be tapped in WhatsApp)', 
     for (const publicName of [
       'Ana +99#11#9633#6000',
       'Ana +99\u200b1196\u200b336000',
+      'Ana +99\u31641196\u115f336000',
       'Ana \uff0b\uff19\uff19\uff11\uff11\uff19\uff16\uff13\uff13\uff16',
     ]) {
       expect(contactLabel(conversation(), participant({ publicName }), labels)).toBe('Ana - ( +9911963367943 )')

@@ -54,8 +54,9 @@ export function contactLabel(
 const PHONE_LIKE = /\p{Nd}(?:[^\p{L}\p{Nd}]*\p{Nd}){6,}/gu
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is removed
 const LINE_BREAKERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g
-// Invisible format characters (zero-width spaces and joiners, direction marks): they could hide digits from the pattern.
-const INVISIBLE = /\p{Cf}/gu
+// Invisible characters (zero-width spaces and joiners, direction marks, variation selectors, and invisible "letters" such as
+// the Hangul fillers): they could split a number so the pattern misses it.
+const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu
 
 /** A name made safe for a label line: no line breaks, no "#", no phone-like digits, no empty parentheses left behind. */
 export function labelName(name: string | null | undefined): string {
