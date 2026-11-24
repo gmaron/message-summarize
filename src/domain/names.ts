@@ -30,18 +30,39 @@ export function resolveConversationName(
  * How a chat is named where the owner may want to write to the contact (the Ask answer): an individual chat with a phone
  * number is "name - ( +number )", saved or not, with spaces inside the parentheses so that WhatsApp makes the number
  * tappable; with no name it is "( +number )". A group, or a chat whose address is no number (an id the platform did not
- * map to a phone), keeps the name of `resolveConversationName`.
+ * map to a phone), is named without a number.
+ *
+ * The push name and the group subject are chosen by other people, so every name is cleaned (`labelName`): it can neither
+ * carry a number that would look like the contact's (a "( +number )" written into the name, to be tapped by mistake) nor
+ * break the line it is on (a new line, or a "###" that would fake the heading of another chat).
  */
 export function contactLabel(
   conversation: Conversation,
   participant: Participant | null,
   labels: { readonly unnamedGroup: string },
 ): string {
-  const resolved = resolveConversationName(conversation, participant, labels)
-  if (conversation.isGroup || !/^\+\d+$/.test(conversation.address)) return resolved.name
+  if (conversation.isGroup) return labelName(conversation.name) || labels.unnamedGroup
+  const name = labelName(participant?.savedName || participant?.publicName || conversation.name)
+  if (!/^\+\d+$/.test(conversation.address)) return name || conversation.address
   const number = `( ${conversation.address} )`
-  const name = participant?.savedName || participant?.publicName || conversation.name
   return name ? `${name} - ${number}` : number
+}
+
+// Anything that reads as a phone number: 7 or more digits, maybe with a "+" and separators in between.
+const PHONE_LIKE = /\+?\d(?:[\s().-]*\d){6,}/g
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is removed
+const LINE_BREAKERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g
+
+/** A name made safe for a label line: no line breaks, no "#", no phone-like digits, no empty parentheses left behind. */
+export function labelName(name: string | null | undefined): string {
+  if (!name) return ''
+  return name
+    .replace(LINE_BREAKERS, ' ')
+    .replace(PHONE_LIKE, ' ')
+    .replace(/#/g, ' ')
+    .replace(/\(\s*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s-]+|[\s-]+$/g, '')
 }
 
 /** Label of the author of a message. The owner label is built by the caller. Empty names count as missing. */

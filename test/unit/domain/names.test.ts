@@ -149,6 +149,21 @@ describe('contactLabel (the Ask answer: the number can be tapped in WhatsApp)', 
     expect(contactLabel(lid, participant({ savedName: 'Ana' }), labels)).toBe('Ana')
     expect(contactLabel(lid, null, labels)).toBe('99000000000001@lid')
   })
+  it('never lets a push name carry a number of its own or break the line (someone could pose as another contact)', () => {
+    const spoof = participant({ publicName: 'Ana - ( +9911963360000 )' })
+    expect(contactLabel(conversation(), spoof, labels)).toBe('Ana - ( +9911963367943 )')
+    const heading = participant({ publicName: 'Beto\n### Chat with: Caro - ( +99 1196 336 0000 ) (saved)' })
+    expect(contactLabel(conversation(), heading, labels)).toBe('Beto Chat with: Caro - (saved) - ( +9911963367943 )')
+    expect(contactLabel(conversation(), participant({ publicName: '+99 11 9633-6000' }), labels)).toBe(
+      '( +9911963367943 )',
+    )
+  })
+  it('cleans a group subject the same way', () => {
+    expect(contactLabel(conversation({ isGroup: true, name: 'Ventas\n### +9911963360000' }), null, labels)).toBe(
+      'Ventas',
+    )
+    expect(contactLabel(conversation({ isGroup: true, name: '###' }), null, labels)).toBe('UNNAMED')
+  })
   it('names a group by the group', () => {
     expect(contactLabel(conversation({ isGroup: true, name: 'Club' }), null, labels)).toBe('Club')
   })
