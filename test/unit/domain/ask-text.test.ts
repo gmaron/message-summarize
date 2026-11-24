@@ -118,6 +118,11 @@ describe('toWhatsApp', () => {
     )
   })
 
+  it('leaves a tappable number as is: "name - ( +number )", with the spaces inside the parentheses', () => {
+    expect(toWhatsApp('- Ana Gómez - ( +9911963367943 ): 3 cajas')).toBe('• Ana Gómez - ( +9911963367943 ): 3 cajas')
+    expect(toWhatsApp('### Beto - ( +9911963367944 )')).toBe('*Beto - ( +9911963367944 )*')
+  })
+
   it('removes rules and extra blank lines, and trims', () => {
     expect(toWhatsApp('\n\nuno\n---\n\n\n\ndos\n\n')).toBe('uno\n\ndos')
   })

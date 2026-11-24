@@ -13,7 +13,7 @@ import {
 import { isExcluded } from '../domain/exclusion.js'
 import { findMassTexts, isMassMessage } from '../domain/mass.js'
 import type { Message, Participant } from '../domain/model.js'
-import { resolveConversationName } from '../domain/names.js'
+import { contactLabel, resolveConversationName } from '../domain/names.js'
 import { err, ok, type Result } from '../domain/result.js'
 import type { DigestSettings } from '../domain/settings.js'
 import { CONTEXT_MESSAGES, selectUnreadTail } from '../domain/unread.js'
@@ -187,12 +187,16 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
 
     const filters = (request.chats ?? []).map((c) => c.trim()).filter((c) => c !== '')
     const named = loaded
-      .map((item) => ({
-        ...item,
-        ...resolveConversationName(item.conversation, personOf(item.conversation.participantId), {
-          unnamedGroup: renderers.transcript.unnamedGroup,
-        }),
-      }))
+      .map((item) => {
+        const participant = personOf(item.conversation.participantId)
+        const labels = { unnamedGroup: renderers.transcript.unnamedGroup }
+        return {
+          ...item,
+          ...resolveConversationName(item.conversation, participant, labels),
+          // What the model sees and repeats: "name - ( +number )", so the owner can tap the number in the answer.
+          label: contactLabel(item.conversation, participant, labels),
+        }
+      })
       // The privacy exclusions come first and cannot be overridden by the filter of the request.
       .filter((c) => !isExcluded(settings.excludePatterns, c.conversation.id, c.name))
       .filter((c) => filters.length === 0 || isExcluded(filters, c.conversation.id, c.name))
@@ -223,7 +227,7 @@ export function createAskChats(deps: AskChatsDeps): AskChats {
         item.context.length > 0
           ? [...render(item.context), marker, ...render(item.messages)]
           : [...render(item.messages)]
-      return { heading: (continued) => texts.chatHeading(kind, item.name, continued), lines }
+      return { heading: (continued) => texts.chatHeading(kind, item.label, continued), lines }
     })
     // A provider with a smaller limit of its own (a context window, an argument) gets smaller parts.
     const partChars = Math.min(ASK_PART_CHARS, answerer.maxPartChars ?? ASK_PART_CHARS)

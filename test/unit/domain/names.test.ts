@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { isMaskedName, resolveConversationName, senderLabel, unmaskedName } from '../../../src/domain/names.js'
+import {
+  contactLabel,
+  isMaskedName,
+  resolveConversationName,
+  senderLabel,
+  unmaskedName,
+} from '../../../src/domain/names.js'
 import { conversation, message, participant } from './factories.js'
 
 const labels = { unnamedGroup: 'UNNAMED' }
@@ -122,5 +128,58 @@ describe('senderLabel', () => {
       'Push',
     )
     expect(senderLabel(message({ senderName: '', senderAddress: '' }), null, owner)).toBe('?')
+  })
+})
+
+describe('contactLabel (the Ask answer: the number can be tapped in WhatsApp)', () => {
+  it('puts the number of a saved contact after its name, with spaces inside the parentheses', () => {
+    expect(contactLabel(conversation(), participant({ savedName: 'Ana Gómez' }), labels)).toBe(
+      'Ana Gómez - ( +9911963367943 )',
+    )
+  })
+  it('does the same for an unsaved contact with a push name or a chat name', () => {
+    expect(contactLabel(conversation(), participant({ publicName: 'Beto' }), labels)).toBe('Beto - ( +9911963367943 )')
+    expect(contactLabel(conversation({ name: 'Caro' }), null, labels)).toBe('Caro - ( +9911963367943 )')
+  })
+  it('is only the number when there is no name', () => {
+    expect(contactLabel(conversation(), null, labels)).toBe('( +9911963367943 )')
+  })
+  it('keeps the plain name when the address is no phone number', () => {
+    const lid = conversation({ address: '99000000000001@lid' })
+    expect(contactLabel(lid, participant({ savedName: 'Ana' }), labels)).toBe('Ana')
+    expect(contactLabel(lid, null, labels)).toBe('99000000000001@lid')
+  })
+  it('never lets a push name carry a number of its own or break the line (someone could pose as another contact)', () => {
+    const spoof = participant({ publicName: 'Ana - ( +9911963360000 )' })
+    expect(contactLabel(conversation(), spoof, labels)).toBe('Ana - ( +9911963367943 )')
+    const heading = participant({ publicName: 'Beto\n### Chat with: Caro - ( +99 1196 336 0000 ) (saved)' })
+    expect(contactLabel(conversation(), heading, labels)).toBe('Beto Chat with: Caro - (saved) - ( +9911963367943 )')
+    expect(contactLabel(conversation(), participant({ publicName: '+99 11 9633-6000' }), labels)).toBe(
+      '( +9911963367943 )',
+    )
+  })
+  it('also catches a number split by "#", invisible characters or written with full-width digits', () => {
+    for (const publicName of [
+      'Ana +99#11#9633#6000',
+      'Ana +99\u200b1196\u200b336000',
+      'Ana +99\u31641196\u115f336000',
+      'Ana \uff0b\uff19\uff19\uff11\uff11\uff19\uff16\uff13\uff13\uff16',
+    ]) {
+      expect(contactLabel(conversation(), participant({ publicName }), labels)).toBe('Ana - ( +9911963367943 )')
+    }
+  })
+  it('keeps short numbers that are part of a name', () => {
+    expect(contactLabel(conversation(), participant({ savedName: 'Local 24 de Mayo' }), labels)).toBe(
+      'Local 24 de Mayo - ( +9911963367943 )',
+    )
+  })
+  it('cleans a group subject the same way', () => {
+    expect(contactLabel(conversation({ isGroup: true, name: 'Ventas\n### +9911963360000' }), null, labels)).toBe(
+      'Ventas',
+    )
+    expect(contactLabel(conversation({ isGroup: true, name: '###' }), null, labels)).toBe('UNNAMED')
+  })
+  it('names a group by the group', () => {
+    expect(contactLabel(conversation({ isGroup: true, name: 'Club' }), null, labels)).toBe('Club')
   })
 })
