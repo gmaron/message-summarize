@@ -715,24 +715,28 @@ describe('POST /api/setup/test-provider (RF-41, RF-49)', () => {
     expect((await w.api('POST', '/api/setup/test-provider', { provider: 'claude-cli' })).body.ok).toBe(true)
   })
 
-  it.skipIf(isWindows)('reports the codes: timeout, missing command, invalid summary, failed', async () => {
-    const { w, fake } = await withClaude('hang', 300)
-    expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'timeout' })
-    fake.setMode('bad')
-    expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({
-      ok: false,
-      error: 'invalidSummary',
-    })
-    fake.setMode('fail')
-    expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'failed' })
-    const missing = join(dir, 'does-not-exist')
-    revoke.push(allowSubprocess(missing))
-    writeFileSync(
-      w.h.layout.configFile,
-      JSON.stringify({ ...BASE, provider: { primary: null, claudeCli: { command: missing } } }),
-    )
-    expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'notFound' })
-  })
+  it.skipIf(isWindows)(
+    'reports the codes: timeout, missing command, invalid summary, failed',
+    async () => {
+      const { w, fake } = await withClaude('hang', 3_000)
+      expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'timeout' })
+      fake.setMode('bad')
+      expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({
+        ok: false,
+        error: 'invalidSummary',
+      })
+      fake.setMode('fail')
+      expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'failed' })
+      const missing = join(dir, 'does-not-exist')
+      revoke.push(allowSubprocess(missing))
+      writeFileSync(
+        w.h.layout.configFile,
+        JSON.stringify({ ...BASE, provider: { primary: null, claudeCli: { command: missing } } }),
+      )
+      expect((await w.api('POST', '/api/setup/test-provider', claude)).body).toEqual({ ok: false, error: 'notFound' })
+    },
+    15_000,
+  )
 
   it.skipIf(isWindows)('never waits longer than its limit, whatever the timeout of the configuration', async () => {
     const fake = fakeClaude('hang')

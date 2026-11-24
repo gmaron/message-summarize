@@ -31,6 +31,12 @@ describe('storing keys (RNF-04)', () => {
     expect(readdirSync(join(file, '..'))).toEqual(['secrets.json'])
   })
 
+  it('creates the directory of the file private to the owner (mode 0700)', async () => {
+    const dir = join(tmp(), 'accounts', 'one')
+    await storeApiKey(join(dir, 'secrets.json'), 'openai', 'key-one')
+    if (process.platform !== 'win32') expect(statSync(dir).mode & 0o777).toBe(0o700)
+  })
+
   it('tightens a file that already existed with looser permissions', async () => {
     const dir = tmp()
     const file = join(dir, 'secrets.json')
@@ -135,5 +141,112 @@ describe('resolveApiKey: the environment, then the account file, then the instal
     await storeApiKey(file, 'openai-compatible', 'other-server-key')
     expect(resolveApiKey('openai-compatible', { env, file, accountFile })?.key).toBe('other-server-key')
     expect(resolveApiKey('openai', { env: { MSUM_OPENAI_API_KEY: 'x-key-123456' }, file })?.key).toBe('real-openai-key')
+  })
+})
+
+describe('what is read from a secrets file that is not well formed (RNF-04)', () => {
+  it.each([
+    ['an array', '[{"openai":"k"}]'],
+    ['a string', '"openai"'],
+    ['null', 'null'],
+    ['a number', '5'],
+    ['an empty file', ''],
+    ['keys that are not text', '{"openai":{"key":"k"},"anthropic":["k"],"gemini":null,"openai-compatible":true}'],
+  ])('%s has no keys, and is not an error to read', (_name, content) => {
+    const file = join(tmp(), 'secrets.json')
+    writeFileSync(file, content)
+    expect(readKeysSync(file)).toEqual({})
+    expect(resolveApiKey('openai', { env: {}, file })).toBeNull()
+  })
+
+  it.each([
+    ['a string', '"openai"'],
+    ['a number', '5'],
+    ['null', 'null'],
+    ['an array', '[]'],
+    ['text that is not JSON', 'openai=k'],
+  ])('storing, removing or listing refuses %s and leaves it as it was', async (_name, content) => {
+    const file = join(tmp(), 'secrets.json')
+    writeFileSync(file, content)
+    await expect(storeApiKey(file, 'openai', 'new-key-value')).rejects.toBeInstanceOf(InvalidSecretsFileError)
+    await expect(removeApiKey(file, 'openai')).rejects.toBeInstanceOf(InvalidSecretsFileError)
+    await expect(listStoredProviders(file)).rejects.toBeInstanceOf(InvalidSecretsFileError)
+    expect(readFileSync(file, 'utf8')).toBe(content)
+  })
+
+  it('a path that cannot be read for another reason than not existing is an error, never an empty file to overwrite', async () => {
+    const dir = tmp()
+    const asDirectory = join(dir, 'secrets.json')
+    mkdirSync(asDirectory)
+    await expect(storeApiKey(asDirectory, 'openai', 'k')).rejects.toMatchObject({ code: 'EISDIR' })
+    await expect(removeApiKey(asDirectory, 'openai')).rejects.toMatchObject({ code: 'EISDIR' })
+    await expect(listStoredProviders(asDirectory)).rejects.toMatchObject({ code: 'EISDIR' })
+    // nothing was written or replaced: it is still the same empty directory
+    expect(statSync(asDirectory).isDirectory()).toBe(true)
+    expect(readdirSync(asDirectory)).toEqual([])
+    expect(readdirSync(dir)).toEqual(['secrets.json'])
+  })
+
+  it('a file that does not exist lists no providers', async () => {
+    expect(await listStoredProviders(join(tmp(), 'nothing.json'))).toEqual([])
+  })
+
+  it('lists only the providers that have a key, in the order of the providers', async () => {
+    const file = join(tmp(), 'secrets.json')
+    writeFileSync(file, JSON.stringify({ gemini: 'g', openai: '', anthropic: 'a', other: 'x' }))
+    expect(await listStoredProviders(file)).toEqual(['anthropic', 'gemini'])
+  })
+
+  it('a removal keeps the other keys and the unknown fields of the file', async () => {
+    const file = join(tmp(), 'secrets.json')
+    writeFileSync(file, JSON.stringify({ openai: 'o', gemini: 'g', note: 'keep me' }))
+    expect(await removeApiKey(file, 'openai')).toBe(true)
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ gemini: 'g', note: 'keep me' })
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
+  })
+
+  it('a key that is an empty string counts as no key to remove', async () => {
+    const file = join(tmp(), 'secrets.json')
+    writeFileSync(file, JSON.stringify({ openai: '' }))
+    expect(await removeApiKey(file, 'openai')).toBe(false)
+  })
+})
+
+describe('resolveApiKey, the details', () => {
+  it('trims what comes from the environment (a pasted key often ends in a line break)', () => {
+    const file = join(tmp(), 'secrets.json')
+    expect(resolveApiKey('gemini', { env: { GEMINI_API_KEY: '  plain-key-value\n' }, file })).toEqual({
+      key: 'plain-key-value',
+      source: { kind: 'env', name: 'GEMINI_API_KEY' },
+    })
+  })
+
+  it('a broken file of the account, or one with an empty key, falls through to the installation file', async () => {
+    const dir = tmp()
+    const file = join(dir, 'secrets.json')
+    const accountFile = join(dir, 'account-secrets.json')
+    await storeApiKey(file, 'anthropic', 'from-installation')
+    writeFileSync(accountFile, '{broken')
+    expect(resolveApiKey('anthropic', { env: {}, file, accountFile })).toEqual({
+      key: 'from-installation',
+      source: { kind: 'file', file },
+    })
+    writeFileSync(accountFile, JSON.stringify({ anthropic: '' }))
+    expect(resolveApiKey('anthropic', { env: {}, file, accountFile })?.source).toEqual({ kind: 'file', file })
+    expect(resolveApiKey('anthropic', { env: {}, file, accountFile: undefined })?.source).toEqual({
+      kind: 'file',
+      file,
+    })
+  })
+
+  it('without an account file, a missing installation file means no key', () => {
+    expect(resolveApiKey('openai', { env: {}, file: join(tmp(), 'missing.json') })).toBeNull()
+  })
+
+  it('the key of the result never appears in its source', async () => {
+    const file = join(tmp(), 'secrets.json')
+    await storeApiKey(file, 'openai', 'never-in-the-source-value')
+    const found = resolveApiKey('openai', { env: {}, file })
+    expect(JSON.stringify(found?.source)).not.toContain('never-in-the-source-value')
   })
 })

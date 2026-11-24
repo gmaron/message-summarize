@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Answerer } from '../../../src/application/ports/answerer.js'
 import type { Summarizer } from '../../../src/application/ports/summarizer.js'
 import {
   AnthropicSummarizer,
@@ -56,6 +57,77 @@ describe('redactSecrets', () => {
     expect(clean).not.toContain('sk-another')
     expect(clean).not.toContain('AIzaSy')
     expect(clean).toContain('[redacted]')
+  })
+})
+
+// Keys that match neither the sk- nor the AIza shape: only the exact removal of the configured key can catch them.
+const PLAIN_KEY = 'not-a-real-key-aaaa'
+const OTHER_KEY = 'another-fake-key-bbbb'
+
+describe('redactSecrets removes the exact secret, whatever its shape', () => {
+  it('removes a key that matches no known shape', () => {
+    expect(redactSecrets(`bad key ${PLAIN_KEY}`, [PLAIN_KEY])).toBe('bad key [redacted]')
+  })
+
+  it('removes every occurrence of a secret', () => {
+    expect(redactSecrets(`${PLAIN_KEY} and ${PLAIN_KEY}, again ${PLAIN_KEY}`, [PLAIN_KEY])).toBe(
+      '[redacted] and [redacted], again [redacted]',
+    )
+  })
+
+  it('removes several secrets', () => {
+    const clean = redactSecrets(`a ${PLAIN_KEY} b ${OTHER_KEY} c`, [PLAIN_KEY, OTHER_KEY])
+    expect(clean).toBe('a [redacted] b [redacted] c')
+  })
+
+  it('skips an undefined or empty secret without touching the text, and still removes the others', () => {
+    expect(redactSecrets('nothing to hide', [undefined, ''])).toBe('nothing to hide')
+    expect(redactSecrets('nothing to hide', [])).toBe('nothing to hide')
+    expect(redactSecrets(`x ${PLAIN_KEY} y`, [undefined, '', PLAIN_KEY, undefined])).toBe('x [redacted] y')
+  })
+
+  it('leaves text that has no secret as it is', () => {
+    expect(redactSecrets('rate limit, try later', [PLAIN_KEY])).toBe('rate limit, try later')
+  })
+})
+
+describe('each API adapter passes its own key to the redaction', () => {
+  const echo = JSON.stringify({ error: { message: `Invalid credentials ${PLAIN_KEY} rejected` } })
+  const cases: [string, (baseUrl: string) => Summarizer & Answerer][] = [
+    [
+      'openai',
+      (baseUrl) => new OpenAiCompatibleSummarizer({ model: 'm', baseUrl, apiKey: PLAIN_KEY, retryClock: NO_WAIT }),
+    ],
+    [
+      'anthropic',
+      (baseUrl) => new AnthropicSummarizer({ model: 'm', baseUrl, apiKey: PLAIN_KEY, retryClock: NO_WAIT }),
+    ],
+    ['gemini', (baseUrl) => new GeminiSummarizer({ model: 'm', baseUrl, apiKey: PLAIN_KEY, retryClock: NO_WAIT })],
+    [
+      'openai with a key from a function',
+      (baseUrl) =>
+        new OpenAiCompatibleSummarizer({ model: 'm', baseUrl, apiKey: () => PLAIN_KEY, retryClock: NO_WAIT }),
+    ],
+  ]
+
+  it.each(cases)('%s: the error of a summary and of an answer has no key', async (_name, build) => {
+    const server = await startFakeServer()
+    servers.push(server)
+    const adapter = build(server.baseUrl)
+    server.script({ status: 401, body: echo })
+    const summary = await adapter.summarize(REQUEST)
+    expect(summary.ok).toBe(false)
+    if (!summary.ok) {
+      expect(summary.error).not.toContain(PLAIN_KEY)
+      expect(summary.error).toContain('[redacted]')
+    }
+    server.script({ status: 401, body: echo })
+    const answer = await adapter.answer({ systemPrompt: 's', input: 'i' })
+    expect(answer.ok).toBe(false)
+    if (!answer.ok) {
+      expect(answer.error).not.toContain(PLAIN_KEY)
+      expect(answer.error).toContain('[redacted]')
+    }
   })
 })
 
