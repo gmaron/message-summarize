@@ -143,8 +143,14 @@ describe('SqliteAskHistory', () => {
     const first = new SqliteAskHistory(t.open())
     const id = await first.start(ask())
     await first.finish(id, { finishedAt: 2, state: 'done', result })
-    const reopened = new SqliteAskHistory(openDatabase(t.path))
-    expect((await reopened.list())[0]).toMatchObject({ id, state: 'done', result })
+    // The second connection is closed by hand: TempDatabase only closes its own, and Windows cannot delete an open file.
+    const db = openDatabase(t.path)
+    try {
+      const reopened = new SqliteAskHistory(db)
+      expect((await reopened.list())[0]).toMatchObject({ id, state: 'done', result })
+    } finally {
+      db.close()
+    }
   })
 
   it('closes what was left running as failed (interrupted) and leaves finished ones alone', async () => {
