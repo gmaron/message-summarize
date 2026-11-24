@@ -163,6 +163,16 @@ export class SqliteDigestSource implements DigestSource {
     return rows.reverse().map(toMessage)
   }
 
+  async lastOwn(conversationId: string, limit: number): Promise<readonly Message[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE conversation_id = ? AND from_me = 1 AND kind <> 'other'
+         ORDER BY timestamp DESC, seq DESC LIMIT ?`,
+      )
+      .all(conversationId, Math.max(0, limit)) as unknown as MessageRow[]
+    return rows.map(toMessage)
+  }
+
   /**
    * Lazy and re-iterable: every iteration runs its own query, reading rows as the caller goes. Consume it fully before
    * awaiting anything else, so no read stays open while other work writes.

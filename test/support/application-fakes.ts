@@ -3,7 +3,7 @@ import type { Clock } from '../../src/application/ports/clock.js'
 import type { DeliveryChannel, DeliveryFailure } from '../../src/application/ports/delivery-channel.js'
 import type { DigestSource } from '../../src/application/ports/digest-source.js'
 import type { CommitConflict, DigestCommit, DigestStore } from '../../src/application/ports/digest-store.js'
-import type { OutboxItem, OutboxRepository } from '../../src/application/ports/outbox.js'
+import type { OutboxItem, OutboxRepository, OwnChatQueue } from '../../src/application/ports/outbox.js'
 import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
 import type { OwnMessageText } from '../../src/domain/mass.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../src/domain/model.js'
@@ -131,6 +131,14 @@ export class InMemorySource implements DigestSource {
       .slice(-limit)
   }
 
+  async lastOwn(conversationId: string, limit: number): Promise<readonly Message[]> {
+    if (limit <= 0) return []
+    return this.of(conversationId)
+      .filter((m) => m.fromMe)
+      .reverse()
+      .slice(0, limit)
+  }
+
   async ownMessageTexts(): Promise<Iterable<OwnMessageText>> {
     return this.messages.filter((m) => m.fromMe).map((m) => ({ conversationId: m.conversationId, text: m.text }))
   }
@@ -168,7 +176,7 @@ export class InMemoryStore implements DigestStore {
 }
 
 /** In-memory OutboxRepository, following the contract of the port. */
-export class InMemoryOutbox implements OutboxRepository {
+export class InMemoryOutbox implements OutboxRepository, OwnChatQueue {
   private nextId = 1
   private readonly rows: { id: number; text: string; sent: boolean }[] = []
 
@@ -186,6 +194,17 @@ export class InMemoryOutbox implements OutboxRepository {
     if (row === undefined || row.sent) return false
     row.sent = true
     return true
+  }
+
+  async queueForOwnChat(parts: readonly string[]): Promise<number | null> {
+    if (parts.length === 0) return null
+    this.enqueue(...parts)
+    return this.nextId - 1
+  }
+
+  async status(id: number): Promise<'queued' | 'sent' | 'gone'> {
+    const row = this.rows.find((r) => r.id === id)
+    return row === undefined ? 'gone' : row.sent ? 'sent' : 'queued'
   }
 
   async discardPending(): Promise<number> {

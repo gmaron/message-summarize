@@ -1,32 +1,32 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { AskChats, AskReport } from '../../../src/application/ask-chats.js'
+import { ASK_HISTORY_LIMIT } from '../../../src/application/ports/ask-history.js'
 import { err, ok } from '../../../src/domain/result.js'
 import { DEFAULT_SETTINGS } from '../../../src/domain/settings.js'
-import {
-  type AskEvent,
-  AskService,
-  type AskView,
-  MAX_ASKS_PER_ACCOUNT,
-  startOfLocalDay,
-  windowOf,
-} from '../../../src/main/ask.js'
+import { SqliteAskHistory } from '../../../src/infrastructure/persistence/sqlite/index.js'
+import { createRenderers } from '../../../src/infrastructure/rendering/index.js'
+import { type AskEvent, AskService, type AskView, startOfLocalDay, windowOf } from '../../../src/main/ask.js'
 import { buildLogRecord, type LogFields, type LogLevel } from '../../../src/main/logger.js'
 import type { Runtime } from '../../../src/main/runtime.js'
-import { deferred } from '../../support/application-fakes.js'
+import { deferred, InMemoryOutbox } from '../../support/application-fakes.js'
+import { TempDatabase } from '../../support/persistence-backends.js'
 
 const HOUR = 3_600_000
 /** 2026-03-10 15:30:00 in Buenos Aires (UTC-3). */
 const NOW = Date.UTC(2026, 2, 10, 18, 30)
 const BA = 'America/Argentina/Buenos_Aires'
+const SECRET = 'SECRET-ANSWER: Ana wants a loan of 500'
 
 const report = (overrides: Partial<AskReport> = {}): AskReport => ({
-  window: { since: 0, until: 1 },
-  consulted: 2,
-  candidates: 2,
-  offset: 0,
-  items: [{ name: 'Ana Gómez', answer: 'Asked for a loan.', todos: [], needsReply: true, messageCount: 2 }],
-  failed: 0,
-  providers: { 'claude-cli': 2 },
+  window: { since: NOW - 24 * HOUR, until: NOW },
+  selection: 'unanswered',
+  chats: 2,
+  messages: 5,
+  leftOutLocalOnly: 0,
+  parts: 1,
+  calls: 1,
+  provider: 'claude-cli',
+  answer: `## Loans\n- **Ana**: ${SECRET}`,
   ...overrides,
 })
 
@@ -36,7 +36,12 @@ interface Logged {
   fields: unknown
 }
 
-function setup(options: { askChats?: AskChats | null; runtime?: boolean; timezone?: string } = {}) {
+const temps: TempDatabase[] = []
+afterEach(() => {
+  for (const temp of temps.splice(0)) temp.dispose()
+})
+
+function setup(options: { askChats?: AskChats | null; runtime?: boolean; queueFails?: boolean } = {}) {
   const logs: Logged[] = []
   const logger = new Proxy(
     {},
@@ -55,6 +60,15 @@ function setup(options: { askChats?: AskChats | null; runtime?: boolean; timezon
         },
     },
   )
+  const temp = new TempDatabase()
+  temps.push(temp)
+  const history = new SqliteAskHistory(temp.open())
+  const outbox = new InMemoryOutbox()
+  if (options.queueFails === true) {
+    outbox.queueForOwnChat = async () => {
+      throw new Error('disk full')
+    }
+  }
   const events: AskEvent[] = []
   const calls: Parameters<AskChats>[0][] = []
   const askChats: AskChats | null =
@@ -66,30 +80,39 @@ function setup(options: { askChats?: AskChats | null; runtime?: boolean; timezon
       : options.askChats
   const runtime = {
     askChats,
-    config: { timezone: options.timezone ?? BA, digest: DEFAULT_SETTINGS, concurrency: 3 },
-  } as unknown as Runtime
-  const state = {
-    stamp: 'created-1' as string | null,
-    stopping: false,
-    now: NOW,
-    hasRuntime: options.runtime !== false,
-  }
-  const service = new AskService({
-    ctx: { clock: { now: () => state.now }, logger } as never,
-    host: {
-      runtimeOf: () => (state.hasRuntime ? runtime : undefined),
-      get isStopping() {
-        return state.stopping
-      },
+    askHistory: history,
+    outbox,
+    renderers: createRenderers('en', BA),
+    config: {
+      timezone: BA,
+      language: 'en',
+      digest: DEFAULT_SETTINGS,
+      concurrency: 3,
+      askHints: [{ when: ['x'], text: 'y' }],
     },
-    onEvent: (event) => events.push(event),
-    accountStamp: () => state.stamp,
-  })
-  return { service, events, calls, logs, state }
+  } as unknown as Runtime
+  const state = { stopping: false, now: NOW, hasRuntime: options.runtime !== false }
+  const deliveries: string[] = []
+  const ctx = { clock: { now: () => state.now }, logger } as never
+  const host = {
+    runtimeOf: () => (state.hasRuntime ? runtime : undefined),
+    get isStopping() {
+      return state.stopping
+    },
+    requestDelivery: (id: string) => deliveries.push(id),
+  }
+  const service = new AskService({ ctx, host, onEvent: (event) => events.push(event) })
+  return { service, ctx, host, events, calls, logs, state, history, outbox, deliveries }
 }
 
-const input = { question: '  who asked me for money?  ', period: 'h24' as const, chats: [] as string[] }
-const settled = () => new Promise((resolve) => setTimeout(resolve, 0))
+const input = {
+  question: '  who asked me for money?  ',
+  period: 'h24' as const,
+  selection: 'unanswered' as const,
+  chats: [] as string[],
+  deliver: false,
+}
+const settled = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 describe('AskService: windows', () => {
   it('computes the start of the local day in a time zone, also across the date line of UTC', () => {
@@ -121,308 +144,323 @@ describe('AskService: windows', () => {
 })
 
 describe('AskService: start', () => {
-  it('runs the request with the trimmed question, the window, the filters and the runtime config, then publishes done', async () => {
-    const { service, events, calls, state } = setup()
-    const started = service.start('alpha', { ...input, chats: ['ana'] })
-    expect(started).toEqual({ ok: true, id: 1 })
-    expect(service.isBusy('alpha')).toBe(true)
-    expect(service.list('alpha')[0]).toMatchObject({ id: 1, state: 'running', question: 'who asked me for money?' })
-    state.now = NOW + 5
-    await settled()
-    expect(calls).toEqual([
-      {
-        question: 'who asked me for money?',
-        window: { since: NOW - 24 * HOUR, until: NOW },
-        chats: ['ana'],
-        settings: DEFAULT_SETTINGS,
-        concurrency: 3,
-        offset: 0,
+  it('runs the request with the cleaned question, the window, the selection, the filters and the runtime config, then publishes done', async () => {
+    const gate = deferred<void>()
+    const calls: Parameters<AskChats>[0][] = []
+    const { service, events } = setup({
+      askChats: async (request) => {
+        calls.push(request)
+        await gate.promise
+        return ok(report())
       },
-    ])
-    expect(service.isBusy('alpha')).toBe(false)
-    const view = service.list('alpha')[0] as AskView
-    expect(view).toMatchObject({
-      state: 'done',
-      consulted: 2,
-      failedChats: 0,
-      finishedAt: NOW + 5,
-      period: 'h24',
-      chats: ['ana'],
     })
-    expect(view.items).toHaveLength(1)
-    expect(events).toEqual([{ account: 'alpha', id: 1, state: 'done' }])
-  })
-
-  it('never puts the text of the answers in an event or a log', async () => {
-    const { service, events, logs } = setup()
-    service.start('alpha', input)
+    expect(await service.start('alpha', { ...input, chats: ['ana'] })).toEqual({ ok: true, id: 1 })
+    expect(service.isBusy('alpha')).toBe(true)
+    expect((await service.list('alpha'))[0]).toMatchObject({
+      id: 1,
+      state: 'running',
+      question: 'who asked me for money?',
+    })
+    gate.resolve()
     await settled()
-    const everything = JSON.stringify([events, logs])
-    expect(everything).not.toContain('Asked for a loan')
-    expect(everything).not.toContain('Ana Gómez')
-    expect(everything).not.toContain('money')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      question: 'who asked me for money?',
+      window: { since: NOW - 24 * HOUR, until: NOW },
+      chats: ['ana'],
+      selection: 'unanswered',
+      settings: DEFAULT_SETTINGS,
+      askHints: [{ when: ['x'], text: 'y' }],
+    })
+    expect(service.isBusy('alpha')).toBe(false)
+    expect(events).toEqual([{ account: 'alpha', id: 1, state: 'done' }])
+    expect((await service.list('alpha'))[0]).toMatchObject({
+      state: 'done',
+      selection: 'unanswered',
+      deliver: false,
+      delivery: 'off',
+      result: { answer: report().answer, provider: 'claude-cli', chats: 2, messages: 5, leftOutLocalOnly: 0, parts: 1 },
+    })
   })
 
-  it('stores and shows the cleaned question, the same one the model gets', async () => {
-    const { service, calls } = setup()
-    service.start('alpha', { ...input, question: `  a\u0001  b\n c ${'z'.repeat(1100)}` })
-    const shown = service.list('alpha')[0]?.question ?? ''
-    expect(shown).toHaveLength(1000)
-    expect(shown.startsWith('a b c z')).toBe(true)
-    await Promise.resolve()
-    expect(calls[0]?.question).toBe(shown)
+  it('keeps line breaks of a pasted question', async () => {
+    const { service } = setup()
+    await service.start('alpha', { ...input, question: 'List:\n\n\n- a\n- b' })
+    expect((await service.list('alpha'))[0]?.question).toBe('List:\n\n- a\n- b')
   })
 
-  it('rejects an empty question, a missing runtime, a missing provider and a stopping host', () => {
-    expect(setup().service.start('alpha', { ...input, question: '   ' })).toEqual({
+  it('rejects an empty question, a missing runtime, a missing provider and a stopping host', async () => {
+    expect(await setup().service.start('alpha', { ...input, question: ' \n\u0001 ' })).toEqual({
       ok: false,
       reason: 'emptyQuestion',
     })
-    expect(setup({ runtime: false }).service.start('alpha', input)).toEqual({ ok: false, reason: 'notRunning' })
-    expect(setup({ askChats: null }).service.start('alpha', input)).toEqual({ ok: false, reason: 'noProvider' })
+    expect(await setup({ runtime: false }).service.start('alpha', input)).toEqual({ ok: false, reason: 'notRunning' })
+    expect(await setup({ askChats: null }).service.start('alpha', input)).toEqual({ ok: false, reason: 'noProvider' })
     const stopping = setup()
     stopping.state.stopping = true
-    expect(stopping.service.start('alpha', input)).toEqual({ ok: false, reason: 'unavailable' })
+    expect(await stopping.service.start('alpha', input)).toEqual({ ok: false, reason: 'unavailable' })
+    expect(await stopping.service.list('alpha')).toEqual([])
   })
 
-  it('answers busy while one runs, per account, and accepts another when it ends', async () => {
-    const gate = deferred<ReturnType<typeof ok<AskReport>>>()
-    const { service } = setup({ askChats: () => gate.promise })
-    expect(service.start('alpha', input)).toMatchObject({ ok: true })
-    expect(service.start('alpha', input)).toEqual({ ok: false, reason: 'busy' })
-    expect(service.start('beta', input)).toMatchObject({ ok: true })
-    gate.resolve(ok(report()))
+  it('answers busy while one runs and accepts another when it ends; the progress is in the view', async () => {
+    const gate = deferred<void>()
+    const { service } = setup({
+      askChats: async (request) => {
+        request.onProgress?.({ phase: 'reading', done: 1, total: 3 })
+        await gate.promise
+        return ok(report())
+      },
+    })
+    expect(await service.start('alpha', input)).toEqual({ ok: true, id: 1 })
+    expect(await service.start('alpha', input)).toEqual({ ok: false, reason: 'busy' })
+    expect((await service.list('alpha'))[0]).toMatchObject({
+      state: 'running',
+      progress: { phase: 'reading', done: 1, total: 3 },
+    })
+    gate.resolve()
     await settled()
-    expect(service.isBusy('alpha')).toBe(false)
-    expect(service.start('alpha', input)).toEqual({ ok: true, id: 3 })
+    expect(await service.start('alpha', input)).toEqual({ ok: true, id: 2 })
   })
 
-  it('marks the request failed with the mapped error code of the use case', async () => {
-    const cases = [
-      [{ kind: 'emptyQuestion' as const }, 'emptyQuestion'],
-      [{ kind: 'invalidWindow' as const }, 'failed'],
-    ] as const
-    for (const [error, code] of cases) {
-      const { service, events } = setup({ askChats: async () => err(error) })
-      service.start('alpha', input)
-      await settled()
-      expect(service.list('alpha')[0]).toMatchObject({ state: 'failed', error: code })
-      expect(events).toEqual([{ account: 'alpha', id: 1, state: 'failed', error: code }])
-    }
+  it('takes the slot at once: two starts in the same step cannot both run', async () => {
+    const { service } = setup()
+    const [a, b] = await Promise.all([service.start('alpha', input), service.start('alpha', input)])
+    expect([a.ok, b.ok].sort()).toEqual([false, true])
+  })
+
+  it('does not delete a request that is running', async () => {
+    const gate = deferred<void>()
+    const { service } = setup({
+      askChats: async () => {
+        await gate.promise
+        return ok(report())
+      },
+    })
+    await service.start('alpha', input)
+    expect(await service.remove('alpha', 1)).toBe(false)
+    gate.resolve()
+    await settled()
+    expect(await service.remove('alpha', 1)).toBe(true)
+    expect(await service.remove('alpha', 1)).toBe(false)
+  })
+
+  it.each([
+    ['emptyQuestion', 'emptyQuestion'],
+    ['noMessages', 'noMessages'],
+    ['tooMuch', 'tooMuch'],
+    ['answerFailed', 'failed'],
+    ['invalidWindow', 'failed'],
+  ] as const)('marks the request failed with the code of %s, in the history and in the event', async (kind, code) => {
+    const error =
+      kind === 'noMessages' ? { kind, leftOutLocalOnly: 0 } : kind === 'tooMuch' ? { kind, chars: 9 } : { kind }
+    const { service, events } = setup({ askChats: async () => err(error as never) })
+    await service.start('alpha', input)
+    await settled()
+    expect((await service.list('alpha'))[0]).toMatchObject({ state: 'failed', error: code })
+    expect(events).toEqual([{ account: 'alpha', id: 1, state: 'failed', error: code }])
   })
 
   it('marks the request failed when the use case throws, logging the code and not the message', async () => {
-    const { service, events, logs } = setup({
+    const { service, logs } = setup({
       askChats: async () => {
-        throw new Error('database closed: PRIVATE-TEXT')
+        throw Object.assign(new Error(`boom ${SECRET}`), { code: 'EBOOM' })
       },
     })
-    service.start('alpha', input)
+    await service.start('alpha', input)
     await settled()
-    expect(service.list('alpha')[0]).toMatchObject({ state: 'failed', error: 'failed' })
-    expect(events).toEqual([{ account: 'alpha', id: 1, state: 'failed', error: 'failed' }])
-    expect(service.isBusy('alpha')).toBe(false)
-    expect(JSON.stringify(logs)).not.toContain('PRIVATE-TEXT')
+    expect((await service.list('alpha'))[0]).toMatchObject({ state: 'failed', error: 'failed' })
+    expect(JSON.stringify(logs)).not.toContain(SECRET)
+    expect(logs.find((l) => l.message === 'ask.failed')?.fields).toMatchObject({ account: 'alpha', code: 'EBOOM' })
   })
 
   it('survives an event handler that throws', async () => {
-    const { service, logs } = setup()
-    ;(service as unknown as { options: { onEvent: () => void } }).options.onEvent = () => {
-      throw new Error('subscriber')
-    }
-    service.start('alpha', input)
-    await settled()
-    expect(service.list('alpha')[0]?.state).toBe('done')
-    expect(logs.some((l) => l.message === 'ask.eventFailed')).toBe(true)
-  })
-})
-
-describe('AskService: pages and continuation', () => {
-  const paged = (overrides: Partial<AskReport>) => report({ consulted: 80, candidates: 200, offset: 0, ...overrides })
-
-  function pagedSetup() {
-    const reports = [paged({}), paged({ offset: 80 }), paged({ offset: 160, consulted: 40 })]
-    let n = 0
-    const calls: Parameters<AskChats>[0][] = []
-    const made = setup({
-      askChats: async (request) => {
-        calls.push(request)
-        const r = reports[n++] as AskReport
-        // the use case echoes the offset it was asked for
-        return ok({ ...r, offset: request.offset ?? 0 })
+    const setupped = setup()
+    const throwing = new AskService({
+      ctx: { clock: { now: () => NOW }, logger: { info() {}, warn() {}, error() {} } } as never,
+      host: {
+        runtimeOf: () =>
+          ({
+            askChats: async () => ok(report()),
+            askHistory: setupped.history,
+            outbox: setupped.outbox,
+            config: { timezone: BA, language: 'en', digest: DEFAULT_SETTINGS, askHints: [] },
+            renderers: createRenderers('en', BA),
+          }) as never,
+        isStopping: false,
+      },
+      onEvent: () => {
+        throw new Error('listener')
       },
     })
-    return { ...made, calls }
-  }
-
-  it('keeps candidates and offset in the view and logs them with skipped, never the text', async () => {
-    const { service, logs } = pagedSetup()
-    service.start('alpha', input)
+    await throwing.start('alpha', input)
     await settled()
-    expect(service.list('alpha')[0]).toMatchObject({ candidates: 200, offset: 0, consulted: 80 })
-    const finished = logs.find((l) => l.message === 'ask.finished')
-    expect(finished?.fields).toMatchObject({ state: 'done', consulted: 80, candidates: 200, offset: 0, skipped: 120 })
-    expect(JSON.stringify(logs)).not.toContain('money')
-    expect(JSON.stringify(logs)).not.toContain('Ana')
+    expect(throwing.isBusy('alpha')).toBe(false)
   })
 
-  it('logs the error of a failed request', async () => {
-    const { service, logs } = setup({ askChats: async () => err({ kind: 'invalidWindow' as const }) })
-    service.start('alpha', input)
+  it('never logs the question or the answer: only counts and codes', async () => {
+    const { service, logs } = setup()
+    await service.start('alpha', { ...input, question: 'PRIVATE-QUESTION' })
     await settled()
-    expect(logs.find((l) => l.message === 'ask.finished')?.fields).toMatchObject({ state: 'failed', reason: 'failed' })
-  })
-
-  it('continues an ask with a new entry: same question, period, chats and window, next offset', async () => {
-    const { service, calls, state } = pagedSetup()
-    service.start('alpha', { ...input, chats: ['ana'] })
-    await settled()
-    state.now = NOW + 3 * HOUR
-    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: true, id: 2 })
-    await settled()
-    expect(calls.map((c) => c.offset)).toEqual([0, 80])
-    expect(calls[1]).toMatchObject({ question: 'who asked me for money?', chats: ['ana'], window: calls[0]?.window })
-    const [second, first] = service.list('alpha') as [AskView, AskView]
-    expect(second).toMatchObject({
-      id: 2,
-      offset: 80,
-      since: first.since,
-      until: first.until,
-      period: 'h24',
-      chats: ['ana'],
+    expect(JSON.stringify(logs)).not.toMatch(/SECRET|PRIVATE-QUESTION/)
+    expect(logs.find((l) => l.message === 'ask.finished')?.fields).toEqual({
+      account: 'alpha',
+      state: 'done',
+      chats: 2,
+      messages: 5,
+      skipped: 0,
     })
-    // the third page is still possible: 40 remain
-    expect(service.start('alpha', { continueFrom: 2 })).toEqual({ ok: true, id: 3 })
-    await settled()
-    expect(calls[2]?.offset).toBe(160)
-    // and now nothing remains
-    expect(service.start('alpha', { continueFrom: 3 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-  })
-
-  it('continues a source only once', async () => {
-    const { service } = pagedSetup()
-    service.start('alpha', input)
-    await settled()
-    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: true, id: 2 })
-    await settled()
-    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-    const [second, first] = service.list('alpha') as [AskView, AskView]
-    expect(first).toMatchObject({ continuedBy: 2, remaining: 120, next: 80 })
-    expect(second).toMatchObject({ remaining: 40, next: 40 })
-    expect(second.continuedBy).toBeUndefined()
-  })
-
-  it('never continues an ask of another account, by id', async () => {
-    const { service } = pagedSetup()
-    service.start('alpha', input)
-    await settled()
-    service.start('beta', input)
-    await settled()
-    // ids are global: alpha has 1, beta has 2; each one has leftovers but only for its own account
-    expect(service.start('alpha', { continueFrom: 2 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-    expect(service.start('beta', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-    expect(service.start('beta', { continueFrom: 2 })).toMatchObject({ ok: true })
-  })
-
-  it('does not continue an ask of a previous link of the account', async () => {
-    const { service, state } = pagedSetup()
-    service.start('alpha', input)
-    await settled()
-    state.stamp = 'created-2'
-    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-  })
-
-  it('rejects a continuation of a missing, running, failed or complete ask', async () => {
-    const { service } = setup()
-    expect(service.start('alpha', { continueFrom: 7 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-    service.start('alpha', input)
-    await settled()
-    // the default report has candidates == consulted: nothing remains
-    expect(service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-    expect(service.start('beta', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-
-    const gate = deferred<ReturnType<typeof ok<AskReport>>>()
-    const running = setup({ askChats: () => gate.promise })
-    running.service.start('alpha', input)
-    expect(running.service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
-    gate.resolve(ok(report()))
-    await settled()
-
-    const failed = setup({ askChats: async () => err({ kind: 'invalidWindow' as const }) })
-    failed.service.start('alpha', input)
-    await settled()
-    expect(failed.service.start('alpha', { continueFrom: 1 })).toEqual({ ok: false, reason: 'nothingToContinue' })
   })
 })
 
-describe('AskService: the list', () => {
-  it('keeps the latest MAX_ASKS_PER_ACCOUNT, newest first', async () => {
-    const { service } = setup()
-    for (let i = 0; i < MAX_ASKS_PER_ACCOUNT + 3; i++) {
-      service.start('alpha', input)
+describe('AskService: failures are logged by class only', () => {
+  it('logs ask.failed with the fixed class and nothing of the provider text', async () => {
+    const { service, logs } = setup({
+      askChats: async () => err({ kind: 'answerFailed', failure: 'rateLimit' }),
+    })
+    await service.start('alpha', input)
+    await settled()
+    const failed = logs.find((l) => l.message === 'ask.failed')
+    expect(failed).toMatchObject({ level: 'error', fields: { account: 'alpha', reason: 'rateLimit' } })
+    expect(JSON.stringify(logs)).not.toMatch(/SECRET|sk-/)
+    expect((await service.list('alpha'))[0]).toMatchObject({ state: 'failed', error: 'failed' })
+  })
+})
+
+describe('AskService: the delivery to the own chat (RF-51)', () => {
+  it('queues the answer in WhatsApp format for the OWN chat, with a header, and asks the unit to deliver', async () => {
+    const { service, outbox, deliveries } = setup()
+    await service.start('alpha', { ...input, deliver: true })
+    await settled()
+    const queued = (await outbox.pending()).map((i) => i.text)
+    expect(queued[0]).toContain('Request about your chats')
+    expect(queued[0]).toContain('only what is unanswered')
+    expect(queued[1]).toBe(`*Loans*\n• *Ana*: ${SECRET}`)
+    expect(deliveries).toEqual(['alpha'])
+    expect((await service.list('alpha'))[0]).toMatchObject({ deliver: true, delivery: 'queued' })
+  })
+
+  it('shows it as sent once the outbox marks the last part sent, and as discarded if it was thrown away', async () => {
+    const { service, outbox } = setup()
+    await service.start('alpha', { ...input, deliver: true })
+    await settled()
+    for (const item of await outbox.pending()) await outbox.markSent(item.id)
+    expect((await service.list('alpha'))[0]?.delivery).toBe('sent')
+    await service.start('alpha', { ...input, deliver: true })
+    await settled()
+    await outbox.discardPending()
+    expect((await service.list('alpha'))[0]?.delivery).toBe('discarded')
+  })
+
+  it('queues nothing when it was not asked for', async () => {
+    const { service, outbox, deliveries } = setup()
+    await service.start('alpha', { ...input, deliver: false })
+    await settled()
+    expect(await outbox.pending()).toEqual([])
+    expect(deliveries).toEqual([])
+  })
+
+  it('queues nothing for a failed request', async () => {
+    const { service, outbox } = setup({ askChats: async () => err({ kind: 'answerFailed', failure: 'timeout' }) })
+    await service.start('alpha', { ...input, deliver: true })
+    await settled()
+    expect(await outbox.pending()).toEqual([])
+  })
+
+  it('keeps the answer when the queue fails, says it was not queued and logs only the code', async () => {
+    const { service, logs, deliveries } = setup({ queueFails: true })
+    await service.start('alpha', { ...input, deliver: true })
+    await settled()
+    expect((await service.list('alpha'))[0]).toMatchObject({
+      state: 'done',
+      delivery: 'notQueued',
+      result: { provider: 'claude-cli' },
+    })
+    expect(deliveries).toEqual([])
+    expect(logs.some((l) => l.message === 'ask.deliveryFailed')).toBe(true)
+    expect(JSON.stringify(logs)).not.toContain('disk full')
+  })
+
+  it('has no way to name a recipient: the only thing it hands the outbox is text', async () => {
+    const { service, outbox } = setup()
+    const seen: unknown[][] = []
+    const original = outbox.queueForOwnChat.bind(outbox)
+    outbox.queueForOwnChat = async (...args: Parameters<typeof original>) => {
+      seen.push(args)
+      return original(...args)
+    }
+    await service.start('alpha', { ...input, deliver: true, chats: ['someone else'] })
+    await settled()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toHaveLength(1)
+    const parts = seen[0]?.[0] as string[]
+    expect(parts.every((part) => typeof part === 'string')).toBe(true)
+  })
+})
+
+describe('AskService: the persistent list', () => {
+  it('keeps the latest requests, newest first, and no more than the limit of the history', async () => {
+    const { service, history } = setup()
+    for (let n = 0; n < ASK_HISTORY_LIMIT + 3; n++) {
+      await service.start('alpha', input)
       await settled()
     }
-    const ids = service.list('alpha').map((v) => v.id)
-    expect(ids).toHaveLength(MAX_ASKS_PER_ACCOUNT)
-    expect(ids[0]).toBe(MAX_ASKS_PER_ACCOUNT + 3)
-    expect(ids.at(-1)).toBe(4)
+    const list = await service.list('alpha')
+    expect(list).toHaveLength(ASK_HISTORY_LIMIT)
+    expect(list[0]?.id).toBe(ASK_HISTORY_LIMIT + 3)
+    expect((await history.list()).length).toBe(ASK_HISTORY_LIMIT)
+  }, 30_000)
+
+  it('survives a restart: another service over the same database lists what was answered', async () => {
+    const first = setup()
+    await first.service.start('alpha', { ...input, deliver: true })
+    await settled()
+    const second = new AskService({
+      ctx: first.ctx,
+      host: first.host,
+      onEvent: () => {},
+    })
+    const list: readonly AskView[] = await second.list('alpha')
+    expect(list[0]).toMatchObject({ id: 1, state: 'done', result: { answer: report().answer } })
   })
 
-  it('removes one request and says whether it existed', async () => {
+  it('closes a request left running by a process that died as failed, not as running forever', async () => {
+    const { service, history } = setup()
+    await history.start({
+      createdAt: NOW,
+      question: 'q',
+      selection: 'all',
+      period: 'today',
+      since: 0,
+      until: 1,
+      chats: [],
+      deliver: false,
+    })
+    expect((await service.list('alpha'))[0]).toMatchObject({ state: 'failed', error: 'failed' })
+  })
+
+  it('is empty without a running unit, and forget clears the history', async () => {
+    const stopped = setup({ runtime: false })
+    expect(await stopped.service.list('alpha')).toEqual([])
     const { service } = setup()
-    service.start('alpha', input)
+    await service.start('alpha', input)
     await settled()
-    service.start('alpha', input)
-    await settled()
-    expect(service.remove('alpha', 1)).toBe(true)
-    expect(service.remove('alpha', 1)).toBe(false)
-    expect(service.remove('beta', 2)).toBe(false)
-    expect(service.list('alpha').map((v) => v.id)).toEqual([2])
+    await service.forget('alpha')
+    expect(await service.list('alpha')).toEqual([])
   })
 
-  it('forgets an account, and drops the requests of an account created again or gone', async () => {
-    const { service, state } = setup()
-    service.start('alpha', input)
-    service.start('beta', input)
-    await settled()
-    service.forget('alpha')
-    expect(service.list('alpha')).toEqual([])
-    state.stamp = 'created-2'
-    expect(service.list('beta')).toEqual([])
-    service.start('gamma', input)
-    await settled()
-    state.stamp = null
-    service.prune()
-    expect(service.list('gamma')).toEqual([])
-  })
-
-  it('keeps the requests of an account on prune when the stamp is the same', async () => {
-    const { service } = setup()
-    service.start('alpha', input)
-    await settled()
-    service.prune()
-    expect(service.list('alpha')).toHaveLength(1)
-  })
-
-  it('a new incarnation of the account starts a clean list', async () => {
-    const { service, state } = setup()
-    service.start('alpha', input)
-    await settled()
-    state.stamp = 'created-2'
-    service.start('alpha', input)
-    await settled()
-    expect(service.list('alpha').map((v) => v.id)).toEqual([2])
-  })
-
-  it('stop drops everything, ends in flight requests quietly and refuses new ones', async () => {
-    const gate = deferred<ReturnType<typeof ok<AskReport>>>()
-    const { service, events } = setup({ askChats: () => gate.promise })
-    service.start('alpha', input)
+  it('stop ends in flight requests quietly and refuses new ones', async () => {
+    const gate = deferred<void>()
+    const { service, events } = setup({
+      askChats: async () => {
+        await gate.promise
+        return ok(report())
+      },
+    })
+    await service.start('alpha', input)
     service.stop()
-    expect(service.list('alpha')).toEqual([])
-    gate.resolve(ok(report()))
+    gate.resolve()
     await settled()
     expect(events).toEqual([])
-    expect(service.start('alpha', input)).toEqual({ ok: false, reason: 'unavailable' })
+    expect(await service.start('alpha', input)).toEqual({ ok: false, reason: 'unavailable' })
   })
 })

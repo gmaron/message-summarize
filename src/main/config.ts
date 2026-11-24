@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { DEFAULT_CONCURRENCY } from '../application/generate-digest.js'
 import { type AskHint, MAX_ASK_HINT_TERMS, MAX_ASK_HINT_TEXT_CHARS, MAX_ASK_HINTS } from '../domain/ask-hints.js'
+import { type AskPreset, askPresetIssue, MAX_ASK_PRESETS } from '../domain/ask-presets.js'
 import { exactIdOf } from '../domain/exclusion.js'
 import { err, ok, type Result } from '../domain/result.js'
 import { type DigestSettings, parseDigestSettings, type SettingsIssueCode } from '../domain/settings.js'
@@ -191,6 +192,8 @@ export interface AppConfig {
   readonly localOnlyPatterns: readonly string[]
   /** Context of the owner added to the prompt of an Ask when the question mentions its words (never to the digest). */
   readonly askHints: readonly AskHint[]
+  /** Requests the owner saved for the Ask tab. Empty: the web offers the defaults of the language. The account's replace the installation's. */
+  readonly askPresets: readonly AskPreset[]
   /** Path of a custom prompt template, read on every digest (RF-38). */
   readonly promptFile: string | null
   readonly concurrency: number
@@ -260,6 +263,7 @@ const TOP_LEVEL = new Set([
   'hideRest',
   'localOnlyPatterns',
   'askHints',
+  'askPresets',
   'promptFile',
   'concurrency',
   'fullHistoryOnLink',
@@ -417,6 +421,27 @@ export function parseConfig(
     })
     return valid ? hints : undefined
   }
+  /** `askPresets`: a list of `{ name, text }`. Each problem names the entry, e.g. `askPresets[1].name`. */
+  const parseAskPresets = (): readonly AskPreset[] | undefined => {
+    const v = input.askPresets
+    if (v === undefined) return []
+    if (!Array.isArray(v)) return add('askPresets', 'notArray')
+    if (v.length > MAX_ASK_PRESETS) return add('askPresets', 'tooManyPresets')
+    const presets: AskPreset[] = []
+    let valid = true
+    v.forEach((entry: unknown, index) => {
+      const issue = askPresetIssue(entry)
+      if (issue === null) {
+        const { name, text } = entry as AskPreset
+        presets.push({ name: name.trim(), text: text.trim() })
+        return
+      }
+      valid = false
+      const field = issue === 'invalidPreset' ? '' : issue.includes('Name') ? '.name' : '.text'
+      add(`askPresets[${index}]${field}`, issue)
+    })
+    return valid ? presets : undefined
+  }
   const choice = (obj: Obj, key: string, path: string, allowed: readonly string[]): string | null | undefined => {
     const v = obj[key]
     // Absent or null: not chosen (`msum init` writes null for the provider, which has no default).
@@ -472,6 +497,7 @@ export function parseConfig(
 
   const localOnlyPatterns = patterns('localOnlyPatterns')
   const askHints = parseAskHints()
+  const askPresets = parseAskPresets()
   const promptFile = text(input, 'promptFile', 'promptFile')
   const concurrency = positiveInt(input, 'concurrency', 'concurrency', DEFAULT_CONCURRENCY)
 
@@ -724,6 +750,7 @@ export function parseConfig(
     timezone === undefined ||
     localOnlyPatterns === undefined ||
     askHints === undefined ||
+    askPresets === undefined ||
     promptFile === undefined ||
     concurrency === undefined ||
     schedules === undefined ||
@@ -785,6 +812,7 @@ export function parseConfig(
     digest: settings.value,
     localOnlyPatterns,
     askHints,
+    askPresets,
     promptFile,
     concurrency,
     fullHistoryOnLink,
@@ -1074,6 +1102,7 @@ export function defaultConfigJson(timezone: string = systemTimezone()): string {
     excludePatterns: [],
     localOnlyPatterns: [],
     askHints: [],
+    askPresets: [],
     defaultWindowHours: 24,
     maxCharsPerConversation: 24000,
     unreadOnly: false,

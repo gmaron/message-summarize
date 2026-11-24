@@ -42,6 +42,13 @@ export type SettingsIssueCode =
   | 'tooManyHints'
   | 'tooManyHintTerms'
   | 'hintTextTooLong'
+  /** An entry of `askPresets` that is not an object with `name` and `text` (or has other keys). */
+  | 'invalidPreset'
+  | 'emptyPresetName'
+  | 'presetNameTooLong'
+  | 'emptyPresetText'
+  | 'presetTextTooLong'
+  | 'tooManyPresets'
 
 /** A problem with one option: which one and why. */
 export interface SettingsIssue {

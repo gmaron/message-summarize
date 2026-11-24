@@ -34,6 +34,14 @@ export interface TranscriptRenderer {
   /** The label of a group with no name, to pass to `resolveConversationName`. */
   readonly unnamedGroup: string
   render(input: ConversationTranscript): string
+  /**
+   * The lines of some messages, oldest first, one per message, each with its date and time (a request reads days, not
+   * one day). The owner's lines carry the owner label (`[VOS]`), an audio shows its transcript, and a mass message a
+   * short label, as in `render`. No header, no cut.
+   */
+  lines(input: { readonly entries: readonly TranscriptEntry[]; readonly ownerName: string | null }): readonly string[]
+  /** A date and time as the lines show them, for the period of a request. */
+  formatDateTime(timestamp: number): string
 }
 
 /** Builds the system prompt (RF-38). */

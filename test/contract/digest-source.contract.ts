@@ -334,6 +334,24 @@ export function describeDigestSourceContract(backend: PersistenceBackend): void 
       })
     })
 
+    describe('lastOwn', () => {
+      it('returns the own messages of the whole conversation, newest first, up to the limit', async () => {
+        const { seed, source } = make()
+        seed.addMessages(
+          message({ id: 'a', timestamp: 1_000, fromMe: true }),
+          message({ id: 'b', timestamp: 1_100 }),
+          message({ id: 'c', timestamp: 1_200, fromMe: true }),
+          message({ id: 'd', timestamp: 1_300, fromMe: true }),
+          message({ id: 'x', conversationId: 'c2', timestamp: 1_400, fromMe: true }),
+          message({ id: 'o', timestamp: 1_500, fromMe: true, kind: 'other', text: '[other]' }),
+        )
+        expect(ids(await source.lastOwn('c1', 10))).toEqual(['d', 'c', 'a'])
+        expect(ids(await source.lastOwn('c1', 2))).toEqual(['d', 'c'])
+        expect(await source.lastOwn('c1', 0)).toEqual([])
+        expect(await source.lastOwn('nope', 5)).toEqual([])
+      })
+    })
+
     describe('messagesBefore', () => {
       const seeded = () => {
         const fixture = make()

@@ -6,6 +6,7 @@ export {
   openAppDatabase,
   SqliteAccountRegistry,
 } from './app-db.js'
+export { SqliteAskHistory } from './ask-history.js'
 export { SqliteCaptureRepository } from './capture-repository.js'
 export { SqliteCaptureWriter } from './capture-writer.js'
 export {

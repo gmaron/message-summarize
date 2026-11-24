@@ -34,6 +34,7 @@ describe('openDatabase and migrations', () => {
     expect(currentVersion(db)).toBe(MIGRATIONS.length)
     expect(tables(db)).toEqual([
       'account',
+      'asks',
       'conversations',
       'digest_pointer',
       'digest_runs',
