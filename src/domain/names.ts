@@ -26,6 +26,24 @@ export function resolveConversationName(
   return { name: alias ? `${alias} ( ${conversation.address} )` : conversation.address, saved: false }
 }
 
+/**
+ * How a chat is named where the owner may want to write to the contact (the Ask answer): an individual chat with a phone
+ * number is "name - ( +number )", saved or not, with spaces inside the parentheses so that WhatsApp makes the number
+ * tappable; with no name it is "( +number )". A group, or a chat whose address is no number (an id the platform did not
+ * map to a phone), keeps the name of `resolveConversationName`.
+ */
+export function contactLabel(
+  conversation: Conversation,
+  participant: Participant | null,
+  labels: { readonly unnamedGroup: string },
+): string {
+  const resolved = resolveConversationName(conversation, participant, labels)
+  if (conversation.isGroup || !/^\+\d+$/.test(conversation.address)) return resolved.name
+  const number = `( ${conversation.address} )`
+  const name = participant?.savedName || participant?.publicName || conversation.name
+  return name ? `${name} - ${number}` : number
+}
+
 /** Label of the author of a message. The owner label is built by the caller. Empty names count as missing. */
 export function senderLabel(
   message: Pick<Message, 'fromMe' | 'senderName' | 'senderAddress'>,

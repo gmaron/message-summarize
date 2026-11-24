@@ -123,8 +123,8 @@ describe('AskChats: the request', () => {
     expect(sent).toContain('Request: who asked me for money?')
     expect(sent).toContain('Period: 10/03')
     // The chat with the most recent incoming message comes first.
-    expect(sent.indexOf('### Chat with: Beto Ruiz (saved)')).toBeLessThan(
-      sent.indexOf('### Chat with: Ana Gómez (saved)'),
+    expect(sent.indexOf(`### Chat with: Beto Ruiz - ( +${BETO} ) (saved)`)).toBeLessThan(
+      sent.indexOf(`### Chat with: Ana Gómez - ( +${ANA} ) (saved)`),
     )
     expect(sent).toContain('Ana Gómez says 1')
     expect(result.ok && result.value).toMatchObject({
@@ -160,7 +160,7 @@ describe('AskChats: the request', () => {
     source.addMessages(message({ id: 'g-1', conversationId: 'g1', senderId: ANA, timestamp: at(1), text: 'hi all' }))
     await run(request({ settings: settings({ ownerName: 'Lucía' }) }))
     const sent = input(answerer)
-    expect(sent).toContain(`### Chat with: Beto ( +${BETO} ) (not saved)`)
+    expect(sent).toContain(`### Chat with: Beto - ( +${BETO} ) (not saved)`)
     expect(sent).toContain('### Group: Team')
     expect(sent).toContain('Lucía [YOU]: dale')
     expect(sent).toContain('mando la plata')
@@ -736,8 +736,8 @@ describe('AskChats: a request too big for one call', () => {
     await run(request())
     const extracts = answerer.calls.filter((c) => c.systemPrompt.includes('ONE PART'))
     expect(extracts.length).toBeGreaterThan(1)
-    expect(extracts[0]?.input).toContain('### Chat with: Ana Gómez (saved)\n')
-    expect(extracts[1]?.input).toContain('### Chat with: Ana Gómez (saved) (continued)')
+    expect(extracts[0]?.input).toContain(`### Chat with: Ana Gómez - ( +${ANA} ) (saved)\n`)
+    expect(extracts[1]?.input).toContain(`### Chat with: Ana Gómez - ( +${ANA} ) (saved) (continued)`)
     for (const call of extracts) expect(call.input.length).toBeLessThan(ASK_PART_CHARS + 2_000)
   })
 

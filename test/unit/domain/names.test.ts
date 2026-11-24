@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { isMaskedName, resolveConversationName, senderLabel, unmaskedName } from '../../../src/domain/names.js'
+import {
+  contactLabel,
+  isMaskedName,
+  resolveConversationName,
+  senderLabel,
+  unmaskedName,
+} from '../../../src/domain/names.js'
 import { conversation, message, participant } from './factories.js'
 
 const labels = { unnamedGroup: 'UNNAMED' }
@@ -122,5 +128,28 @@ describe('senderLabel', () => {
       'Push',
     )
     expect(senderLabel(message({ senderName: '', senderAddress: '' }), null, owner)).toBe('?')
+  })
+})
+
+describe('contactLabel (the Ask answer: the number can be tapped in WhatsApp)', () => {
+  it('puts the number of a saved contact after its name, with spaces inside the parentheses', () => {
+    expect(contactLabel(conversation(), participant({ savedName: 'Ana Gómez' }), labels)).toBe(
+      'Ana Gómez - ( +9911963367943 )',
+    )
+  })
+  it('does the same for an unsaved contact with a push name or a chat name', () => {
+    expect(contactLabel(conversation(), participant({ publicName: 'Beto' }), labels)).toBe('Beto - ( +9911963367943 )')
+    expect(contactLabel(conversation({ name: 'Caro' }), null, labels)).toBe('Caro - ( +9911963367943 )')
+  })
+  it('is only the number when there is no name', () => {
+    expect(contactLabel(conversation(), null, labels)).toBe('( +9911963367943 )')
+  })
+  it('keeps the plain name when the address is no phone number', () => {
+    const lid = conversation({ address: '99000000000001@lid' })
+    expect(contactLabel(lid, participant({ savedName: 'Ana' }), labels)).toBe('Ana')
+    expect(contactLabel(lid, null, labels)).toBe('99000000000001@lid')
+  })
+  it('names a group by the group', () => {
+    expect(contactLabel(conversation({ isGroup: true, name: 'Club' }), null, labels)).toBe('Club')
   })
 })
