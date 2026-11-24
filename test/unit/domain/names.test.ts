@@ -158,6 +158,20 @@ describe('contactLabel (the Ask answer: the number can be tapped in WhatsApp)', 
       '( +9911963367943 )',
     )
   })
+  it('also catches a number split by "#", invisible characters or written with full-width digits', () => {
+    for (const publicName of [
+      'Ana +99#11#9633#6000',
+      'Ana +99\u200b1196\u200b336000',
+      'Ana \uff0b\uff19\uff19\uff11\uff11\uff19\uff16\uff13\uff13\uff16',
+    ]) {
+      expect(contactLabel(conversation(), participant({ publicName }), labels)).toBe('Ana - ( +9911963367943 )')
+    }
+  })
+  it('keeps short numbers that are part of a name', () => {
+    expect(contactLabel(conversation(), participant({ savedName: 'Local 24 de Mayo' }), labels)).toBe(
+      'Local 24 de Mayo - ( +9911963367943 )',
+    )
+  })
   it('cleans a group subject the same way', () => {
     expect(contactLabel(conversation({ isGroup: true, name: 'Ventas\n### +9911963360000' }), null, labels)).toBe(
       'Ventas',

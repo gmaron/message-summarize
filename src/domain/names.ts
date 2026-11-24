@@ -48,18 +48,25 @@ export function contactLabel(
   return name ? `${name} - ${number}` : number
 }
 
-// Anything that reads as a phone number: 7 or more digits, maybe with a "+" and separators in between.
-const PHONE_LIKE = /\+?\d(?:[\s().-]*\d){6,}/g
+// Anything that reads as a phone number: 7 or more digits of any script, with anything but letters in between ("+",
+// spaces, dots, dashes, parentheses, symbols). Run last, on a name already normalized, so nothing removed later can join
+// digits that were apart.
+const PHONE_LIKE = /\p{Nd}(?:[^\p{L}\p{Nd}]*\p{Nd}){6,}/gu
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is removed
 const LINE_BREAKERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g
+// Invisible format characters (zero-width spaces and joiners, direction marks): they could hide digits from the pattern.
+const INVISIBLE = /\p{Cf}/gu
 
 /** A name made safe for a label line: no line breaks, no "#", no phone-like digits, no empty parentheses left behind. */
 export function labelName(name: string | null | undefined): string {
   if (!name) return ''
   return name
+    .normalize('NFKC')
+    .replace(INVISIBLE, '')
     .replace(LINE_BREAKERS, ' ')
-    .replace(PHONE_LIKE, ' ')
     .replace(/#/g, ' ')
+    .replace(PHONE_LIKE, ' ')
+    .replace(/[+]/g, ' ')
     .replace(/\(\s*\)/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^[\s-]+|[\s-]+$/g, '')
