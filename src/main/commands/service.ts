@@ -6,11 +6,11 @@ import type { ServiceDefinition, ServiceHint, ServiceInstaller } from '../../app
 import type { Catalog } from '../../infrastructure/i18n/index.js'
 import { createServiceInstaller, nodeFiles, nodeRunner } from '../../infrastructure/service/index.js'
 import { EXIT_FAILURE, EXIT_OK, type ServiceCommand } from '../../interfaces/cli/run.js'
-import { installationCatalog } from '../account-command.js'
 import type { CommandContext } from '../context.js'
-import { runningDaemonPid } from '../daemon-lock.js'
-import { logsDirOf } from '../daemon-logs.js'
-import { isVersionManaged, stableNodePath } from '../node-path.js'
+import { runningDaemonPid } from '../installation/daemon-lock.js'
+import { logsDirOf } from '../logging/daemon-logs.js'
+import { isVersionManaged, stableNodePath } from '../system/node-path.js'
+import { installationCatalog } from './account-command.js'
 
 /** The compiled CLI (`dist/main/cli.js`), found from this file (`dist/main/commands/service.js`). */
 const CLI_ENTRY = fileURLToPath(new URL('../cli.js', import.meta.url))

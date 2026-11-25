@@ -17,9 +17,9 @@ import { serviceCommand } from './commands/service.js'
 import { statusCommand } from './commands/status.js'
 import { unlinkCommand } from './commands/unlink.js'
 import { whisperCommand } from './commands/whisper.js'
-import { languageHint } from './config.js'
+import { languageHint } from './config/config.js'
 import type { CommandContext } from './context.js'
-import { errorCode } from './logger.js'
+import { errorCode } from './logging/logger.js'
 
 export function createHandlers(ctx: CommandContext): CliHandlers {
   return {

@@ -1,10 +1,10 @@
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
 import { type CommandContext, loadConfigOrReport } from '../context.js'
-import { runningDaemonPid } from '../daemon-lock.js'
-import { errorCode } from '../logger.js'
-import { ensureDataDirs } from '../paths.js'
-import { readWebAddress, type WebAddress } from '../web-address.js'
-import { ensureWebToken } from '../web-token.js'
+import { runningDaemonPid } from '../installation/daemon-lock.js'
+import { ensureDataDirs } from '../installation/paths.js'
+import { errorCode } from '../logging/logger.js'
+import { readWebAddress, type WebAddress } from '../web/address.js'
+import { ensureWebToken } from '../web/token.js'
 
 /**
  * The address to open, from where the web really listens: a wildcard address ("any interface") is reached through the

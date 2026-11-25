@@ -168,7 +168,7 @@ var
 
 { ---- paths ---- }
 
-{ Where msum keeps its data: MSUM_DATA_DIR, else %APPDATA%\message-summarize (src/main/paths.ts). }
+{ Where msum keeps its data: MSUM_DATA_DIR, else %APPDATA%\message-summarize (src/main/installation/paths.ts). }
 function DataDir(Param: String): String;
 var
   Explicit: String;

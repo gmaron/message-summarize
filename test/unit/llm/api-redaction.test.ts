@@ -8,7 +8,7 @@ import {
   OpenAiCompatibleSummarizer,
   redactSecrets,
 } from '../../../src/infrastructure/llm/index.js'
-import { createLogger } from '../../../src/main/logger.js'
+import { createLogger } from '../../../src/main/logging/logger.js'
 import { REQUEST } from '../../contract/summarizer.contract.js'
 import { type FakeServer, startFakeServer } from '../../support/fake-http-server.js'
 

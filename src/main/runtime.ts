@@ -43,9 +43,9 @@ import {
 import { createRenderers } from '../infrastructure/rendering/index.js'
 import { resolveModelPath, WhisperCppTranscriber } from '../infrastructure/transcription/index.js'
 import { OwnConversationIds } from '../infrastructure/whatsapp/own-ids.js'
-import type { AppConfig } from './config.js'
-import type { AccountLayout } from './paths.js'
-import { buildAnswerer, buildSummarizer } from './providers.js'
+import type { AppConfig } from './config/config.js'
+import { buildAnswerer, buildSummarizer } from './config/providers.js'
+import type { AccountLayout } from './installation/paths.js'
 
 export const systemClock: Clock = { now: () => Date.now() }
 

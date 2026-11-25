@@ -16,18 +16,24 @@ import {
 } from '../../infrastructure/legacy/summaryzing-whatsapp.js'
 import type { ImportArgs } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
-import { installationCatalog, isPrepared, prepareAccount } from '../account-command.js'
-import { daemonUsing } from '../account-use.js'
-import { type Installation, isDirectory, openInstallation } from '../accounts.js'
-import { loadEffectiveConfig } from '../config.js'
+import { loadEffectiveConfig } from '../config/config.js'
 import { type CommandContext, formatInstant, hasSession, maskAccount } from '../context.js'
-import { acquireDaemonLock } from '../daemon-lock.js'
-import { buildImport, importWorkDirName, mapLegacySettings, NoSessionError, PrivacyListError } from '../import.js'
-import { IMPORT_LOCK, removeStaleImportDirs } from '../import-workdirs.js'
-import { acquireLinkLock } from '../link-lock.js'
-import { errorCode } from '../logger.js'
-import { accountLayoutOf, FILE_MODE } from '../paths.js'
+import {
+  buildImport,
+  importWorkDirName,
+  mapLegacySettings,
+  NoSessionError,
+  PrivacyListError,
+} from '../import/import.js'
+import { IMPORT_LOCK, removeStaleImportDirs } from '../import/workdirs.js'
+import { daemonUsing } from '../installation/account-use.js'
+import { type Installation, isDirectory, openInstallation } from '../installation/accounts.js'
+import { acquireDaemonLock } from '../installation/daemon-lock.js'
+import { accountLayoutOf, FILE_MODE } from '../installation/paths.js'
+import { acquireLinkLock } from '../link/lock.js'
+import { errorCode } from '../logging/logger.js'
 import { createRuntime } from '../runtime.js'
+import { installationCatalog, isPrepared, prepareAccount } from './account-command.js'
 
 interface Plan {
   readonly instance: string | null

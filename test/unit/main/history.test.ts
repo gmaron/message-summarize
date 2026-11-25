@@ -4,8 +4,8 @@ import type { SummarizeResult } from '../../../src/application/ports/summarizer.
 import { composeSummarizer } from '../../../src/infrastructure/llm/index.js'
 import { inTransaction } from '../../../src/infrastructure/persistence/sqlite/transaction.js'
 import { runMain } from '../../../src/main/app.js'
-import { Daemon } from '../../../src/main/daemon.js'
-import { runDigest } from '../../../src/main/run-digest.js'
+import { Daemon } from '../../../src/main/daemon/daemon.js'
+import { runDigest } from '../../../src/main/daemon/run-digest.js'
 import type { Runtime } from '../../../src/main/runtime.js'
 import {
   disposeHarnesses,

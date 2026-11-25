@@ -8,9 +8,9 @@ import {
   WHISPER_MODELS,
 } from '../../infrastructure/transcription/index.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, type WhisperCommand } from '../../interfaces/cli/run.js'
-import { installationCatalog } from '../account-command.js'
 import type { CommandContext } from '../context.js'
-import { ensureDataDirs } from '../paths.js'
+import { ensureDataDirs } from '../installation/paths.js'
+import { installationCatalog } from './account-command.js'
 
 /** 148 MB, 3.1 GB: what a person reads. Decimal units, as the download pages show them. */
 export function formatBytes(bytes: number): string {

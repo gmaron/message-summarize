@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SummarizeRequest } from '../../../src/application/ports/summarizer.js'
 import { ok, type Result } from '../../../src/domain/result.js'
-import { type AppConfig, parseConfig } from '../../../src/main/config.js'
-import { runDigest } from '../../../src/main/run-digest.js'
+import { type AppConfig, parseConfig } from '../../../src/main/config/config.js'
+import { runDigest } from '../../../src/main/daemon/run-digest.js'
 import { disposeHarnesses, makeHarness, seedMessages } from '../../support/cli-harness.js'
 
 const log = vi.hoisted(() => ({ calls: [] as { kind: string; conversation: string }[] }))

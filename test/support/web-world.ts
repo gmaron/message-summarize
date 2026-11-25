@@ -1,11 +1,11 @@
 import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import { join } from 'node:path'
-import { type Installation, openInstallation } from '../../src/main/accounts.js'
-import { type BlockedReason, writeBlocked } from '../../src/main/blocked.js'
-import { DaemonHost, type DaemonHostTiming } from '../../src/main/daemon-host.js'
-import type { LogStore } from '../../src/main/log-store.js'
-import { startWeb, type WebHandle } from '../../src/main/web.js'
+import { DaemonHost, type DaemonHostTiming } from '../../src/main/daemon/host.js'
+import { type Installation, openInstallation } from '../../src/main/installation/accounts.js'
+import { type BlockedReason, writeBlocked } from '../../src/main/installation/blocked.js'
+import type { LogStore } from '../../src/main/logging/log-store.js'
+import { startWeb, type WebHandle } from '../../src/main/web/server.js'
 import { type FakeAnswerer, type Harness, type HarnessOptions, ME, makeHarness, until } from './cli-harness.js'
 
 export const BASE = { language: 'en', timezone: 'UTC', provider: { primary: 'claude-cli' } }

@@ -16,8 +16,13 @@ import { excerpt } from '../../infrastructure/llm/summary-schema.js'
 import { createRenderers } from '../../infrastructure/rendering/index.js'
 import { type KeyProvider, resolveApiKey } from '../../infrastructure/secrets/index.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, type ProviderCommand } from '../../interfaces/cli/run.js'
-import { isPrepared, type PreparedAccount, prepareAccount } from '../account-command.js'
-import { type AppConfig, describeConfigIssue, mergeConfigJson, type ProviderKind, parseConfig } from '../config.js'
+import {
+  type AppConfig,
+  describeConfigIssue,
+  mergeConfigJson,
+  type ProviderKind,
+  parseConfig,
+} from '../config/config.js'
 import {
   consentHosts,
   findConsent,
@@ -26,9 +31,10 @@ import {
   needsConsent,
   originOf,
   recordConsent,
-} from '../consent.js'
+} from '../config/consent.js'
+import { buildProvider } from '../config/providers.js'
 import type { CommandContext } from '../context.js'
-import { buildProvider } from '../providers.js'
+import { isPrepared, type PreparedAccount, prepareAccount } from './account-command.js'
 
 type Obj = Record<string, unknown>
 const isObject = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
