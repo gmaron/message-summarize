@@ -1,6 +1,8 @@
 # message-summarize: requerimientos
 
-Versión 1.4 · 2026-11-19 · Estado: aprobado
+Versión 1.5 · 2026-11-25 · Estado: aprobado
+
+Este documento es la única spec del producto: qué hace y cómo se verifica. Cómo está construido está en [arquitectura.md](arquitectura.md) y por qué se decidió cada cosa, en [decisiones.md](decisiones.md). Para agregar o cambiar un requerimiento, ver la sección 8.
 
 ## 1. Propósito
 
@@ -15,7 +17,7 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella: 
 | OBJ-1 | Que alguien sin conocimientos técnicos lo instale y reciba su primer digest | Desde cero hasta el primer digest en menos de 10 minutos, sin usar la terminal después del instalador |
 | OBJ-2 | Que los datos queden bajo control del usuario | Los mensajes se guardan solo en la máquina; nada sale hacia afuera salvo hacia el proveedor de LLM que el usuario eligió, y eso se informa en la interfaz |
 | OBJ-3 | Que el digest sea útil | Mismo resultado que la herramienta personal actual con los mismos datos (golden files de la fase 0) |
-| OBJ-4 | Que se pueda sumar otra plataforma sin reescribir | Agregar una fuente nueva solo requiere implementar los puertos `MessageSource` y, si corresponde, `DeliveryChannel` |
+| OBJ-4 | Que se pueda sumar otra plataforma sin reescribir | Agregar una fuente nueva solo requiere un adaptador que traduzca sus eventos a los eventos de captura (`CaptureMessages`) y, si corresponde, un adaptador de `DeliveryChannel`; `domain/` y `application/` no cambian |
 | OBJ-5 | Que el proyecto sea mantenible por terceros | TypeScript estricto, CI en verde, cobertura del dominio de 90% o más |
 
 ### 1.2 Alcance de la v1
@@ -29,7 +31,7 @@ La primera plataforma soportada es **WhatsApp**. El núcleo no depende de ella: 
 | Término | Significado |
 |---|---|
 | Cuenta | Una cuenta vinculada en una plataforma (por ejemplo, un número de WhatsApp). Una instalación puede tener varias |
-| Fuente | Adaptador que obtiene mensajes de una plataforma (`MessageSource`) |
+| Fuente | Adaptador que recibe los eventos de una plataforma y los traduce a eventos de captura del dominio (`CaptureMessages`) |
 | Destino | Adaptador que entrega el digest (`DeliveryChannel`). En la v1, el chat "Mensaje a mí mismo" de la misma cuenta |
 | Conversación | Un chat individual o un grupo |
 | Digest | El resumen de todas las conversaciones de una ventana de tiempo, ordenado por secciones |
@@ -59,18 +61,18 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-04 | Mostrar el estado de cada cuenta | v1 | Estados: conectada, reconectando, sesión cerrada, error. Si la sesión se cierra desde el celular, la web lo avisa y ofrece volver a vincular |
 | RF-05 | Reconectar solo ante cortes | v1 | Tras un corte de red, la cuenta vuelve a "conectada" sin intervención y sin perder los mensajes recibidos mientras tanto (los que la plataforma reenvía) |
 | RF-06 | Importar una instalación de la herramienta personal anterior | v1 | `message-summarize import --from <ruta>` toma la sesión, la base y la configuración, y la cuenta queda conectada sin escanear el QR otra vez |
-| RF-07 | Agregar otras plataformas (Telegram, Slack, correo) | Luego | Una plataforma nueva se suma implementando `MessageSource` y pasando sus tests de contrato |
+| RF-07 | Agregar otras plataformas (Telegram, Slack, correo) | Luego | Una plataforma nueva se suma con un adaptador que alimenta `CaptureMessages` (y, si entrega, implementa `DeliveryChannel` y pasa su suite de contrato), sin cambios en `domain/` ni `application/` |
 
 ### 4.2 Captura de mensajes
 
 | ID | Requerimiento | Prioridad | Criterio de aceptación |
 |---|---|---|---|
-| RF-10 | Guardar los mensajes entrantes y salientes de todas las conversaciones | v1 | Se guardan texto, imagen, video, audio, documento, sticker, ubicación, contacto, encuesta y evento, con una representación de texto para cada tipo. Un mensaje sin texto que no es audio aparece en la transcripción con la representación de su tipo (por ejemplo, "[imagen]"), en grupos y en chats individuales, y nunca hace fallar el digest |
+| RF-10 | Guardar los mensajes entrantes y salientes de todas las conversaciones | v1 | Se guardan texto, imagen, video, audio, documento, sticker, ubicación, contacto, encuesta y evento, con una representación de texto para cada tipo. Un mensaje sin texto que no es audio aparece en la transcripción con la representación de su tipo (por ejemplo, "[imagen]"), en grupos y en chats individuales, y nunca hace fallar el digest. Un tipo que el adaptador no maneja se guarda como `other`, con su contenido crudo (RF-17): no aparece en digests ni en Ask y no cuenta como no leído |
 | RF-11 | Registrar las ediciones de mensajes | v1 | Un mensaje editado reemplaza al original en el digest |
 | RF-12 | Llevar el estado de no leídos por conversación | v1 | El contador refleja lo que muestra el celular: se toma en la sincronización inicial, se actualiza al leer desde cualquier dispositivo, y marcar como no leído en el celular vuelve a incluir el chat. La foto inicial no pisa lo que llegó en vivo |
 | RF-13 | Resolver la identidad de los remitentes | v1 | Se muestra el nombre de la agenda si existe; si no, el nombre público y el número con espacios (para poder tocarlo en WhatsApp Web). Los identificadores internos (LID) se traducen a número cuando es posible |
 | RF-14 | Excluir conversaciones | v1 | Una conversación excluida (por nombre o identificador) no se guarda ni se resume. Sin exclusiones configuradas no se excluye nada: la falta de la opción no hace fallar ni la captura ni el digest |
-| RF-15 | Descargar los audios para transcribirlos | v1 | Los audios de los últimos N días del historial (configurable, 14 por defecto) y todos los que llegan en vivo se descargan si la transcripción está activa |
+| RF-15 | Descargar los audios para transcribirlos | v1 | Los audios de los últimos N días del historial (`transcription.historyAudioDays`, 14 por defecto) y todos los que llegan en vivo se descargan si la transcripción está activa. Las descargas no esperan a whisper, porque la dirección firmada de un audio vence en semanas: el único límite es el tamaño de la carpeta de audios de la cuenta (`transcription.maxMediaMb`, 500 MB por defecto). Con la carpeta llena, las descargas nuevas esperan sin fallar y se retoman cuando una transcripción libera lugar; `doctor` muestra cuánto ocupa |
 | RF-16 | Pedir el historial completo al vincular (opt-in) | v1 | La opción `fullHistoryOnLink` (por cuenta, `false` por defecto) hace que el celular mande todo su historial al vincular. Es una excepción aprobada a RNF-17. Todos los tipos de sincronización de historial que entrega la plataforma (inicial, reciente, completo, bajo demanda, nombres) se guardan como historial, sin filtrar; el progreso se registra como `history.progress` con solo cantidades (bloques, mensajes, chats) |
 | RF-17 | Conservar el contenido original de cada mensaje | v1 | Cada mensaje guarda en `messages.raw` el contenido decodificado como JSON (con los descriptores de los archivos: `directPath`, `mediaKey`, `url`, `mimetype`, `fileLength`, `seconds`, `fileSha256`, `fileEncSha256`), para poder armar reglas sobre cualquier tipo de mensaje más adelante. Se descartan las miniaturas y nunca se guardan claves de sesión o identidad de Signal |
 | RF-18 | Modelar el contenido por tipo | v1 | Se guardan en columnas y tablas propias: a qué mensaje responde (`quoted_*`, incluido si es una respuesta a un estado), si fue reenviado y si es de ver una vez; archivos (`media`), ubicaciones (`locations`), contactos compartidos (`shared_contacts`, uno por contacto), encuestas (`polls`; los votos llegan cifrados y se guardan tal cual en `poll_votes`), pedidos y productos de WhatsApp Business (`orders`, `products`, con los tipos de mensaje `order` y `product`) y reacciones (`reactions`). Las reacciones y los votos no son mensajes: no aparecen en digests ni transcripciones. La transcripción muestra de forma compacta la respuesta a un estado (\"[respondió a tu estado: imagen «…»]\") y el mensaje citado de una respuesta solo si es corto |
@@ -183,7 +185,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 ## 6. Restricciones y supuestos
 
 - **Node 22 o superior.** Se usan `node:sqlite` y ESM; no hay módulos nativos de npm, lo que permite empaquetar un binario único más adelante.
-- **Baileys** es un cliente no oficial de WhatsApp y hoy se usa una versión RC. Su API puede cambiar; queda aislado detrás de `MessageSource` y `DeliveryChannel`.
+- **Baileys** es un cliente no oficial de WhatsApp y hoy se usa una versión RC. Su API puede cambiar; queda aislado en `infrastructure/whatsapp/`, que traduce sus eventos a `CaptureMessages` e implementa `DeliveryChannel`.
 - **ffmpeg y whisper.cpp** son dependencias del sistema y opcionales.
 - **Un solo daemon por instalación.** Los horarios viven en la base y los ejecuta el daemon (con `croner`); no se escribe en el crontab ni en el planificador del sistema operativo. Lo único que se registra en el sistema es el daemon como servicio.
 - Los horarios solo se cumplen si la máquina está encendida y el daemon corriendo. Para garantizarlos hace falta un servidor (Docker en un VPS o una Raspberry Pi).
@@ -204,38 +206,13 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | Instalación nativa difícil en Windows (whisper, ffmpeg) | Medio | Transcripción opcional; Docker como vía recomendada; `doctor` |
 | El nombre o el logo se confunden con la marca WhatsApp | Medio | Nombre neutro (`message-summarize`); WhatsApp se menciona solo como plataforma soportada |
 
-## 8. Trazabilidad con la implementación
+## 8. Cómo se mantiene esta spec
 
-| Requerimientos | Componente (ver plan de arquitectura) | Fase |
-|---|---|---|
-| RF-30 a RF-39, RF-33, RF-34 | `domain/` (`UnreadTracker`, `MassMessagePolicy`, `CrossGroupDeduplicator`, `SummaryWindow`, `DigestComposer`) + `GenerateDigest` | 0 (caracterización) y 1 |
-| RF-10 a RF-15 | `infrastructure/whatsapp/BaileysSource` + `MessageParser` + `HandleIncomingMessage` | 1 |
-| RF-50 a RF-52 | `DeliveryChannel` + `WhatsAppSelfChatDelivery` + `OutboxRepository` + `WhatsAppTextRenderer` | 1 |
-| RF-03, RF-06, RF-60 a RF-66 | Daemon, `CronerScheduler`, `ScheduleRepository`, `app.db`, `import` | 2 |
-| RF-20 a RF-23, RF-40 a RF-47, RF-81 | `infrastructure/llm/api/` (`OpenAISummarizer`, `AnthropicSummarizer`, `GeminiSummarizer`, `OllamaSummarizer`), `infrastructure/llm/cli/` (`CliSummarizer` con presets de Claude Code, Gemini CLI y Codex, más la plantilla genérica; `SandboxedProcessRunner`), `StructuredOutputValidator`, `FallbackSummarizer`, `LocalOnlyRouter`, `RateLimitRetry`, `WhisperCppTranscriber`, `ModelDownloader`, `doctor` | 3 |
-| RF-01, RF-02, RF-04, RF-70 a RF-75, RF-82 | API HTTP con node:http + SSE, SPA, autenticación con token | 4 |
-| RF-76 | `AskChats` (caso de uso sobre el puerto `Answerer`, una respuesta sobre todos los chats), `AskService` con historial en la base (`SqliteAskHistory`, migración 7) y entrega al chat propio por el outbox, `askPresets`, rutas `/api/accounts/:id/ask`, `/asks` y `/ask-presets` y pestaña "Pedir" | Posterior a v0.1.0-rc1 |
-| RNF-05 a RNF-07, RF-80 (`service`) | Imagen Docker, `install.sh`, `install.ps1`, `ServiceInstaller` | 5 |
-| RNF-15, RNF-18, documentación | CI, licencia, aviso legal, README | 6 |
+- **Una fila por requerimiento:** ID, qué hace en una oración, prioridad (`v1` o `Luego`) y un criterio de aceptación que un test o una persona pueda verificar.
+- **IDs:** uno nuevo toma el siguiente número libre de todo el documento (hoy RF-83 y RNF-20), aunque la fila vaya en otra sección, porque varias secciones ya llenaron su decena. Un ID borrado no se reusa.
+- **Regla:** el PR que cambia lo que el usuario ve o recibe (web, CLI, digest, una regla de privacidad o seguridad) cambia su fila en el mismo PR, y el test que lo cubre cita el ID. Un refactor, un test o una dependencia no tocan la spec.
+- **Decisiones:** cuando un cambio contradice una fila o una decisión anterior, se agrega una línea fechada en [decisiones.md](decisiones.md).
+- **Chequeo:** `npm run check:spec` falla si el código o los tests citan un ID que no está acá, y lista los `v1` que ningún test cita.
+- **Trazabilidad:** no se mantiene a mano. Qué parte del código atiende cada área está en [arquitectura.md](arquitectura.md); qué test cubre cada requerimiento se encuentra buscando su ID en `test/`.
 
-Cambio respecto del plan original: como WhatsApp es la primera plataforma y no la única, el puerto `WhatsAppGateway` se divide en dos, `MessageSource` (leer) y `DeliveryChannel` (entregar), y las entidades del dominio usan nombres genéricos (`Conversation`, `Participant`, `Message`). Lo propio de WhatsApp (LID, contador de no leídos del celular, `read-self`) queda en el adaptador, que lo traduce a eventos del dominio.
-
-## 9. Decisiones tomadas (2026-11-05)
-
-1. **Fuentes sin estado de leído:** se resume solo por ventana de tiempo (RF-31).
-2. **Destino:** el digest es personal; nunca se manda a otra cuenta, ni siquiera a otra cuenta de la misma instalación (RF-51 y alcance).
-3. **Web:** la opción más liviana posible, Svelte 5 compilado con Vite (RNF-19).
-4. **CLI:** alias corto `msum` (RF-80).
-5. **Proveedor:** sin proveedor por defecto; el usuario conecta el LLM que prefiera entre OpenAI, Anthropic, Gemini y Ollama. Gemini es atractivo por su plan gratuito, con la advertencia de privacidad de la sección 7. Para Ollama se elige un modelo chico por evaluación (RF-45). Cada proveedor se puede conectar por API o por su propia CLI (Claude Code, Gemini CLI, Codex o una CLI genérica), aprovechando el plan que el usuario ya tiene (RF-47 a RF-49).
-6. **Transcripción:** whisper.cpp local, igual que en la herramienta actual (RF-20).
-
-## 10. Decisiones de implementación (2026-11-05)
-
-1. **Datos de prueba de la fase 0:** conversaciones inventadas que cubren cada regla; nunca datos reales, porque el repo es público.
-2. **CLIs dentro de Docker:** imagen base sin CLIs (API u Ollama) y una variante `-cli` que incluye Claude Code, Gemini CLI y Codex, con la sesión iniciada adentro del contenedor.
-3. **Instaladores nativos:** Docker, macOS, Linux y Windows en la v1 (decisión del 2026-11-19, antes Windows quedaba para la v1.1). En Windows el daemon se registra con una entrada de inicio de sesión del usuario (clave `Run`), sin permisos de administrador y sin el planificador de tareas. El instalador `.exe` se arma en CI y se distribuye en los releases de GitHub; `npm` es la vía de distribución del paquete.
-4. **Publicación:** repo público `message-summarize` en la cuenta personal de GitHub del autor, con licencia MIT.
-5. **Idioma:** código, commits y nombres en inglés; README en inglés y español; los documentos de diseño en español hasta la v0.1.0.
-6. **Autoría:** los commits van solo a nombre del autor, sin coautoría de herramientas de IA.
-7. **Fallas de la herramienta anterior:** los casos de `test/golden/README.md` que no se congelaron porque la herramienta se cae o pierde datos ("Legacy failures that are not frozen") no se reproducen. El comportamiento heredado que sí está congelado se mantiene. Un mensaje sin texto que no es audio se muestra por su tipo (RF-10); toda opción del digest tiene un valor por defecto (el proveedor no lo tiene: se elige en el asistente, RF-41) y la configuración se valida al cargarla (RF-14, RF-32, RF-37, RF-73); una ventana inválida no mueve el puntero (RF-32); una prioridad desconocida es un error de esquema (RF-30). Cada caso tiene un test unitario.
-8. **Mensajes masivos propios:** la longitud mínima de un mensaje masivo propio se mide en puntos de código al recibir el mensaje y al resumir (RF-33), como ya hacía la herramienta anterior al resumir (golden 03, caso E39); al recibir medía unidades UTF-16.
+Las decisiones de producto y de implementación que estaban en las secciones 9 y 10 de la versión 1.4 están ahora en [decisiones.md](decisiones.md), con la misma numeración.
