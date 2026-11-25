@@ -335,11 +335,15 @@ function findPwsh(): string | null {
 const pwsh = findPwsh()
 const runtime = pwsh === null ? describe.skip : describe
 
-// The first pwsh start on a fresh Windows runner builds its module cache and can take longer than the global 30 s.
-const PWSH_TIMEOUT_MS = 120_000
-// A run of pwsh is cut a little before the one of the suite, so a slow start fails with what pwsh had printed and how
-// long it took (spawnSync blocks the process: without its own limit the suite's timer only fires when pwsh returns).
-const PWSH_RUN_TIMEOUT_MS = 100_000
+// The first run of the script on a fresh Windows runner is slow: in CI it took 76 to 86 s when it passed and was cut at
+// 100 s when it did not; the runs after it took 2 to 14 s. The cause is not known, so the limits leave room instead of
+// following a guess: a run is cut at 240 s (about three times the slowest pass seen).
+const PWSH_RUN_TIMEOUT_MS = 240_000
+// The limit of a test: more than a cut run plus the up to 30 s that `processesLeft` adds to report where it was stuck,
+// so a slow start fails with what pwsh had printed and how long it took, not with the bare timeout of the suite
+// (spawnSync blocks the process: without its own limit the suite's timer only fires when pwsh returns). Later runs of a
+// test that calls `run()` several times are fast (2 to 14 s each) and fit in what is left.
+const PWSH_TIMEOUT_MS = 300_000
 
 runtime('install.ps1 (PowerShell, nothing is changed)', { timeout: PWSH_TIMEOUT_MS }, () => {
   let dir = ''
