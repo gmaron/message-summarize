@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ok } from '../../../../src/domain/result.js'
 import { makeSchedule } from '../../../../src/domain/schedule.js'
 import { CONSENT_TEXT_VERSION } from '../../../../src/domain/setup.js'
 import { nextRunOf } from '../../../../src/infrastructure/scheduling/croner-scheduler.js'
+import { writeFileAtomic } from '../../../../src/main/config/atomic-write.js'
 import { PROVIDERS } from '../../../../src/main/config/config.js'
 import {
   disposeHarnesses,
@@ -18,12 +19,10 @@ import { BASE, disposeWorlds, type World, world } from '../../../support/web-wor
 /**
  * A hand edit of a config file, all at once: the watcher reads the file whenever it changes, and a plain write truncates
  * first, so under load it could read a half-written file, log it as invalid JSON and then log the complete one again.
- * Writing next to it and renaming over it makes the file appear whole.
+ * Writing next to it and renaming over it makes the file appear whole. It is the production `writeFileAtomic`, not a
+ * bare rename: on Windows a rename over a file the watcher has open fails for a moment with EPERM, and that one retries.
  */
-function writeAtomic(file: string, text: string): void {
-  writeFileSync(`${file}.tmp`, text)
-  renameSync(`${file}.tmp`, file)
-}
+const writeAtomic = writeFileAtomic
 
 afterEach(async () => {
   await disposeWorlds()
@@ -60,7 +59,7 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
       accounts: ['alpha'],
       config: { ...BASE, hideRest: true, provider: { primary: 'claude-cli', claudeCli: { model: 'opus' } } },
     })
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ unreadOnly: true, language: 'es' }))
+    await writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ unreadOnly: true, language: 'es' }))
     const reply = await w.api('GET', url('alpha'))
     expect(reply.status).toBe(200)
     expect(reply.body.values).toEqual({
@@ -234,7 +233,10 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
       accounts: ['alpha'],
       config: { ...BASE, provider: { primary: 'claude-cli', ollama: { model: 'llama3' } } },
     })
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ localOnlyPatterns: ['Family'], excludePatterns: ['Spam'] }))
+    await writeAtomic(
+      accountFile(w, 'alpha'),
+      JSON.stringify({ localOnlyPatterns: ['Family'], excludePatterns: ['Spam'] }),
+    )
     expect((await w.api('PUT', url('alpha'), { hideRest: true })).status).toBe(200)
     expect(readAccount(w, 'alpha')).toEqual({
       localOnlyPatterns: ['Family'],
@@ -256,7 +258,7 @@ describe('GET and PUT /api/accounts/:id/settings (RF-73)', () => {
 
   it('reports the issues on GET when a hand edit made the configuration invalid', async () => {
     const w = await world({ accounts: ['alpha'] })
-    writeAtomic(accountFile(w, 'alpha'), '{ "hideRest": ')
+    await writeAtomic(accountFile(w, 'alpha'), '{ "hideRest": ')
     expect(await w.api('GET', url('alpha'))).toEqual({
       status: 422,
       body: { error: 'invalidConfig', issues: [{ option: '(config)', code: 'invalidJson' }] },
@@ -380,7 +382,7 @@ describe('a change of the settings applies to the running unit without reconnect
     await started(w, 'alpha')
     w.h.connection.emit({ state: 'connected' })
     const runtime = w.host.runtimeOf('alpha')
-    writeAtomic(
+    await writeAtomic(
       accountFile(w, 'alpha'),
       JSON.stringify({ language: 'es', unreadOnly: true, timezone: 'America/Montevideo' }),
     )
@@ -392,7 +394,7 @@ describe('a change of the settings applies to the running unit without reconnect
     )
 
     // The installation's file counts too, for an option the account does not set.
-    writeAtomic(w.h.layout.configFile, JSON.stringify({ ...BASE, hideRest: true }))
+    await writeAtomic(w.h.layout.configFile, JSON.stringify({ ...BASE, hideRest: true }))
     await waitFor(() => expect(configOf(w, 'alpha')?.digest.hideRest).toBe(true))
     await waitFor(() => expect(latest(w, 'alpha')).toMatchObject({ timezone: 'America/Montevideo', language: 'es' }))
     expect(connectionCalls(w)).toEqual(['start'])
@@ -403,7 +405,7 @@ describe('a change of the settings applies to the running unit without reconnect
     await started(w, 'alpha')
     w.h.connection.emit({ state: 'connected' })
     expect((await w.api('PUT', url('alpha'), { language: 'es' })).status).toBe(200)
-    writeAtomic(
+    await writeAtomic(
       accountFile(w, 'alpha'),
       JSON.stringify({ language: 'es', timezone: 'Mars/Olympus', maxCharsPerConversation: 0 }),
     )
@@ -425,7 +427,7 @@ describe('a change of the settings applies to the running unit without reconnect
     expect(named(w, 'account.configInvalid')).toHaveLength(1)
     expect(w.host.daemonOf('alpha')?.blocked).toBeNull()
 
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'en', timezone: 'America/Montevideo' }))
+    await writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'en', timezone: 'America/Montevideo' }))
     await waitFor(() => expect(configOf(w, 'alpha')).toMatchObject({ language: 'en', timezone: 'America/Montevideo' }))
     await waitFor(() => expect(latest(w, 'alpha')).toMatchObject({ configValid: true, configIssues: [] }))
     expect(connectionCalls(w)).toEqual(['start'])
@@ -433,12 +435,12 @@ describe('a change of the settings applies to the running unit without reconnect
 
   it('an idle account that config kept from starting is started by the next look once the file is fixed', async () => {
     const w = await world({ accounts: ['beta'], linked: ['beta'], config: BASE, start: false })
-    writeAtomic(accountFile(w, 'beta'), '{ "language": ')
+    await writeAtomic(accountFile(w, 'beta'), '{ "language": ')
     await w.host.start()
     expect(w.host.daemonOf('beta')).toBeUndefined()
     expect(w.host.accountState('beta')?.state).toBe('idle')
     expect((await w.api('GET', '/api/accounts')).body.accounts).toMatchObject([{ id: 'beta', configValid: false }])
-    writeAtomic(accountFile(w, 'beta'), JSON.stringify({ language: 'es' }))
+    await writeAtomic(accountFile(w, 'beta'), JSON.stringify({ language: 'es' }))
     await started(w, 'beta')
     expect(w.host.runtimeOf('beta')?.config.language).toBe('es')
     // the unit exists before its socket is asked to start: wait for that call, then check it was made once
@@ -459,7 +461,7 @@ describe('a change of the settings applies to the running unit without reconnect
       if (mine === 1) await new Promise((resolve) => setTimeout(resolve, 250))
       return result
     }
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'es' }))
+    await writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'es' }))
     const look = w.host.reloadConfig('alpha') // reads { language: 'es' }, slowly
     await until(() => calls === 1, 'the first read to start')
     // The PUT goes in while that look is in progress: it adds to the file, and applies what the FILE says by the time it answers.
@@ -471,10 +473,10 @@ describe('a change of the settings applies to the running unit without reconnect
 
     // Two refreshes with files that differ: the last one written wins, whatever the order they finish in.
     calls = 0
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'es', hideRest: true }))
+    await writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'es', hideRest: true }))
     const older = w.host.reloadConfig('alpha')
     await until(() => calls === 1, 'the older read to start')
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'en', flagUnsaved: true, ownerName: 'Test' }))
+    await writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'en', flagUnsaved: true, ownerName: 'Test' }))
     await Promise.all([older, w.host.reloadConfig('alpha')])
     expect(configOf(w, 'alpha')).toMatchObject({ language: 'en', digest: { hideRest: false, flagUnsaved: true } })
     await new Promise((resolve) => setTimeout(resolve, 100)) // the periodic looks do not undo it either
@@ -489,7 +491,7 @@ describe('a change of the settings applies to the running unit without reconnect
     const messages = () => (runtime.db.prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number }).n
     expect(runtime?.config.localOnlyPatterns).toEqual([])
     // Invalid (a bad time zone, and no Ollama model for the local-only list) but it does add entries.
-    writeAtomic(
+    await writeAtomic(
       accountFile(w, 'alpha'),
       JSON.stringify({
         timezone: 'Mars/Olympus',
@@ -514,14 +516,14 @@ describe('a change of the settings applies to the running unit without reconnect
     expect(messages()).toBe(1)
 
     // A further invalid edit adds more; one that REMOVES entries does not loosen anything while it is invalid.
-    writeAtomic(
+    await writeAtomic(
       accountFile(w, 'alpha'),
       JSON.stringify({ timezone: 'Mars/Olympus', localOnlyPatterns: ['Work'], excludePatterns: 'Spam' }),
     )
     await waitFor(() => expect(runtime?.config.localOnlyPatterns).toEqual(['Family', 'Work']))
     expect(runtime?.config.digest.excludePatterns).toEqual(['Spam'])
     // Not JSON at all: nothing is added, nothing is lost.
-    writeAtomic(accountFile(w, 'alpha'), '{ "localOnlyPatterns": ')
+    await writeAtomic(accountFile(w, 'alpha'), '{ "localOnlyPatterns": ')
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(runtime?.config.localOnlyPatterns).toEqual(['Family', 'Work'])
     expect(w.h.connection.calls.filter((call) => call === 'start')).toHaveLength(1)
@@ -536,7 +538,7 @@ describe('a change of the settings applies to the running unit without reconnect
     daemon.applyConfig = () => {
       throw new Error('boom')
     }
-    writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'es' }))
+    await writeAtomic(accountFile(w, 'alpha'), JSON.stringify({ language: 'es' }))
     await waitFor(() => expect(named(w, 'config.reloadFailed')).toHaveLength(1))
     await new Promise((resolve) => setTimeout(resolve, 200)) // many looks later, still one line
     expect(named(w, 'config.reloadFailed')).toHaveLength(1)

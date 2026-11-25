@@ -1212,10 +1212,21 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     })
   })
 
-  it('failures only stop counting after the unit stayed connected for the stable period', async () => {
+  // The stable period is real time and the second crash must land BEFORE it ends, so it is wide: on a slow runner the
+  // unit can sit connected for hundreds of milliseconds before the test gets to crash it again. The reset part then
+  // really waits a bit over the period, which is why the test has its own timeout.
+  it('failures only stop counting after the unit stayed connected for the stable period', {
+    timeout: isWindows ? 90_000 : 30_000,
+  }, async () => {
     const w = await world(['alpha'], {
       linked: ['alpha'],
-      timing: { unitStableMs: 150, unitMaxFailures: 3, unitBackoffMs: 30, unitBackoffMaxMs: 60 },
+      timing: {
+        scheduleReloadMs: 100,
+        unitStableMs: 3_000,
+        unitMaxFailures: 3,
+        unitBackoffMs: 30,
+        unitBackoffMaxMs: 60,
+      },
     })
     const alpha = w.connection('alpha')
     const original = alpha.selfChat.bind(alpha)
@@ -1234,7 +1245,9 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
       expect(startsOf(alpha)).toBe(2)
       expect(await stateOf(w, 'alpha')).toBe('connected')
     })
-    // connected again, but not for long: a second crash is the second in a row
+    // connected again, but not for long: a second crash is the second in a row. A look at the units right now must not
+    // clear the count either (it would if a reset came too early).
+    await w.host.reconcile()
     crashNext()
     await until(() => named(w.h, 'account.crashed', 'alpha').length === 2, 'the second crash')
     expect(named(w.h, 'account.crashed', 'alpha').map((c) => c.attempt)).toEqual([1, 2])
@@ -1244,7 +1257,8 @@ describe('the ban rule: nothing reconnects by itself that a person did not clear
     })
     // it stays connected for longer than the stable period: the count starts over
     const connectedAt = Date.now()
-    await until(() => Date.now() - connectedAt > 400, 'the stable period to pass')
+    await until(() => Date.now() - connectedAt > 3_500, 'the stable period to pass')
+    await w.host.reconcile() // the count is cleared by a look at the units: make sure one ran after the period
     crashNext()
     await until(() => named(w.h, 'account.crashed', 'alpha').length === 3, 'the third crash')
     expect(named(w.h, 'account.crashed', 'alpha').map((c) => c.attempt)).toEqual([1, 2, 1])
