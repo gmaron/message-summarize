@@ -75,8 +75,9 @@ export function resolveApiKey(
   lookup: KeyLookup,
 ): { readonly key: string; readonly source: KeySource } | null {
   for (const name of envNames(provider)) {
-    const value = lookup.env[name]
-    if (nonEmpty(value)) return { key: value.trim(), source: { kind: 'env', name } }
+    // Trimmed first: a variable with only white space is no key, and must not hide the ones in the files.
+    const key = lookup.env[name]?.trim()
+    if (nonEmpty(key)) return { key, source: { kind: 'env', name } }
   }
   if (lookup.accountFile !== undefined) {
     const key = readKeysSync(lookup.accountFile)[provider]

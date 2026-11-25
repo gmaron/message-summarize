@@ -213,6 +213,27 @@ describe('what is read from a secrets file that is not well formed (RNF-04)', ()
 })
 
 describe('resolveApiKey, the details', () => {
+  it.each(['', ' ', '\t', '\n', ' \t\r\n '])(
+    'an environment key of only white space (%j) is no key at all',
+    async (blank) => {
+      const directory = tmp()
+      const file = join(directory, 'secrets.json')
+      const accountFile = join(directory, 'account-secrets.json')
+      const env = { GEMINI_API_KEY: blank }
+      expect(resolveApiKey('gemini', { env, file, accountFile })).toBeNull()
+      await storeApiKey(file, 'gemini', 'installation-value')
+      expect(resolveApiKey('gemini', { env, file, accountFile })).toEqual({
+        key: 'installation-value',
+        source: { kind: 'file', file },
+      })
+      await storeApiKey(accountFile, 'gemini', 'account-value')
+      expect(resolveApiKey('gemini', { env, file, accountFile })).toEqual({
+        key: 'account-value',
+        source: { kind: 'accountFile', file: accountFile },
+      })
+    },
+  )
+
   it('trims what comes from the environment (a pasted key often ends in a line break)', () => {
     const file = join(tmp(), 'secrets.json')
     expect(resolveApiKey('gemini', { env: { GEMINI_API_KEY: '  plain-key-value\n' }, file })).toEqual({
