@@ -864,6 +864,10 @@ export class DaemonHost {
       this.setIdle(id, 'notLinked', 'idle')
       return false
     }
+    // `link` takes its lock before it writes the credentials, so the lock is looked at again AFTER the session: a `link`
+    // that took its lock while this look was reading the disk (after the first check, before the session) is seen here,
+    // and the account is not started between the credentials and the end of the link. The next look records it.
+    if ((await linkLockHolder(account)) !== null) return false
     const failure = this.failures.get(id)
     return failure === undefined || Date.now() >= failure.nextAt
   }
