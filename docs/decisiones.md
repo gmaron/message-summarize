@@ -12,6 +12,7 @@ N. AAAA-MM-DD · RF-xx · Qué se decidió. Por qué.
 
 ## Decisiones
 
+22. 2026-11-25 · todos · `src/main/` se ordena en una carpeta por área (`config/`, `installation/`, `daemon/`, `link/`, `web/`, `commands/`, `logging/`, `import/`, `system/`) y arriba quedan solo los archivos de la raíz de composición. Tenía 62 archivos sueltos que mezclaban el cableado con el daemon, las rutas de la web y Ask. Es un cambio de lugar, sin cambio de comportamiento; el ejecutable sigue en `dist/main/cli.js`.
 21. 2026-11-25 · todos · La spec queda en una sola tabla por área con IDs y criterios de aceptación, las decisiones pasan a este archivo y la arquitectura a [arquitectura.md](arquitectura.md). La tabla de trazabilidad de la versión 1.4 se borra: nombraba componentes de un plan que nunca estuvo en el repositorio. Mantenerla a mano no escalaba; buscar el ID en `test/` y el chequeo `check:spec` la reemplazan.
 20. 2026-11-23 · RF-15 · Las descargas de audios ya no esperan a que whisper se ponga al día; solo las limita el tamaño de la carpeta de audios (`transcription.maxMediaMb`). La dirección firmada de un audio vence en semanas y el celular puede borrar el archivo, así que esperar perdía audios; con `transcription.concurrency` en 1 el límite anterior frenaba todas las descargas.
 19. 2026-11-23 · RF-10 · Los tipos de mensaje que el adaptador no maneja se guardan como `other`, con su contenido crudo, y quedan fuera de digests, de Ask y del contador de no leídos. Así nada se pierde para reglas futuras, sin que un tipo desconocido ensucie el resumen.

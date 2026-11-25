@@ -32,7 +32,7 @@ src/
   application/       use cases; ports/ holds the interfaces (DeliveryChannel, Summarizer, DigestSource, ...)
   infrastructure/    adapters: whatsapp, llm/api, llm/cli, persistence/sqlite, transcription, scheduling, rendering
   interfaces/        cli, http, web
-  main/              composition root: config, daemon, CLI commands, web routes
+  main/              composition root; one folder per area: config, installation, daemon, link, web, commands, ...
 test/
   unit/  contract/  golden/  fixtures/
 ```
