@@ -11,7 +11,7 @@ const win = [
 const count = (n: number): UnreadState => ({ kind: 'count', count: n })
 const ids = (r: { messages: readonly { id: string }[] }) => r.messages.map((m) => m.id)
 
-describe('selectUnreadTail', () => {
+describe('selectUnreadTail (RF-31)', () => {
   it('exports the context size', () => expect(CONTEXT_MESSAGES).toBe(5))
 
   it('markedUnread: every window message, no context, whatever lastIncoming says', () => {

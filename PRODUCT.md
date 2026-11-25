@@ -29,7 +29,7 @@ Runs entirely on the user's machine, with the LLM they already pay for or a loca
 
 ## Capabilities and Constraints
 
-- Requirements with IDs and acceptance criteria live in `docs/requirements.md` (Spanish); the web is RF-01, RF-02, RF-04, RF-60 to RF-64, RF-70 to RF-75, RNF-02, RNF-03, RNF-19.
+- What the web must do, with IDs and acceptance criteria, is in `docs/requirements.md` (Spanish), mainly sections 4.1, 4.7 and 4.8. That file wins over anything here.
 - Svelte 5 compiled with Vite, no component library, served as static files by the daemon. JS bundle under 100 KB gzip (RNF-19).
 - Every user-facing string lives in the Spanish and English translation files.
 - No telemetry and no network calls beyond the declared ones: no external fonts or CDNs at runtime.

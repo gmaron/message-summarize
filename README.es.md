@@ -228,7 +228,7 @@ Arquitectura de puertos y adaptadores: las dependencias solo apuntan hacia adent
 ```
 src/
   domain/            entidades y reglas (Conversation, Participant, Message, políticas del resumen)
-  application/       casos de uso; ports/ tiene las interfaces (MessageSource, DeliveryChannel, Summarizer, ...)
+  application/       casos de uso; ports/ tiene las interfaces (DeliveryChannel, Summarizer, DigestSource, ...)
   infrastructure/    adaptadores: whatsapp, llm/api, llm/cli, persistence/sqlite, transcription, scheduling, rendering
   interfaces/        cli, http, web
   main/              raíz de composición

@@ -117,7 +117,7 @@ async function create(extra: { fullHistory?: boolean } = {}) {
   return { session, options }
 }
 
-describe('the Baileys socket configuration', () => {
+describe('the Baileys socket configuration (RF-16, RNF-17)', () => {
   it('is not marked online on connect (RNF-17) and does not ask for the full history', async () => {
     const { options } = await create()
     expect(options.markOnlineOnConnect).toBe(false)

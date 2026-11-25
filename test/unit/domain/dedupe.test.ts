@@ -32,7 +32,7 @@ const N = textOf(50, 'n')
 const summary = (cs: { name: string; messages: { id: string; copies: number }[] }[]) =>
   cs.map((c) => [c.name, c.messages.map((m) => `${m.id}:${m.copies}`)])
 
-describe('deduplicateAcrossGroups', () => {
+describe('deduplicateAcrossGroups (RF-34)', () => {
   it('keeps the first occurrence in conversation order and counts the copies', () => {
     const out = deduplicateAcrossGroups([
       group('GA', msg('a', N)),

@@ -217,7 +217,7 @@ function architecture() {
     560,
     100,
     'application/',
-    'use cases, and ports/, the interfaces they need:\nMessageSource, DeliveryChannel, Summarizer, ...',
+    'use cases, and ports/, the interfaces they need:\nDigestSource, DeliveryChannel, Summarizer, ...',
     { fill: GROUND2, stroke: INK },
   )
   d.card(

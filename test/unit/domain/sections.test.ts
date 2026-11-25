@@ -15,7 +15,7 @@ const r = (
 })
 const names = (list: readonly ChatResult[]) => list.map((x) => x.name)
 
-describe('composeDigest', () => {
+describe('composeDigest (RF-35)', () => {
   it('sorts by priority, then by message count, within each section', () => {
     const d = composeDigest(
       [

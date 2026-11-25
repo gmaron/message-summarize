@@ -9,7 +9,7 @@ const es = getCatalog('es')
 const en = getCatalog('en')
 const extras = (content: WaContent, outer: WaContent = content) => parseExtras(outer, content, es)
 
-describe('replies', () => {
+describe('replies (RF-18)', () => {
   it('reads what a text replies to', () => {
     const e = extras({
       extendedTextMessage: {
@@ -251,7 +251,7 @@ describe('business: orders and products', () => {
   })
 })
 
-describe('raw content', () => {
+describe('raw content (RF-17)', () => {
   it('keeps the structure and the media descriptors, drops thumbnails, and writes buffers as base64', () => {
     const json = rawJson({
       imageMessage: {
