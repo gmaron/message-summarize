@@ -84,7 +84,7 @@ export async function secretCommand(ctx: CommandContext, command: SecretCommand)
     await ensureDataDirs(layout)
     await storeApiKey(file, command.provider, key)
     io.out(texts.stored(command.provider, file))
-    const overriding = envNames(command.provider).filter((name) => (ctx.env[name] ?? '') !== '')
+    const overriding = envNames(command.provider).filter((name) => (ctx.env[name] ?? '').trim() !== '')
     if (overriding.length > 0) io.out(texts.envWins(overriding.join(', ')))
     return EXIT_OK
   } catch (error) {

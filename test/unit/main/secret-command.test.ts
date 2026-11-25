@@ -69,6 +69,12 @@ describe('msum secret set (RNF-04)', () => {
     expect(everythingPrinted(h)).not.toContain('env-key-value-123')
   })
 
+  it.each(['', ' \n'])('does not warn about a variable with nothing but white space (%j)', async (blank) => {
+    const h = await makeHarness({ secretInput: KEY, env: { ANTHROPIC_API_KEY: blank } })
+    expect(await secretCommand(h.ctx, { name: 'secret', action: 'set', provider: 'anthropic', account: null })).toBe(0)
+    expect(h.out.join('\n')).not.toContain('ANTHROPIC_API_KEY')
+  })
+
   it('leaves only secrets.json in the data directory (the write is atomic: no temporary file stays)', async () => {
     const h = await makeHarness({ secretInput: KEY })
     await secretCommand(h.ctx, { name: 'secret', action: 'set', provider: 'openai', account: null })
