@@ -41,7 +41,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('extras of a captured message', () => {
+describe('extras of a captured message (RF-18)', () => {
   it('hands the capture the reply, the media and the raw content next to the message', async () => {
     const { translator, calls } = setup()
     await translator.messagesUpsert({
@@ -168,7 +168,7 @@ describe('poll votes', () => {
   })
 })
 
-describe('history of every sync type', () => {
+describe('history of every sync type (RF-16)', () => {
   it('stores the messages of INITIAL_BOOTSTRAP, RECENT, FULL, ON_DEMAND and PUSH_NAME chunks alike, as history', async () => {
     const { translator, calls } = setup()
     let n = 0
@@ -188,7 +188,7 @@ describe('history of every sync type', () => {
   })
 })
 
-describe('messages that cannot be decrypted', () => {
+describe('messages that cannot be decrypted (RF-19)', () => {
   it('are counted as dropped and reported once per window with their count', async () => {
     vi.useFakeTimers()
     const reports: number[] = []

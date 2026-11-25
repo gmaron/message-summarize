@@ -92,7 +92,7 @@ function setup(options: Partial<{ answerer: FakeAnswerer; own: string[]; localOn
 
 const input = (answerer: FakeAnswerer, call = 0) => answerer.calls[call]?.input ?? ''
 
-describe('AskChats: the request', () => {
+describe('AskChats: the request (RF-76)', () => {
   it('rejects an empty question, also one of only blanks and control characters, without reading or asking anything', async () => {
     const { source, answerer, run } = setup()
     addChat(source, ANA, 'Ana Gómez')

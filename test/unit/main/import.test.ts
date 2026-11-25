@@ -80,7 +80,7 @@ const rows = <T>(h: Harness, id: string, sql: string): T[] => {
   }
 }
 
-describe('msum import: the main installation', () => {
+describe('msum import: the main installation (RF-06)', () => {
   it('brings in the session, the messages, the unread state, the pointer and the settings', async () => {
     const { h, root } = await setup()
     buildLegacy(root)
