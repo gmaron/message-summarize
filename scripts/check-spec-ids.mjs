@@ -3,7 +3,7 @@
 // - fails when the code or the tests cite an ID that is not in the spec (a typo, or a row that was never written);
 // - lists, without failing, the RF rows of priority v1 that no test cites.
 import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -33,13 +33,13 @@ function sourceFiles(dir) {
     .sort()
 }
 
-/** The IDs cited in each file: Map of ID to the files (relative to `base`) that cite it. */
+/** The IDs cited in each file: Map of ID to the files (relative to `base`, with `/` on every OS) that cite it. */
 export function citedIds(files, base, read = (file) => readFileSync(file, 'utf8')) {
   const cited = new Map()
   for (const file of files) {
     for (const id of new Set(read(file).match(ID) ?? [])) {
       const where = cited.get(id) ?? []
-      where.push(relative(base, file))
+      where.push(relative(base, file).split(sep).join('/'))
       cited.set(id, where)
     }
   }
