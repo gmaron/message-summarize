@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { truncateTranscript } from '../../../src/domain/truncate.js'
 
-describe('truncateTranscript', () => {
+describe('truncateTranscript (RF-37)', () => {
   it('does not cut a text of exactly the limit', () => {
     expect(truncateTranscript('abcde', 5)).toEqual({ text: 'abcde', truncated: false })
   })

@@ -28,7 +28,7 @@ const writeLock = (content: string, ageMs: number): void => {
 
 describe('dropStaleLock', () => {
   it('uses the heartbeat of the daemon lock', () => {
-    const source = readFileSync(join(root, 'src/main/daemon-lock.ts'), 'utf8')
+    const source = readFileSync(join(root, 'src/main/installation/daemon-lock.ts'), 'utf8')
     expect(source).toMatch(
       new RegExp(`export const HEARTBEAT_MS = ${String(HEARTBEAT_MS).replace(/(\d)(?=(\d{3})$)/, '$1_')}\\b`),
     )

@@ -228,7 +228,7 @@ Ports and adapters architecture: dependencies only point inward.
 ```
 src/
   domain/            entities and rules (Conversation, Participant, Message, digest policies)
-  application/       use cases; ports/ holds the interfaces (MessageSource, DeliveryChannel, Summarizer, ...)
+  application/       use cases; ports/ holds the interfaces (DeliveryChannel, Summarizer, DigestSource, ...)
   infrastructure/    adapters: whatsapp, llm/api, llm/cli, persistence/sqlite, transcription, scheduling, rendering
   interfaces/        cli, http, web
   main/              composition root

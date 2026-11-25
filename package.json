@@ -50,6 +50,7 @@
     "notices": "node scripts/check-licenses.mjs --notices",
     "notices:check": "node scripts/check-licenses.mjs --notices --check",
     "check:web-size": "node scripts/check-web-size.mjs",
+    "check:spec": "node scripts/check-spec-ids.mjs",
     "prepack": "npm run build && npm run check:dist",
     "prepublishOnly": "node scripts/check-licenses.mjs --strict",
     "test:mutation": "stryker run"

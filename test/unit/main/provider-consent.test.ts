@@ -8,8 +8,8 @@ import {
   openDatabase,
   SqliteSetupRepository,
 } from '../../../src/infrastructure/persistence/sqlite/index.js'
-import { openInstallation } from '../../../src/main/accounts.js'
 import { runMain } from '../../../src/main/app.js'
+import { openInstallation } from '../../../src/main/installation/accounts.js'
 import { disposeHarnesses, type Harness, makeHarness, NOW } from '../../support/cli-harness.js'
 
 afterEach(disposeHarnesses)

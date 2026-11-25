@@ -43,7 +43,7 @@ describe('custom templates', () => {
   })
 })
 
-describe('default prompts', () => {
+describe('default prompts (RF-39)', () => {
   const cases = [
     ['es', es, 'Sofía'],
     ['en', en, 'Sam'],

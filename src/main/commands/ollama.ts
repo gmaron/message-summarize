@@ -7,8 +7,8 @@ import {
   pullOllamaModel,
 } from '../../infrastructure/llm/index.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, type OllamaCommand } from '../../interfaces/cli/run.js'
-import { installationCatalog, isPrepared, prepareAccount } from '../account-command.js'
 import type { CommandContext } from '../context.js'
+import { installationCatalog, isPrepared, prepareAccount } from './account-command.js'
 import { originOf } from './provider.js'
 import { formatBytes } from './whisper.js'
 

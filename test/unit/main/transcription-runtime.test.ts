@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { parseConfig } from '../../../src/main/config.js'
-import { runDigest } from '../../../src/main/run-digest.js'
+import { parseConfig } from '../../../src/main/config/config.js'
+import { runDigest } from '../../../src/main/daemon/run-digest.js'
 import { createRuntime, type Runtime } from '../../../src/main/runtime.js'
 import {
   BA,
