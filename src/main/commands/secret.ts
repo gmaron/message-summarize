@@ -9,10 +9,10 @@ import {
   storeApiKey,
 } from '../../infrastructure/secrets/index.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, type SecretCommand } from '../../interfaces/cli/run.js'
-import { installationCatalog } from '../account-command.js'
-import { openInstallation } from '../accounts.js'
 import type { CommandContext } from '../context.js'
-import { accountLayoutOf, ensureDataDirs } from '../paths.js'
+import { openInstallation } from '../installation/accounts.js'
+import { accountLayoutOf, ensureDataDirs } from '../installation/paths.js'
+import { installationCatalog } from './account-command.js'
 
 /**
  * `msum secret set|rm <provider>` and `msum secret ls` (RNF-04). The keys live in `<data directory>/secrets.json`, or in

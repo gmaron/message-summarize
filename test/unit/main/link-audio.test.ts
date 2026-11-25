@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { runMain } from '../../../src/main/app.js'
-import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
+import { acquireDaemonLock } from '../../../src/main/installation/daemon-lock.js'
 import { connectionFactoryWith } from '../../../src/main/whatsapp.js'
 import { BA, disposeHarnesses, ME, makeHarness, until } from '../../support/cli-harness.js'
 import { FakeTranscriber } from '../../support/transcription-fakes.js'

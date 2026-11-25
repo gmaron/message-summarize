@@ -8,8 +8,8 @@ import {
   OllamaSummarizer,
   OpenAiCompatibleSummarizer,
 } from '../../../src/infrastructure/llm/index.js'
-import { type AppConfig, parseConfig } from '../../../src/main/config.js'
-import { buildSummarizer } from '../../../src/main/providers.js'
+import { type AppConfig, parseConfig } from '../../../src/main/config/config.js'
+import { buildSummarizer } from '../../../src/main/config/providers.js'
 import { VALID_SUMMARY } from '../../contract/summarizer.contract.js'
 import { type FakeServer, startFakeServer } from '../../support/fake-http-server.js'
 

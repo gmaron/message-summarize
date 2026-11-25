@@ -55,7 +55,9 @@ describe('the package contents', () => {
   it('has the web next to the compiled code, where the daemon looks for it', () => {
     expect(readFileSync(join(root, 'vite.web.config.ts'), 'utf8')).toContain("'./dist/web'")
     expect(readFileSync(join(root, 'tsconfig.build.json'), 'utf8')).toContain('"outDir": "dist"')
-    expect(readFileSync(join(root, 'src/main/web.ts'), 'utf8')).toContain("new URL('../web/', import.meta.url)")
+    expect(readFileSync(join(root, 'src/main/web/server.ts'), 'utf8')).toContain(
+      "new URL('../../web/', import.meta.url)",
+    )
   })
 })
 

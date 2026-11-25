@@ -1,12 +1,12 @@
 import type { DigestArgs } from '../../interfaces/cli/args.js'
 import { zonedToEpoch } from '../../interfaces/cli/local-time.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
-import { isPrepared, prepareAccount } from '../account-command.js'
-import { usesGenericCli } from '../config.js'
+import { usesGenericCli } from '../config/config.js'
 import { type CommandContext, withRuntime } from '../context.js'
-import { runningDaemonPid } from '../daemon-lock.js'
-import { runDigest } from '../run-digest.js'
+import { runDigest } from '../daemon/run-digest.js'
+import { runningDaemonPid } from '../installation/daemon-lock.js'
 import { createRuntime } from '../runtime.js'
+import { isPrepared, prepareAccount } from './account-command.js'
 
 /**
  * `msum digest [--account <id>]`: generates a digest from the database, WITHOUT a WhatsApp connection (the daemon owns the session, and

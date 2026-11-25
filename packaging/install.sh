@@ -349,7 +349,7 @@ physical() {
   printf '%s%s\n' "$base" "$rest"
 }
 
-# The data folder, as the program itself resolves it (src/main/paths.ts): MSUM_DATA_DIR unless it is blank (relative
+# The data folder, as the program itself resolves it (src/main/installation/paths.ts): MSUM_DATA_DIR unless it is blank (relative
 # paths are resolved), else the default of the system. The installer never touches it.
 data_dir() {
   case "${MSUM_DATA_DIR:-}" in

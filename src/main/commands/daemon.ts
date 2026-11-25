@@ -2,21 +2,27 @@ import { rm } from 'node:fs/promises'
 import { getCatalog } from '../../infrastructure/i18n/index.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_USAGE } from '../../interfaces/cli/run.js'
-import { installationCatalog } from '../account-command.js'
-import { type Installation, openInstallation } from '../accounts.js'
-import { DEFAULT_LOGS, describeConfigIssue, languageHint, loadEffectiveConfig, readConfigObject } from '../config.js'
+import {
+  DEFAULT_LOGS,
+  describeConfigIssue,
+  languageHint,
+  loadEffectiveConfig,
+  readConfigObject,
+} from '../config/config.js'
+import { importConfigSchedules } from '../config/schedules.js'
 import type { CommandContext } from '../context.js'
-import { DaemonHost, hasNoProvider } from '../daemon-host.js'
-import { acquireDaemonLock, HEARTBEAT_MS } from '../daemon-lock.js'
-import { type DaemonLogs, startDaemonLogs } from '../daemon-logs.js'
-import { removeStaleImportDirs } from '../import-workdirs.js'
-import { linkLockHolder } from '../link-lock.js'
-import { accountLayoutOf, ensureDataDirs } from '../paths.js'
-import { retryBlock } from '../retry.js'
-import { importConfigSchedules } from '../schedules.js'
-import { startWeb, type WebHandle } from '../web.js'
-import { removeWebAddress } from '../web-address.js'
-import { chooseWebHost } from '../web-host.js'
+import { DaemonHost, hasNoProvider } from '../daemon/host.js'
+import { removeStaleImportDirs } from '../import/workdirs.js'
+import { type Installation, openInstallation } from '../installation/accounts.js'
+import { acquireDaemonLock, HEARTBEAT_MS } from '../installation/daemon-lock.js'
+import { accountLayoutOf, ensureDataDirs } from '../installation/paths.js'
+import { retryBlock } from '../installation/retry.js'
+import { linkLockHolder } from '../link/lock.js'
+import { type DaemonLogs, startDaemonLogs } from '../logging/daemon-logs.js'
+import { removeWebAddress } from '../web/address.js'
+import { chooseWebHost } from '../web/host.js'
+import { startWeb, type WebHandle } from '../web/server.js'
+import { installationCatalog } from './account-command.js'
 
 /**
  * `msum daemon [--retry] [--account <id>]`: ONE process for the whole installation (RF-03). It holds the lock file

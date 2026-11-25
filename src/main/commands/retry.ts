@@ -1,11 +1,11 @@
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
-import { isPrepared, prepareAccount } from '../account-command.js'
-import { isDirectory } from '../accounts.js'
-import { FIXED_BY_LINKING, readBlocked } from '../blocked.js'
 import type { CommandContext } from '../context.js'
-import { acquireLinkLock } from '../link-lock.js'
-import { retryBlock } from '../retry.js'
+import { isDirectory } from '../installation/accounts.js'
+import { FIXED_BY_LINKING, readBlocked } from '../installation/blocked.js'
+import { retryBlock } from '../installation/retry.js'
+import { acquireLinkLock } from '../link/lock.js'
+import { isPrepared, prepareAccount } from './account-command.js'
 
 /**
  * `msum retry [--account <id>]`: clears the block of an account that the daemon stopped using because the platform

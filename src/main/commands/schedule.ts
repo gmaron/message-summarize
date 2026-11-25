@@ -1,9 +1,9 @@
 import { formatTime, makeSchedule, scheduleToCron } from '../../domain/schedule.js'
 import { nextRunOf } from '../../infrastructure/scheduling/croner-scheduler.js'
 import { EXIT_FAILURE, EXIT_OK, type ScheduleCommand } from '../../interfaces/cli/run.js'
-import { isPrepared, prepareAccount } from '../account-command.js'
+import { describeDays } from '../config/schedule-format.js'
 import { type CommandContext, formatInstant } from '../context.js'
-import { describeDays } from '../schedule-format.js'
+import { isPrepared, prepareAccount } from './account-command.js'
 
 /**
  * `msum schedule [ls|add|rm]` (RF-60, RF-61): the digests of an account run on days of the week at a time, in the time

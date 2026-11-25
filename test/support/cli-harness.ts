@@ -13,16 +13,16 @@ import type {
   WhatsAppStatus,
   WhatsAppStatusListener,
 } from '../../src/infrastructure/whatsapp/connection.js'
-import { openInstallation } from '../../src/main/accounts.js'
-import { type AppConfig, parseConfig } from '../../src/main/config.js'
+import { type AppConfig, parseConfig } from '../../src/main/config/config.js'
 import {
   type CommandContext,
   DEFAULT_LINK_TIMING,
   type DoctorProbes,
   type WebOverrides,
 } from '../../src/main/context.js'
-import { createLogger } from '../../src/main/logger.js'
-import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/paths.js'
+import { openInstallation } from '../../src/main/installation/accounts.js'
+import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/installation/paths.js'
+import { createLogger } from '../../src/main/logging/logger.js'
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
 import type { ConnectionHooks, ManagedConnection } from '../../src/main/whatsapp.js'
 import { isWindows } from './platform.js'

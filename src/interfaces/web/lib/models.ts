@@ -2,7 +2,7 @@ import type { ModelOption, ModelProviderName, ModelsView } from './types.js'
 
 /**
  * What the model chooser shows, apart from drawing it. Nobody types a model: it is chosen from a list the daemon gives
- * (see `main/web-models.ts`). Only a compatible server that gives no list lets a name be typed.
+ * (see `main/web/models.ts`). Only a compatible server that gives no list lets a name be typed.
  *
  * - `loading`: the list was not answered yet.
  * - `needsKey`: the provider needs a saved key to list its models (the select is disabled, and says how to enable it).

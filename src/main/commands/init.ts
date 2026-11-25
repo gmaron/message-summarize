@@ -1,10 +1,10 @@
 import { writeFile } from 'node:fs/promises'
 import { getCatalog } from '../../infrastructure/i18n/index.js'
 import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
-import { defaultConfigJson, languageHint, systemTimezone } from '../config.js'
+import { defaultConfigJson, languageHint, systemTimezone } from '../config/config.js'
 import type { CommandContext } from '../context.js'
-import { ensureDataDirs, FILE_MODE } from '../paths.js'
-import { ensureWebToken } from '../web-token.js'
+import { ensureDataDirs, FILE_MODE } from '../installation/paths.js'
+import { ensureWebToken } from '../web/token.js'
 
 /**
  * `msum init`: creates the data directory, the access token of the local web and a default config.json. An existing
