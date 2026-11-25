@@ -21,6 +21,8 @@ npm ci
 | `npm run typecheck` | TypeScript (strict) for the core, the whole project and the web, plus `svelte-check`. |
 | `npm test` | Vitest, the whole suite. |
 | `npm run test:coverage` | Vitest with the v8 coverage thresholds (90% for `domain/`, 80% for use cases). |
+| `npm run test:mutation` | StrykerJS mutation testing on `domain/` and `application/`. Slow: not part of CI. |
+| `npm run check:spec` | Fails when the code or the tests cite a requirement ID that is not in `docs/requirements.md`, and lists the `v1` requirements no test cites. |
 | `npm run build` | Compiles to `dist/` and builds the web. |
 | `npm run check:licenses` | Walks the production dependencies and fails on a license outside the allowlist (RNF-18). The known `libsignal` exception is reported, not hidden. |
 | `npm run check:dist` | Fails when the build output or the packaged files are missing or stale. Run it after `npm run build`. |
@@ -40,36 +42,15 @@ git config core.hooksPath .githooks
 
 To skip it for one push, use `MSUM_SKIP_CHECKS=1 git push`. CI still runs everything, plus the build, the installers and the other operating systems.
 
-## Architecture in one screen
+## Architecture and rules
 
-Ports and adapters. Dependencies only point inward.
+[AGENTS.md](../AGENTS.md) has the architecture rules and the rules that protect users; read it before your first change. Breaking those rules can get someone's number banned or leak private conversations. How the code is organized today (layers, processes, flows, ports and adapters, data on disk) is in [docs/arquitectura.md](../docs/arquitectura.md).
 
-```
-src/
-  domain/            entities and rules
-  application/       use cases; ports/ holds the interfaces
-  infrastructure/    adapters: whatsapp, llm, persistence, transcription, scheduling, rendering
-  interfaces/        cli, http, web
-  main/              composition root
-test/
-  unit/  contract/  golden/  fixtures/
-```
+## Requirements and decisions
 
-- `domain/` and `application/` never import from `infrastructure/` or `interfaces/`.
-- Platform-specific concepts stay in the adapter. A new platform or LLM provider is a new adapter that passes the contract tests of its port, with no change in `domain/` or `application/`.
-- No user-facing text outside the translation files (Spanish and English).
-
-See [AGENTS.md](../AGENTS.md) for the details.
-
-## Rules that protect users
-
-These are not style preferences: breaking them can get someone's number banned or leak private conversations. [AGENTS.md](../AGENTS.md) has the full text. In short:
-
-- Never send anything to third parties: the digest goes only to the account's own chat.
-- Never mark the client as online, and never add behavior that sends messages or automates replies.
-- LLM CLIs run without tools, in an empty temporary directory, with a timeout. Chat text is untrusted input.
-- "Local only" conversations never reach an external provider.
-- No telemetry and no undeclared network calls. Secrets and the WhatsApp session never appear in logs.
+- A change in what the user sees or receives updates its row in [docs/requirements.md](../docs/requirements.md) in the same pull request, and the test that covers it cites the ID.
+- A change that contradicts an earlier row or decision adds a dated line to [docs/decisiones.md](../docs/decisiones.md).
+- Refactors, tests and dependency bumps do not touch the spec.
 
 ## No real data, ever
 
@@ -86,13 +67,13 @@ Real conversations, names, phone numbers, sessions, API keys and config files ne
 - Code, identifiers, commits and English docs are in English. Design documents in `docs/` stay in Spanish until v0.1.0.
 - Small commits with a clear message in the imperative mood ("Add the schedule editor", not "Added" or "Adds").
 - `README.md` and `README.es.md` must stay in sync.
-- Open pull requests against `main`. Say which requirement IDs the change touches and what you ran.
+- Open pull requests against `main`. The template asks which requirement IDs the change touches and what you ran.
 
 ## Continuous integration
 
 CI is required on every pull request (RNF-15) and runs on GitHub Actions:
 
-- **quality** (Linux): `check:licenses`, `notices:check`, lint, typecheck, tests with coverage, build, `check:dist` and `check:web-size`.
+- **quality** (Linux): `check:licenses`, `notices:check`, `check:spec`, lint, typecheck, tests with coverage, build, `check:dist` and `check:web-size`.
 - **test** on Linux, macOS and Windows, with Node 22 and 24: the whole suite, so a change cannot break one operating system.
 - **install-smoke** on each OS: installs from the packed tarball into a temporary home.
 - **Docker**: builds the image and runs the compose smoke test on every pull request. A multi-architecture build (amd64 and arm64, base and `cli` images, nothing published) runs only on pushes to `main` and by hand.
