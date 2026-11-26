@@ -7,15 +7,21 @@ import { findModelByFile, resolveModelPath, sha256File } from '../../infrastruct
 import { mediaDirectoryBytes } from '../../infrastructure/whatsapp/media.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from '../../interfaces/cli/run.js'
-import { openInstallation } from '../accounts.js'
-import { describeConfigIssue, isApiProvider, languageHint, loadEffectiveConfig, type ProviderKind } from '../config.js'
-import { findConsent, kindOfProvider, needsConsent, originOf } from '../consent.js'
+import {
+  describeConfigIssue,
+  isApiProvider,
+  languageHint,
+  loadEffectiveConfig,
+  type ProviderKind,
+} from '../config/config.js'
+import { findConsent, kindOfProvider, needsConsent, originOf } from '../config/consent.js'
+import { openAiKeyProvider } from '../config/providers.js'
+import { importConfigSchedules, unrepresentableCrons } from '../config/schedules.js'
 import { type CommandContext, hasSession } from '../context.js'
-import { IMPORT_DIR_PATTERN, importDirs } from '../import-workdirs.js'
-import { type AccountLayout, accountLayoutOf, loosePermissions } from '../paths.js'
-import { openAiKeyProvider } from '../providers.js'
+import { IMPORT_DIR_PATTERN, importDirs } from '../import/workdirs.js'
+import { openInstallation } from '../installation/accounts.js'
+import { type AccountLayout, accountLayoutOf, loosePermissions } from '../installation/paths.js'
 import { createRuntime } from '../runtime.js'
-import { importConfigSchedules, unrepresentableCrons } from '../schedules.js'
 import { hostsText } from './provider.js'
 
 /** Oldest Node this project supports (package.json "engines"). */

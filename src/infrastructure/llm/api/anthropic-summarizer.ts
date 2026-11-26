@@ -1,7 +1,8 @@
+import type { Answerer, AnswerRequest, AnswerResult } from '../../../application/ports/answerer.js'
 import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../../application/ports/summarizer.js'
 import { err, ok } from '../../../domain/result.js'
 import { STRICT_SUMMARY_JSON_SCHEMA } from '../summary-schema.js'
-import { type ApiCommonOptions, runApiCall } from './api-call.js'
+import { ANSWER_MAX_TOKENS, type ApiCall, type ApiCommonOptions, runApiAnswer, runApiCall } from './api-call.js'
 
 export const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
 /** The `anthropic-version` of the documented structured-outputs request. */
@@ -30,26 +31,38 @@ export interface AnthropicOptions extends ApiCommonOptions {
  * forcing a single tool through `tool_choice` is refused by the current models, so it is not used. The JSON is in the
  * text block of the answer. The key goes in the `x-api-key` header.
  */
-export class AnthropicSummarizer implements Summarizer {
+export class AnthropicSummarizer implements Summarizer, Answerer {
+  readonly local = false
+
   constructor(private readonly options: AnthropicOptions) {}
 
   summarize(request: SummarizeRequest): Promise<SummarizeResult> {
+    return runApiCall(this.call(request, false))
+  }
+
+  /** Free text: no JSON schema is forced; the answer may be as long as `ANSWER_MAX_TOKENS` (or `maxTokens` when larger). */
+  answer(request: AnswerRequest): Promise<AnswerResult> {
+    return runApiAnswer(this.call({ systemPrompt: request.systemPrompt, transcript: request.input }, true))
+  }
+
+  private call(request: Pick<SummarizeRequest, 'systemPrompt' | 'transcript'>, free: boolean): ApiCall {
     const baseUrl = (this.options.baseUrl ?? ANTHROPIC_BASE_URL).replace(/\/+$/, '')
-    return runApiCall({
+    return {
       provider: 'anthropic',
       options: this.options,
       keyRequired: true,
       summarizeRequest: request,
+      free,
       build: (key, prompt) => ({
         url: `${baseUrl}/v1/messages`,
         headers: { 'x-api-key': key ?? '', 'anthropic-version': ANTHROPIC_VERSION },
         body: {
           model: this.options.model,
-          max_tokens: this.options.maxTokens ?? DEFAULT_ANTHROPIC_MAX_TOKENS,
+          max_tokens: Math.max(this.options.maxTokens ?? DEFAULT_ANTHROPIC_MAX_TOKENS, free ? ANSWER_MAX_TOKENS : 0),
           system: prompt.system,
           messages: [{ role: 'user', content: prompt.user }],
           output_config: {
-            format: { type: 'json_schema', schema: STRICT_SUMMARY_JSON_SCHEMA },
+            ...(free ? {} : { format: { type: 'json_schema', schema: STRICT_SUMMARY_JSON_SCHEMA } }),
             ...(this.options.effort === undefined ? {} : { effort: this.options.effort }),
           },
         },
@@ -65,6 +78,6 @@ export class AnthropicSummarizer implements Summarizer {
         if (typeof block?.text !== 'string') return err('anthropic returned no text content')
         return ok(block.text)
       },
-    })
+    }
   }
 }

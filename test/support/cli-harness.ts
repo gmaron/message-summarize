@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { vi } from 'vitest'
 import type { CaptureMessages } from '../../src/application/capture-messages.js'
+import type { Answerer, AnswerRequest, AnswerResult } from '../../src/application/ports/answerer.js'
 import type { SummarizeRequest, SummarizeResult, Summarizer } from '../../src/application/ports/summarizer.js'
 import { ok } from '../../src/domain/result.js'
 import type {
@@ -12,16 +13,16 @@ import type {
   WhatsAppStatus,
   WhatsAppStatusListener,
 } from '../../src/infrastructure/whatsapp/connection.js'
-import { openInstallation } from '../../src/main/accounts.js'
-import { type AppConfig, parseConfig } from '../../src/main/config.js'
+import { type AppConfig, parseConfig } from '../../src/main/config/config.js'
 import {
   type CommandContext,
   DEFAULT_LINK_TIMING,
   type DoctorProbes,
   type WebOverrides,
 } from '../../src/main/context.js'
-import { createLogger } from '../../src/main/logger.js'
-import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/paths.js'
+import { openInstallation } from '../../src/main/installation/accounts.js'
+import { type AccountLayout, accountLayoutOf, ensureDataDirs, layoutOf } from '../../src/main/installation/paths.js'
+import { createLogger } from '../../src/main/logging/logger.js'
 import { createRuntime, type Runtime } from '../../src/main/runtime.js'
 import type { ConnectionHooks, ManagedConnection } from '../../src/main/whatsapp.js'
 import { isWindows } from './platform.js'
@@ -161,10 +162,29 @@ export class FakeSummarizer implements Summarizer {
   }
 }
 
+/** An answerer that records its requests and answers with a short markdown text. */
+export class FakeAnswerer implements Answerer {
+  readonly requests: AnswerRequest[] = []
+  constructor(
+    private readonly reply: (request: AnswerRequest) => Promise<AnswerResult> | AnswerResult = () => ({
+      ok: true,
+      text: '## Orders\n- **Ana**: wants a loan of 500',
+      provider: 'fake',
+    }),
+    readonly local = false,
+  ) {}
+  async answer(request: AnswerRequest): Promise<AnswerResult> {
+    this.requests.push(request)
+    return this.reply(request)
+  }
+}
+
 export interface HarnessOptions {
   /** config.json contents: an object (written as JSON), a string (written as is), or null for no file. */
   readonly config?: Record<string, unknown> | string | null
   readonly summarizer?: Summarizer | null
+  /** What answers the Ask tab (default: a `FakeAnswerer`). */
+  readonly answerer?: Answerer | null
   /** The answer to the confirmation question. Default yes. */
   readonly confirm?: boolean
   /** What `readSecret` reads (an API key typed or piped). Default: nothing. */
@@ -201,6 +221,7 @@ export interface Harness {
   readonly ctx: CommandContext
   readonly connection: FakeConnection
   readonly summarizer: FakeSummarizer
+  readonly answerer: FakeAnswerer
   readonly out: string[]
   readonly err: string[]
   /** Everything the structured logger wrote, as one string per line (stdout and stderr together). */
@@ -248,6 +269,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   const clock = { time: options.now ?? NOW, now: () => (options.liveClock === true ? Date.now() : clock.time) }
   const connection = new FakeConnection()
   const summarizer = new FakeSummarizer()
+  const answerer = new FakeAnswerer()
   let stop: () => void = () => {}
   const stopped = new Promise<void>((resolve) => {
     stop = resolve
@@ -296,6 +318,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
       pollMs: 5,
     },
     summarizer: options.summarizer === undefined ? summarizer : options.summarizer,
+    answerer: options.answerer === undefined ? answerer : options.answerer,
   }
 
   const parsed = (): AppConfig => {
@@ -311,6 +334,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
     ctx,
     connection,
     summarizer,
+    answerer,
     out,
     err,
     logs,
@@ -325,6 +349,7 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
         env: {},
         clock,
         summarizer: options.summarizer === undefined ? summarizer : options.summarizer,
+        answerer: options.answerer === undefined ? answerer : options.answerer,
       }),
     shutdown: () => stop(),
     dispose: () => removeDir(dir),

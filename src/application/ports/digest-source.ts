@@ -39,6 +39,12 @@ export interface DigestSource {
   /** Up to `limit` messages with a timestamp before `timestamp`, in the whole conversation, oldest first. */
   messagesBefore(conversationId: string, timestamp: number, limit: number): Promise<readonly Message[]>
 
+  /**
+   * Up to `limit` messages the owner wrote in the WHOLE conversation (not only the window), newest first. Used by the
+   * Ask to find where the owner last answered.
+   */
+  lastOwn(conversationId: string, limit: number): Promise<readonly Message[]>
+
   /** Every own message of the whole history, of any kind, for mass-message detection (RF-33). */
   ownMessageTexts(): Promise<Iterable<OwnMessageText>>
 }

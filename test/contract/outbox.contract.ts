@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import type { OutboxRepository } from '../../src/application/ports/outbox.js'
+import type { OutboxRepository, OwnChatQueue } from '../../src/application/ports/outbox.js'
 import { SqliteDigestStore, SqliteOutboxRepository } from '../../src/infrastructure/persistence/sqlite/index.js'
 import { InMemoryOutbox } from '../support/application-fakes.js'
 import { TempDatabase } from '../support/persistence-backends.js'
 
 export interface OutboxFixture {
-  readonly outbox: OutboxRepository
+  readonly outbox: OutboxRepository & OwnChatQueue
   /** Queues parts the way a digest commit does. */
   enqueue(...parts: string[]): Promise<void>
   close(): void
@@ -114,6 +114,26 @@ export function describeOutboxContract(backend: OutboxBackend): void {
       expect(await outbox.discardPending()).toBe(0)
       await enqueue('later')
       expect(await texts(outbox)).toEqual(['later'])
+    })
+
+    it('queues parts for the own chat after what is queued, returns the id of the last one and tracks its status', async () => {
+      const { outbox, enqueue } = await make()
+      await enqueue('digest')
+      const last = await outbox.queueForOwnChat(['ask 1', 'ask 2'])
+      expect(await texts(outbox)).toEqual(['digest', 'ask 1', 'ask 2'])
+      expect(last).toBe((await outbox.pending())[2]?.id)
+      expect(await outbox.status(last as number)).toBe('queued')
+      for (const item of await outbox.pending()) await outbox.markSent(item.id)
+      expect(await outbox.status(last as number)).toBe('sent')
+      expect(await outbox.status(987_654)).toBe('gone')
+      expect(await outbox.queueForOwnChat([])).toBeNull()
+    })
+
+    it('says a queued part is gone once it was discarded', async () => {
+      const { outbox } = await make()
+      const last = await outbox.queueForOwnChat(['ask'])
+      await outbox.discardPending()
+      expect(await outbox.status(last as number)).toBe('gone')
     })
 
     it('keeps the text exactly, including formatting and non-ASCII', async () => {

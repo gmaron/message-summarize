@@ -4,10 +4,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeSchedule, scheduleToCron } from '../../../src/domain/schedule.js'
 import { CronerScheduler, nextRunOf } from '../../../src/infrastructure/scheduling/croner-scheduler.js'
-import { openInstallation } from '../../../src/main/accounts.js'
 import { runMain } from '../../../src/main/app.js'
-import { Daemon } from '../../../src/main/daemon.js'
-import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
+import { Daemon } from '../../../src/main/daemon/daemon.js'
+import { openInstallation } from '../../../src/main/installation/accounts.js'
+import { acquireDaemonLock } from '../../../src/main/installation/daemon-lock.js'
 import {
   BA,
   disposeHarnesses,

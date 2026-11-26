@@ -1,7 +1,7 @@
 import type { CaptureMessages } from '../application/capture-messages.js'
 import type { DownloadOutcome } from '../application/download-audios.js'
 import type { HistoryProgressReport, SocketFactory } from '../infrastructure/whatsapp/connection.js'
-import type { DaemonConnection } from './daemon.js'
+import type { DaemonConnection } from './daemon/daemon.js'
 import type { Runtime } from './runtime.js'
 
 /** The connection as the commands use it: the daemon's view plus deleting the stored session. */

@@ -3,7 +3,7 @@ import type { Clock } from '../../src/application/ports/clock.js'
 import type { DeliveryChannel, DeliveryFailure } from '../../src/application/ports/delivery-channel.js'
 import type { DigestSource } from '../../src/application/ports/digest-source.js'
 import type { CommitConflict, DigestCommit, DigestStore } from '../../src/application/ports/digest-store.js'
-import type { OutboxItem, OutboxRepository } from '../../src/application/ports/outbox.js'
+import type { OutboxItem, OutboxRepository, OwnChatQueue } from '../../src/application/ports/outbox.js'
 import type { SummarizeRequest, Summarizer } from '../../src/application/ports/summarizer.js'
 import type { OwnMessageText } from '../../src/domain/mass.js'
 import type { Conversation, Message, Participant, UnreadState } from '../../src/domain/model.js'
@@ -131,8 +131,44 @@ export class InMemorySource implements DigestSource {
       .slice(-limit)
   }
 
+  async lastOwn(conversationId: string, limit: number): Promise<readonly Message[]> {
+    if (limit <= 0) return []
+    return this.of(conversationId)
+      .filter((m) => m.fromMe)
+      .reverse()
+      .slice(0, limit)
+  }
+
   async ownMessageTexts(): Promise<Iterable<OwnMessageText>> {
     return this.messages.filter((m) => m.fromMe).map((m) => ({ conversationId: m.conversationId, text: m.text }))
+  }
+}
+
+/** An in-memory source that remembers what was asked of it, to check what a use case reads and what it spares. */
+export class SpySource extends InMemorySource {
+  readonly asked: string[] = []
+  participantIds: readonly string[] = []
+
+  override async conversationsWithMessages(window: SummaryWindow): Promise<readonly Conversation[]> {
+    this.asked.push('conversationsWithMessages')
+    return super.conversationsWithMessages(window)
+  }
+  override async ownMessageTexts(): ReturnType<InMemorySource['ownMessageTexts']> {
+    this.asked.push('ownMessageTexts')
+    return super.ownMessageTexts()
+  }
+  override async lastIncoming(...args: Parameters<InMemorySource['lastIncoming']>) {
+    this.asked.push('lastIncoming')
+    return super.lastIncoming(...args)
+  }
+  override async messagesBefore(...args: Parameters<InMemorySource['messagesBefore']>) {
+    this.asked.push('messagesBefore')
+    return super.messagesBefore(...args)
+  }
+  override async participants(ids: readonly string[]): Promise<ReadonlyMap<string, Participant>> {
+    this.asked.push('participants')
+    this.participantIds = ids
+    return super.participants(ids)
   }
 }
 
@@ -168,7 +204,7 @@ export class InMemoryStore implements DigestStore {
 }
 
 /** In-memory OutboxRepository, following the contract of the port. */
-export class InMemoryOutbox implements OutboxRepository {
+export class InMemoryOutbox implements OutboxRepository, OwnChatQueue {
   private nextId = 1
   private readonly rows: { id: number; text: string; sent: boolean }[] = []
 
@@ -186,6 +222,17 @@ export class InMemoryOutbox implements OutboxRepository {
     if (row === undefined || row.sent) return false
     row.sent = true
     return true
+  }
+
+  async queueForOwnChat(parts: readonly string[]): Promise<number | null> {
+    if (parts.length === 0) return null
+    this.enqueue(...parts)
+    return this.nextId - 1
+  }
+
+  async status(id: number): Promise<'queued' | 'sent' | 'gone'> {
+    const row = this.rows.find((r) => r.id === id)
+    return row === undefined ? 'gone' : row.sent ? 'sent' : 'queued'
   }
 
   async discardPending(): Promise<number> {

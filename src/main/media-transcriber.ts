@@ -5,7 +5,7 @@ import { exactIdOf, isExcluded } from '../domain/exclusion.js'
 import { resolveConversationName } from '../domain/names.js'
 import { err } from '../domain/result.js'
 import { ClaudeImageReader } from '../infrastructure/vision/index.js'
-import type { AppConfig } from './config.js'
+import type { AppConfig } from './config/config.js'
 
 /**
  * Whether images are read with this configuration: it is on AND the provider is the Claude Code CLI, the only one that

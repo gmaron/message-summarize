@@ -34,6 +34,8 @@ jobs:
       - run: npm run check:licenses
       # THIRD_PARTY_NOTICES.md must match the installed production tree (regenerate with `npm run notices`).
       - run: npm run notices:check
+      # docs/requirements.md §8: every requirement ID cited in src/ and test/ exists in the spec.
+      - run: npm run check:spec
       - run: npm run lint
       - run: npm run typecheck
       # Coverage thresholds (domain 90%, use cases 80%) live in vitest.config.ts.

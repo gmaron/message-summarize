@@ -347,7 +347,7 @@ function Invoke-MsumInstaller {
     return (Get-Abs $h)
   }
 
-  # The data folder, as the program itself resolves it (src/main/paths.ts): MSUM_DATA_DIR unless it is blank (relative
+  # The data folder, as the program itself resolves it (src/main/installation/paths.ts): MSUM_DATA_DIR unless it is blank (relative
   # paths are resolved), else %APPDATA%\message-summarize. The installer never touches it.
   function Get-DataDir {
     $explicit = $env:MSUM_DATA_DIR

@@ -8,6 +8,8 @@
       "!**/coverage",
       "!**/node_modules",
       "!**/.claude",
+      "!**/.stryker-tmp*",
+      "!reports",
       "!.impeccable",
       "!**/*.svelte",
       "!test/golden/scenarios",

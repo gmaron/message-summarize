@@ -36,7 +36,9 @@ export function selectUnreadTail<M extends WindowMessage>(
 ): UnreadTail<M> {
   const skip: UnreadTail<M> = { messages: [], contextBefore: null }
   if (state.kind === 'markedUnread') return { messages: windowMessages, contextBefore: null }
-  if (state.kind === 'unknown' || !(state.count > 0)) return skip
+  // A count of 0 or less means nothing unread. The guard matters for a negative count (WhatsApp uses -1 for "marked
+  // unread"): `slice(0, -1)` would otherwise take every incoming message but the last. Callers do not send one today.
+  if (state.kind === 'unknown' || state.count <= 0) return skip
 
   const unreadIds = new Set(
     lastIncoming

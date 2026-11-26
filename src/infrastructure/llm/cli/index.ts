@@ -30,6 +30,7 @@ export {
   type GenericCliOptions,
   GenericCliSummarizer,
   genericCommandProblem,
+  MAX_ARGUMENT_BYTES,
   PROMPT_PLACEHOLDER,
 } from './generic-cli-summarizer.js'
 export { DEFAULT_MAX_OUTPUT_CHARS } from './run-process.js'

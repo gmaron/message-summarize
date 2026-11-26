@@ -1,9 +1,9 @@
 import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
-import { installationCatalog } from '../account-command.js'
-import { readAccountState } from '../account-state.js'
-import { isDirectory, openInstallation } from '../accounts.js'
 import type { CommandContext } from '../context.js'
-import { accountLayoutOf } from '../paths.js'
+import { readAccountState } from '../installation/account-state.js'
+import { isDirectory, openInstallation } from '../installation/accounts.js'
+import { accountLayoutOf } from '../installation/paths.js'
+import { installationCatalog } from './account-command.js'
 
 /**
  * `msum accounts`: one line per account of the installation with its id, its platform and its state: linked (with

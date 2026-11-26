@@ -52,7 +52,7 @@ const DESCRIPTOR: DownloadDescriptor = {
   fileLength: 4321,
 }
 
-describe('capture asks for the images it will read (opt-in)', () => {
+describe('RF-83: capture asks for the images it will read (opt-in)', () => {
   it('asks for a live image, and not for an audio, when only images are read', async () => {
     const t = setup({ downloadAudios: false })
     expect((await t.capture.receiveMessage(image())).downloadImage).toBe(true)

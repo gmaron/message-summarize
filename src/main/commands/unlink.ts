@@ -1,10 +1,10 @@
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
-import { isPrepared, prepareAccount } from '../account-command.js'
-import { daemonUsing } from '../account-use.js'
-import { isDirectory } from '../accounts.js'
 import type { CommandContext } from '../context.js'
-import { acquireLinkLock } from '../link-lock.js'
+import { daemonUsing } from '../installation/account-use.js'
+import { isDirectory } from '../installation/accounts.js'
+import { acquireLinkLock } from '../link/lock.js'
+import { isPrepared, prepareAccount } from './account-command.js'
 
 /**
  * `msum unlink [--account <id>]`: forgets the account and DELETES everything that belongs to it (RF-51, RF-03): its

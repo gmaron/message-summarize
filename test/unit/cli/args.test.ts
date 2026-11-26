@@ -29,7 +29,7 @@ describe('parseCommandLine: open', () => {
   })
 })
 
-describe('parseCommandLine', () => {
+describe('parseCommandLine (RF-80)', () => {
   it('knows every command', () => {
     for (const name of ['init', 'accounts']) {
       expect(parse(name)).toEqual({ ok: true, value: { name } })

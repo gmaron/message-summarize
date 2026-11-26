@@ -89,6 +89,8 @@ describe('cronToSchedule', () => {
     // sun at the START of a range, or alone, is still day 0
     expect(cronToSchedule('0 9 * * sun-tue')).toEqual({ days: [0, 1, 2], hour: 9, minute: 0 })
     expect(cronToSchedule('0 9 * * sun')).toEqual({ days: [0], hour: 9, minute: 0 })
+    expect(cronToSchedule('0 9 * * sun-sun')).toEqual({ days: [0], hour: 9, minute: 0 })
+    expect(cronToSchedule('0 9 * * 0-sun')).toEqual({ days: [0], hour: 9, minute: 0 })
     expect(cronToSchedule('0 9 ? * 1-5')).toEqual({ days: [1, 2, 3, 4, 5], hour: 9, minute: 0 })
     // ? means nothing in the other fields
     expect(cronToSchedule('0 9 * ? 1-5')).toBeNull()
@@ -107,7 +109,19 @@ describe('cronToSchedule', () => {
       '0 9 * * 5-1', // a range that wraps
       '0 9 * * 8', // not a day
       '0 9 * * fun', // not a day name
+      '0 9 * * 07', // a day of one digit only
+      '0 9 * * 01',
+      '0 9 * * 1-2-3', // a range of more than two ends
+      '0 9 * * 1,5-1', // a range that wraps, next to a good one
+      '0 9 * * fun-tue', // a start that is not a day
+      '0 9 * * sun-fun', // an end that is not a day
+      '0 9 * * * *', // six fields
+      '0 9 * *', // four fields
       '60 9 * * *', // not a minute
+      'x 9 * * *',
+      '0 x * * *',
+      '0 123 * * *',
+      '007 9 * * *',
       '0 24 * * *', // not an hour
       '',
     ]
@@ -125,6 +139,11 @@ describe('mergeByTime', () => {
       made([6], '19:00'),
     ])
     expect(merged.map((s) => scheduleToCron(s))).toEqual(['0 7 * * 1,2,3,4', '30 7 * * 5', '0 19 * * 1,2,6'])
+  })
+
+  it('orders by minute within the same hour, whatever the order given', () => {
+    const merged = mergeByTime([made([5], '07:30'), made([1], '07:10'), made([2], '07:20')])
+    expect(merged.map(formatTime)).toEqual(['07:10', '07:20', '07:30'])
   })
 
   it('leaves distinct times alone, and an empty list empty', () => {

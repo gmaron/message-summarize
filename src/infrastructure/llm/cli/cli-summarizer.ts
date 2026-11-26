@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { AnswerRequest } from '../../../application/ports/answerer.js'
 import type { SummarizeRequest, Summarizer } from '../../../application/ports/summarizer.js'
 import { err, ok, type Result } from '../../../domain/result.js'
 import { parseSummaryResponse } from '../../../domain/summary.js'
@@ -47,6 +48,18 @@ export interface CliAdapter {
   }
   /** Reads what the CLI printed. `sent` is what was written to its stdin, so the chat can be kept out of error reasons. */
   interpret(output: CliOutput, sent: string): AttemptResult
+  /** How the CLI gives a free-text answer (the "Ask" tab): the same containment, no schema and no retry. */
+  readonly answer?: {
+    call(request: AnswerRequest): {
+      readonly args: readonly string[]
+      readonly stdin: string
+      readonly sent?: string
+    }
+    interpret(
+      output: CliOutput,
+      sent: string,
+    ): { readonly ok: true; readonly text: string } | { readonly ok: false; readonly error: string }
+  }
 }
 
 export interface CliSummarizerOptions {
@@ -55,6 +68,8 @@ export interface CliSummarizerOptions {
   readonly env?: NodeJS.ProcessEnv
   /** Default 3 minutes. */
   readonly timeoutMs?: number
+  /** One free-text answer (the "Ask" tab). Default 10 minutes. */
+  readonly answerTimeoutMs?: number
   /** Time between SIGTERM and SIGKILL when the timeout fires. Default 5 seconds. */
   readonly killGraceMs?: number
   /** Cap on each of stdout and stderr, in characters. Default 2 MB, like the answers of the HTTP APIs. */
@@ -115,25 +130,59 @@ export class CliSummarizer implements Summarizer {
     return second.ok ? ok(second.value) : err(`${first.error}; retry: ${second.error}`)
   }
 
-  private async attempt(request: SummarizeRequest, correction: string | null, command: string): Promise<AttemptResult> {
+  /**
+   * A free-text answer: one run (never retried), verified and contained exactly as a summary is (RF-49). Fails when the
+   * CLI has no way to answer in text.
+   */
+  async answer(request: AnswerRequest): Promise<Result<string, string>> {
     const { adapter } = this.options
-    const { args, stdin, sent } = adapter.call(request, correction)
+    if (this.options.unavailable !== undefined) return err(this.options.unavailable)
+    if (adapter.answer === undefined) return err(`${adapter.label} cannot give a free-text answer`)
+    let command = adapter.command
+    if (this.options.verify !== undefined) {
+      const verified = await this.options.verify()
+      if (!verified.ok) return err(describeUnverified(adapter.label, verified))
+      command = verified.path
+    }
+    const { args, stdin, sent } = adapter.answer.call(request)
+    const outcome = await this.run(command, args, stdin, this.options.answerTimeoutMs ?? 10 * 60_000)
+    switch (outcome.kind) {
+      case 'spawn-error':
+        return err(outcome.reason)
+      case 'timeout':
+        return err(`${adapter.label} timed out after ${(this.options.answerTimeoutMs ?? 10 * 60_000) / 1000}s`)
+      case 'too-large':
+        return err(`${adapter.label} output exceeded the size limit`)
+      case 'exited': {
+        const read = adapter.answer.interpret(outcome, sent ?? stdin)
+        return read.ok ? ok(read.text) : err(read.error)
+      }
+    }
+  }
+
+  private async run(command: string, args: readonly string[], stdin: string, timeoutMs: number) {
+    const { adapter } = this.options
     const cwd = await mkdtemp(join(tmpdir(), 'message-summarize-llm-'))
-    let outcome: Awaited<ReturnType<typeof runProcess>>
     try {
-      outcome = await runProcess({
+      return await runProcess({
         command,
         args,
         stdin,
         cwd,
         env: pickEnv(this.options.env ?? process.env, adapter.envNames),
-        timeoutMs: this.timeoutMs,
+        timeoutMs,
         killGraceMs: this.killGraceMs,
         maxOutputChars: this.maxOutputChars,
       })
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
+  }
+
+  private async attempt(request: SummarizeRequest, correction: string | null, command: string): Promise<AttemptResult> {
+    const { adapter } = this.options
+    const { args, stdin, sent } = adapter.call(request, correction)
+    const outcome = await this.run(command, args, stdin, this.timeoutMs)
     switch (outcome.kind) {
       case 'spawn-error':
         return { ok: false, error: outcome.reason, retryable: false }

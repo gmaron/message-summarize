@@ -11,7 +11,7 @@ const win = [
 const count = (n: number): UnreadState => ({ kind: 'count', count: n })
 const ids = (r: { messages: readonly { id: string }[] }) => r.messages.map((m) => m.id)
 
-describe('selectUnreadTail', () => {
+describe('selectUnreadTail (RF-31)', () => {
   it('exports the context size', () => expect(CONTEXT_MESSAGES).toBe(5))
 
   it('markedUnread: every window message, no context, whatever lastIncoming says', () => {
@@ -27,6 +27,14 @@ describe('selectUnreadTail', () => {
 
   it('count 0: skipped even with stale unread messages', () => {
     const r = selectUnreadTail(count(0), win, [{ id: 'a', read: false }])
+    expect(r).toEqual({ messages: [], contextBefore: null })
+  })
+
+  it('a negative count (a sentinel, not a number of messages) is skipped like zero', () => {
+    const r = selectUnreadTail(count(-1), win, [
+      { id: 'd', read: false },
+      { id: 'c', read: false },
+    ])
     expect(r).toEqual({ messages: [], contextBefore: null })
   })
 

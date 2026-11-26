@@ -78,7 +78,7 @@ export function cronToSchedule(expression: string): Schedule | null {
   const fields = expression.trim().split(/\s+/)
   if (fields.length !== 5) return null
   const [minute, hour, dayOfMonth, month, dayOfWeek] = fields as [string, string, string, string, string]
-  if (!/^\d{1,2}$/.test(minute) || !/^\d{1,2}$/.test(hour)) return null
+  // `minute` and `hour` are not checked here: `makeSchedule` below refuses anything that is not a real time of day.
   // `?` ("no specific day") is a star in the day-of-month field.
   if ((dayOfMonth !== '*' && dayOfMonth !== '?') || month !== '*') return null
   const days = new Set<number>()

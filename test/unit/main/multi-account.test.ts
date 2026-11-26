@@ -15,9 +15,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DeliverPending } from '../../../src/application/deliver-pending.js'
 import { WhatsAppSelfChatDelivery } from '../../../src/infrastructure/whatsapp/self-chat-delivery.js'
 import { runMain } from '../../../src/main/app.js'
-import { writeBlocked } from '../../../src/main/blocked.js'
 import { maskAccount } from '../../../src/main/context.js'
-import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
+import { writeBlocked } from '../../../src/main/installation/blocked.js'
+import { acquireDaemonLock } from '../../../src/main/installation/daemon-lock.js'
 import {
   BA,
   disposeHarnesses,

@@ -350,7 +350,7 @@ describe('golden outputs', () => {
   })
 })
 
-describe('english', () => {
+describe('english (RF-39)', () => {
   const at = { since: Date.UTC(2026, 3, 20, 11, 0), until: Date.UTC(2026, 3, 20, 23, 0) }
   const enInput = (
     results: readonly ChatResult[],

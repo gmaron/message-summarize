@@ -4,8 +4,8 @@ import type { SummarizeResult } from '../../../src/application/ports/summarizer.
 import { composeSummarizer } from '../../../src/infrastructure/llm/index.js'
 import { inTransaction } from '../../../src/infrastructure/persistence/sqlite/transaction.js'
 import { runMain } from '../../../src/main/app.js'
-import { Daemon } from '../../../src/main/daemon.js'
-import { runDigest } from '../../../src/main/run-digest.js'
+import { Daemon } from '../../../src/main/daemon/daemon.js'
+import { runDigest } from '../../../src/main/daemon/run-digest.js'
 import type { Runtime } from '../../../src/main/runtime.js'
 import {
   disposeHarnesses,
@@ -345,6 +345,7 @@ describe('failureCode', () => {
     expect(failureCode('ollama timed out after 0.1s; fallback: down')).toBe('timeout')
     expect(failureCode('invalid summary: prioridad must be alta, media or baja')).toBe('invalidSummary')
     expect(failureCode('claude: Not logged in')).toBe('failed')
+    expect(failureCode('  localOnlyUnavailable  ; fallback: x')).toBe('localOnlyUnavailable')
   })
 
   it('decides a chained reason by the FIRST failure, and matches markers, not words inside a provider text', () => {

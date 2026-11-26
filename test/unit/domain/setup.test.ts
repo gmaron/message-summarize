@@ -79,6 +79,22 @@ describe('a remote Ollama is an external recipient (RNF-02)', () => {
     ['http://192.168.1.20:11434', false],
     ['https://ollama.example.com', false],
     ['http://127.0.0.1.example.com', false],
+    ['http://127.10.20.30:11434', true],
+    ['http://localhost', true],
+    ['http://localhost/', true],
+    ['http://localhost?x=1', true],
+    ['http://localhost#x', true],
+    ['HTTPS://LOCALHOST:11434', true],
+    ['  http://localhost:11434  ', true],
+    ['http://user:pw@localhost:11434', true],
+    // the host is what comes after the userinfo, never what comes before it
+    ['http://localhost@evil.example/', false],
+    ['http://127.0.0.1:80@evil.example/', false],
+    ['xhttp://localhost', false],
+    ['ftp://localhost', false],
+    ['http://evil127.0.0.1', false],
+    ['http://127.0.0', false],
+    ['http://', false],
     ['not a url', false],
   ])('%s is loopback: %s', (url, loopback) => {
     expect(isLoopbackUrl(url)).toBe(loopback)

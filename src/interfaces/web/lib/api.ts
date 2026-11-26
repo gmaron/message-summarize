@@ -1,6 +1,7 @@
 import type { KeyName, KeyRemoved, KeyStatuses, KeyStored } from './api-providers.js'
 import type {
   AccountView,
+  AskPresets,
   AskView,
   ConversationsView,
   HistoryDetail,
@@ -165,8 +166,13 @@ export function createApi(fetchFn: FetchFn, onUnauthorized: () => void = () => {
     cancelLink: (id: string) => request<{ ok: boolean }>('DELETE', `${account(id)}/link`),
     retry: (id: string) => request<{ ok: boolean }>('POST', `${account(id)}/retry`),
     digestNow: (id: string) => request<{ state: 'started' | 'deferred' }>('POST', `${account(id)}/digest`),
-    ask: (id: string, body: { question: string; period: string; chats: string[] } | { continueFrom: number }) =>
-      request<{ id: number }>('POST', `${account(id)}/ask`, body),
+    ask: (
+      id: string,
+      body: { question: string; period: string; selection: string; chats: string[]; deliver: boolean },
+    ) => request<{ id: number }>('POST', `${account(id)}/ask`, body),
+    askPresets: (id: string) => request<AskPresets>('GET', `${account(id)}/ask-presets`),
+    saveAskPresets: (id: string, presets: readonly { name: string; text: string }[]) =>
+      request<AskPresets>('PUT', `${account(id)}/ask-presets`, { presets }),
     asks: async (id: string) => (await request<{ asks: AskView[] }>('GET', `${account(id)}/asks`)).asks,
     deleteAsk: (id: string, askId: number) => request<undefined>('DELETE', `${account(id)}/asks/${askId}`),
     startPreview: (id: string) => request<{ state: string }>('POST', `${account(id)}/preview`),

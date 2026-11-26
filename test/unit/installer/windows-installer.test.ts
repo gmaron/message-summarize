@@ -177,7 +177,7 @@ describe('message-summarize.iss', () => {
     ).toBe(true)
     // DeleteFile, DelTree and RemoveDir are never called from [Code].
     expect(iss).not.toMatch(/\b(DelTree|DeleteFile|RemoveDir)\s*\(/)
-    // The data directory is the one src/main/paths.ts uses by default.
+    // The data directory is the one src/main/installation/paths.ts uses by default.
     expect(pascal('DataDir')).toContain("GetEnv('MSUM_DATA_DIR')")
     expect(pascal('DataDir')).toContain('{userappdata}\\message-summarize')
   })

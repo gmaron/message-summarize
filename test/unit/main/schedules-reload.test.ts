@@ -10,9 +10,9 @@ import {
   openDatabase,
 } from '../../../src/infrastructure/persistence/sqlite/index.js'
 import { CronerScheduler } from '../../../src/infrastructure/scheduling/croner-scheduler.js'
-import { openInstallation } from '../../../src/main/accounts.js'
 import { runMain } from '../../../src/main/app.js'
-import { Daemon } from '../../../src/main/daemon.js'
+import { Daemon } from '../../../src/main/daemon/daemon.js'
+import { openInstallation } from '../../../src/main/installation/accounts.js'
 import { BA, disposeHarnesses, FakeSummarizer, type Harness, makeHarness, waitFor } from '../../support/cli-harness.js'
 
 const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] as const

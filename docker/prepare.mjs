@@ -10,7 +10,7 @@ import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** HEARTBEAT_MS of src/main/daemon-lock.ts (a unit test keeps them in step). */
+/** HEARTBEAT_MS of src/main/installation/daemon-lock.ts (a unit test keeps them in step). */
 export const HEARTBEAT_MS = 30_000
 /** A lock untouched for this long has no live daemon behind it. */
 export const STALE_AFTER_MS = 3 * HEARTBEAT_MS

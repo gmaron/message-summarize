@@ -5,11 +5,11 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { err, ok } from '../../../src/domain/result.js'
 import { runMain } from '../../../src/main/app.js'
-import { writeBlocked } from '../../../src/main/blocked.js'
 import { maskAccount } from '../../../src/main/context.js'
-import { acquireDaemonLock } from '../../../src/main/daemon-lock.js'
-import { createLogger } from '../../../src/main/logger.js'
-import { writeUnitState } from '../../../src/main/unit-state.js'
+import { writeBlocked } from '../../../src/main/installation/blocked.js'
+import { acquireDaemonLock } from '../../../src/main/installation/daemon-lock.js'
+import { writeUnitState } from '../../../src/main/installation/unit-state.js'
+import { createLogger } from '../../../src/main/logging/logger.js'
 import {
   BA,
   disposeHarnesses,

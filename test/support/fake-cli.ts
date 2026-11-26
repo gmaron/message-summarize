@@ -43,6 +43,8 @@ export interface FakeCliOptions {
   /** Exit code of `--help`. Default 0. */
   readonly helpCode?: number
   readonly version?: string
+  /** Exit code of `--version`. Default 0. */
+  readonly versionCode?: number
 }
 
 let seq = 0
@@ -59,6 +61,7 @@ const steps = ${JSON.stringify(options.steps ?? [{ kind: 'text', text: '' }])}
 const help = ${JSON.stringify(options.help ?? '')}
 const helpCode = ${JSON.stringify(options.helpCode ?? 0)}
 const version = ${JSON.stringify(options.version ?? 'fake-cli 1.2.3')}
+const versionCode = ${JSON.stringify(options.versionCode ?? 0)}
 const record = ${JSON.stringify(record)}
 const argv = process.argv.slice(2)
 const kind = argv[0] === '--help' ? 'help' : argv[0] === '--version' ? 'version' : 'run'
@@ -71,7 +74,7 @@ process.stdin.on('end', () => {
     kind, argv, cwd: process.cwd(), cwdEntries: fs.readdirSync(process.cwd()), env: process.env, stdin, pid: process.pid,
   }) + '\\n')
   if (kind === 'help') { process.stdout.write(help); process.exitCode = helpCode; return }
-  if (kind === 'version') { process.stdout.write(version + '\\n'); return }
+  if (kind === 'version') { process.stdout.write(version + '\\n'); process.exitCode = versionCode; return }
   const step = steps[Math.min(runs, steps.length - 1)]
   if (step.kind === 'hang') { setInterval(() => {}, 1000); return }
   if (step.kind === 'grandchild') {

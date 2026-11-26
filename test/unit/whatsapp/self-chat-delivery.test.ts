@@ -85,6 +85,20 @@ describe('WhatsAppSelfChatDelivery (RF-50, RF-51, RF-52)', () => {
     expect(fake.sent).toEqual([])
   })
 
+  it.each([
+    ['no user', undefined],
+    ['an empty id', { id: '' }],
+    ['a LID', { id: ME_LID }],
+    ['a group', { id: GROUP }],
+  ])(
+    'rejects when no account is bound and the live account is %s too (null is not equal to null)',
+    async (_name, user) => {
+      const { fake, delivery } = setup({ bound: null, user })
+      expect(await delivery.deliver('digest')).toEqual({ ok: false, error: 'rejected' })
+      expect(fake.sent).toEqual([])
+    },
+  )
+
   it('compares against the account bound at the moment of each delivery', async () => {
     const { fake, identity, delivery } = setup({ bound: null })
     expect((await delivery.deliver('a')).ok).toBe(false)

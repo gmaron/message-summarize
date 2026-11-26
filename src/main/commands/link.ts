@@ -3,15 +3,15 @@ import { reconcileAccount } from '../../infrastructure/whatsapp/account-binding.
 import type { WhatsAppStatus } from '../../infrastructure/whatsapp/connection.js'
 import type { AccountArg } from '../../interfaces/cli/args.js'
 import { EXIT_FAILURE, EXIT_OK } from '../../interfaces/cli/run.js'
-import { isPrepared, prepareAccount } from '../account-command.js'
-import { readAccountState } from '../account-state.js'
-import { daemonUsing } from '../account-use.js'
-import { clearBlocked, FIXED_BY_LINKING, readBlocked } from '../blocked.js'
 import { type CommandContext, hasSession, maskAccount, withRuntime } from '../context.js'
-import { countingCapture } from '../counting-capture.js'
-import { acquireLinkLock, LINK_HEARTBEAT_MS } from '../link-lock.js'
-import { qrForTerminal, writeQrPng } from '../qr.js'
+import { readAccountState } from '../installation/account-state.js'
+import { daemonUsing } from '../installation/account-use.js'
+import { clearBlocked, FIXED_BY_LINKING, readBlocked } from '../installation/blocked.js'
+import { countingCapture } from '../link/counting-capture.js'
+import { acquireLinkLock, LINK_HEARTBEAT_MS } from '../link/lock.js'
+import { qrForTerminal, writeQrPng } from '../link/qr.js'
 import { createRuntime } from '../runtime.js'
+import { isPrepared, prepareAccount } from './account-command.js'
 
 type LinkOutcome =
   | { readonly kind: 'connected' }
