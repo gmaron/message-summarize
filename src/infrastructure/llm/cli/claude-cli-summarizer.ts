@@ -88,8 +88,12 @@ const CORRECTION =
   'resumen (string), pendientes (list of strings), necesita_respuesta (true or false), prioridad (alta, media or baja).'
 
 /** Verifies a Claude Code binary: the check `doctor` shows and the summarizer makes before its first call. */
-export function verifyClaudeCli(command: string, env: NodeJS.ProcessEnv): Promise<CliVerification> {
-  return verifyCli({ command, env, envNames: CHILD_ENV_NAMES, requiredFlags: CLAUDE_REQUIRED_FLAGS })
+export function verifyClaudeCli(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  requiredFlags: readonly string[] = CLAUDE_REQUIRED_FLAGS,
+): Promise<CliVerification> {
+  return verifyCli({ command, env, envNames: CHILD_ENV_NAMES, requiredFlags })
 }
 
 function interpretClaude(output: { stdout: string; stderr: string; code: number | null }, sent: string): AttemptResult {

@@ -1,6 +1,12 @@
 import type { StartDeadline } from './ports/deadline.js'
 import type { Transcriber } from './ports/transcriber.js'
-import type { ClaimOrder, TimeRange, TranscriptionClaims, TranscriptionStore } from './ports/transcription-store.js'
+import type {
+  ClaimOrder,
+  PendingAudio,
+  TimeRange,
+  TranscriptionClaims,
+  TranscriptionStore,
+} from './ports/transcription-store.js'
 import { createTranscriptionSlot, type TranscriptionSlot } from './transcription-slot.js'
 import { createWorkerPool } from './worker-pool.js'
 
@@ -30,6 +36,12 @@ export interface TranscribeAudiosDeps {
    * Not called while the audio may be tried again. A failure to delete is ignored.
    */
   readonly deleteMedia?: (mediaRef: string) => Promise<void>
+  /**
+   * Asked before an IMAGE is read: false means this image must not be read now (its conversation is local-only: reading
+   * needs a model that is not on this machine). It fails for good as `not-allowed` and its file is deleted. Never asked
+   * for an audio, which never leaves the machine. Absent: every image is read.
+   */
+  readonly mayRead?: (item: PendingAudio) => Promise<boolean>
   /** How often `observeOnly` looks at the queue. Default 1 second. */
   readonly observePollMs?: number
   /**
@@ -136,7 +148,18 @@ export function createTranscribeAudios(deps: TranscribeAudiosDeps): TranscribeAu
       const next = await store.claimPending(range, order)
       if (next === null) return 'stop'
       claimed = next
-      const result = await transcriber.transcribe({ audioPath: deps.mediaPath(next.mediaRef), language: deps.language })
+      if (next.kind === 'image' && deps.mayRead !== undefined && !(await deps.mayRead(next))) {
+        // Not an error and not a failure of the image: the owner keeps this conversation on this machine.
+        await store.fail(next.conversationId, next.messageId, 'not-allowed')
+        report('failed')
+        await dropMedia(next.mediaRef)
+        return 'done'
+      }
+      const result = await transcriber.transcribe({
+        audioPath: deps.mediaPath(next.mediaRef),
+        language: deps.language,
+        ...(next.kind === 'image' ? { kind: 'image' as const, caption: next.caption } : {}),
+      })
       // Stopped meanwhile: the process was killed, so the result says nothing about the audio. It stays pending.
       if (stopped) {
         await giveBack()

@@ -273,6 +273,7 @@ The reference detail is in [docs/guides](docs/guides/README.md) (English) and [d
 | [Providers](docs/guides/providers.md) | Choosing and testing the LLM provider, API keys and each one's privacy. |
 | [A CLI as a provider](docs/guides/cli-provider.md) | The "no tools" rule and the generic CLI. |
 | [Transcription](docs/guides/transcription.md) | whisper.cpp, options and limits. |
+| [Reading images](docs/guides/image-reading.md) | Optional: the text of pictures in digests. The picture leaves your machine. |
 | [Local model (Ollama)](docs/guides/local-model-ollama.md) | Candidates, evaluation and the `msum ollama` commands. |
 | [Import the previous tool](docs/guides/import-previous-tool.md) | `msum import`. |
 | [Network and privacy](docs/guides/network-and-privacy.md) | Every network destination. |

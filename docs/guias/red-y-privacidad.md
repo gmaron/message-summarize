@@ -6,8 +6,9 @@ No se envía nada a ningún lado salvo lo que figura en esta guía. No hay telem
 
 | Destino | Cuándo | Qué se envía |
 |---|---|---|
-| WhatsApp | Siempre que una cuenta está conectada | Tu propia conexión; la descarga de audios que recibís, si la transcripción está activa. |
+| WhatsApp | Siempre que una cuenta está conectada | Tu propia conexión; la descarga de audios que recibís, si la transcripción está activa, y de imágenes, si la lectura de imágenes está activa. |
 | El proveedor de LLM que elegiste | Al resumir o al responder un pedido de "Pedir" | El texto de las conversaciones que no son "solo locales" y tu prompt (o tu pedido). |
+| Anthropic, por `claude-cli` | Solo con `imageReading.enabled` ([guía](lectura-de-imagenes.md)) | **Las imágenes** de las conversaciones que no son "solo locales", para leer su texto. |
 | Lo que contacta Claude Code | Con `claude-cli` | Lo decide la propia CLI (ver abajo). |
 | La lista de modelos del proveedor | Al abrir el asistente o Ajustes para elegir modelo | Un `GET` sin texto de chats. |
 | Tu servidor de Ollama | `msum ollama pull`, `msum doctor` o el selector de modelos | El tag, o un pedido de la lista de modelos; sin texto de chats. |

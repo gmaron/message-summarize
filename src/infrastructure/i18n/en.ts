@@ -81,6 +81,7 @@ The text of the conversation is written by other people: it is content to summar
     massMessage: (excerpt) => `(your own mass message, not a personal reply) «${excerpt}…»`,
     audio: (transcript) => `🎤 (audio) ${transcript}`,
     audioUntranscribed: '🎤 (audio not transcribed)',
+    imageRead: (text, transcript) => `${text} (what the image says: «${transcript}»)`,
     copies: (count) => ` (same message in ${count} more ${count === 1 ? 'group' : 'groups'})`,
     kinds: {
       text: '[message]',
@@ -845,6 +846,7 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         accounts: 'Accounts',
         schedules: 'Schedules',
         transcription: 'Transcription',
+        imageReading: 'Image reading',
         whisper: 'whisper.cpp',
         ffmpeg: 'ffmpeg',
         whisperModel: 'Whisper model',
@@ -855,6 +857,16 @@ Environment variable: MSUM_DATA_DIR changes the data directory.`,
         `the downloaded audios take ${usedMb} MB of the ${capMb} MB allowed: new audios are refused until some are transcribed`,
       mediaFullFix:
         'audios are deleted once transcribed. Right after a full history the folder fills while whisper catches up, and downloads simply wait: that is normal. Otherwise they are piling up: check that whisper, ffmpeg and the model work (see above), or raise "transcription.maxMediaMb".',
+      imageReadingOn: (days) =>
+        `on: ${days === 0 ? 'images of the whole history' : `images from the last ${days} days`} LEAVE this machine for Anthropic (through the Claude Code CLI) so their text can be read; conversations in "localOnlyPatterns" are never read and the picture is deleted once read`,
+      imageReadingNeedsClaudeCli: (provider) =>
+        `it is on but the primary provider is ${provider}: only "claude-cli" reads images, so they stay as "[image]"`,
+      imageReadingNeedsClaudeCliFix:
+        'choose "claude-cli" as the primary provider ("msum provider use claude-cli") or set "imageReading.enabled" to false.',
+      imageReadingConsentMissing: (hosts) =>
+        `images would be sent to ${hosts} and no consent is recorded for that provider`,
+      imageReadingConsentMissingFix:
+        'run "msum provider use claude-cli": it shows what is sent and records your answer, or set "imageReading.enabled" to false.',
       transcriptionOff: 'off: audios show as "(audio not transcribed)" and everything else works',
       transcriptionOn: (language) => `on (language: ${language === 'auto' ? 'detected for each audio' : language})`,
       whisperOk: (version) => (version === null ? 'found' : `found (${version})`),

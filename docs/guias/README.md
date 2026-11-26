@@ -22,6 +22,7 @@ Las dos guías se verificaron contra las páginas oficiales el 2026-11-20. Los p
 | [Elegir y probar el proveedor de LLM](proveedores.md) | Proveedores, `provider ls/use/test`, claves de API, reintentos y privacidad de cada uno. |
 | [Usar una CLI como proveedor](cli-como-proveedor.md) | Claude Code y la CLI genérica, la regla de "sin herramientas" y por qué Gemini CLI y Codex están deshabilitadas. |
 | [Transcribir notas de voz](transcripcion.md) | whisper.cpp, opciones, límites y cola de descargas. |
+| [Leer imágenes](lectura-de-imagenes.md) | Opcional: el texto de las imágenes en los digests. La imagen sale de tu máquina. |
 | [Elegir un modelo local (Ollama)](modelo-local-ollama.md) | Candidatos, evaluación y comandos `msum ollama`. |
 | [Importar desde la herramienta anterior](importar-herramienta-anterior.md) | `msum import`. |
 | [A qué se conecta el programa](red-y-privacidad.md) | Todos los destinos de red. |

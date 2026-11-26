@@ -23,6 +23,8 @@ export interface RunSpec {
   readonly killGraceMs: number
   /** Each of stdout and stderr is capped at about this many characters; past it the child is killed. */
   readonly maxOutputChars: number
+  /** Aborting kills the process group at once and settles as a `timeout` (the caller knows it asked for it). */
+  readonly signal?: AbortSignal
 }
 
 /** Each of stdout and stderr of a CLI is capped at 2 MB, as the answers of the HTTP APIs are. */
@@ -103,6 +105,10 @@ export function runProcess(spec: RunSpec): Promise<RunOutcome> {
       stderr = (stderr + d).slice(-spec.maxOutputChars) // only the tail matters
     })
     child.stdin.on('error', () => {}) // the child may exit before reading everything
+    if (spec.signal !== undefined) {
+      if (spec.signal.aborted) abort({ kind: 'timeout' })
+      else spec.signal.addEventListener('abort', () => abort({ kind: 'timeout' }), { once: true })
+    }
     child.on('error', (e: NodeJS.ErrnoException) =>
       finish({ kind: 'spawn-error', reason: `could not run ${spec.command}: ${e.code ?? 'error'}` }),
     )

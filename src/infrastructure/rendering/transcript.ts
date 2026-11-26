@@ -29,6 +29,7 @@ export function createTranscriptRenderer(catalog: Catalog, timeZone: string): Tr
   const bodyOf = ({ message, isMass }: TranscriptEntry): string => {
     const body = messageBody(message)
     if (body.type === 'audio') return body.transcript ? t.audio(body.transcript) : t.audioUntranscribed
+    if (body.type === 'image') return t.imageRead(body.text, body.transcript)
     if (body.type === 'placeholder') return t.kinds[body.kind]
     if (isMass) return t.massMessage(body.text.replace(/\s+/g, ' ').slice(0, MASS_EXCERPT_LENGTH))
     return body.text

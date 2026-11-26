@@ -365,6 +365,35 @@ export async function doctorCommand(
         }
       }
 
+      // Image reading (opt-in): the pictures leave this machine, so it says so, and checks that the provider can do it and
+      // that the owner consented to it.
+      if (account !== null && loaded.ok && loaded.value.imageReading.enabled) {
+        const imageName = label(accountTexts.names.imageReading)
+        const primary = loaded.value.provider.primary
+        if (primary !== 'claude-cli') {
+          io.out(
+            accountTexts.warn(
+              imageName,
+              accountTexts.imageReadingNeedsClaudeCli(primary ?? 'none'),
+              accountTexts.imageReadingNeedsClaudeCliFix,
+            ),
+          )
+        } else {
+          ok(imageName, accountTexts.imageReadingOn(loaded.value.imageReading.historyDays))
+          if (findConsent(installation.setup, account.id, 'claude-cli', loaded.value) === null) {
+            io.out(
+              accountTexts.warn(
+                imageName,
+                accountTexts.imageReadingConsentMissing(
+                  hostsText(accountCatalog.cli.provider, loaded.value, 'claude-cli'),
+                ),
+                accountTexts.imageReadingConsentMissingFix,
+              ),
+            )
+          }
+        }
+      }
+
       // Schedules (RF-60): in the database; the "schedules" of the configuration were imported once
       if (account !== null && loaded.ok) {
         importConfigSchedules(installation, account.id, loaded.value)

@@ -84,6 +84,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 |---|---|---|---|
 | RF-20 | Transcribir audios localmente con whisper.cpp | v1 | La transcripción reemplaza al "[audio]" en el digest. Nunca se envía audio a un servicio externo |
 | RF-21 | Activar o desactivar la transcripción | v1 | Si está desactivada o falta whisper, el producto funciona igual y los audios aparecen como "[audio]" |
+| RF-83 | Leer el texto de las imágenes (opcional) | v1 | Opt-in (`imageReading.enabled`, desactivado por defecto). La imagen se descarga igual que un audio (cola durable, solo del host de medios de WhatsApp, 10 MB como máximo), la lee un modelo con visión por el CLI de Claude Code y el texto reemplaza al "[imagen]" en el digest y en Ask; la imagen se borra al leerla. A diferencia del audio, **la imagen sale de la máquina** (va a Anthropic por el proveedor `claude-cli`, el único que lee imágenes): por eso `doctor` lo avisa y pide el consentimiento del proveedor, y una conversación de `localOnlyPatterns` nunca se lee (se revisa al capturar y otra vez justo antes de leer). Sin texto que leer, la imagen sigue como "[imagen]" |
 | RF-22 | Descargar el modelo de whisper desde la web | v1 | Se elige el modelo, se ve una barra de progreso y se verifica el checksum al terminar |
 | RF-23 | Elegir el idioma de la transcripción | v1 | Configurable por cuenta, con detección automática como opción |
 

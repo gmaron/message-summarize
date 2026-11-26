@@ -22,6 +22,7 @@ Both guides were checked against the official pages on 2026-11-20. Providers cha
 | [Choosing and testing the LLM provider](providers.md) | Providers, `provider ls/use/test`, API keys, retries and each one's privacy. |
 | [Using a CLI as a provider](cli-provider.md) | Claude Code and the generic CLI, the "no tools" rule and why Gemini CLI and Codex are disabled. |
 | [Transcribing voice notes](transcription.md) | whisper.cpp, options, limits and the download queue. |
+| [Reading images](image-reading.md) | Optional: the text of pictures in digests. The picture leaves your machine. |
 | [Choosing a local model (Ollama)](local-model-ollama.md) | Candidates, evaluation and the `msum ollama` commands. |
 | [Importing from the previous tool](import-previous-tool.md) | `msum import`. |
 | [What the program connects to](network-and-privacy.md) | Every network destination. |

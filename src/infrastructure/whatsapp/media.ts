@@ -9,6 +9,8 @@ export const MEDIA_DIR_MODE = 0o700
 export const MEDIA_FILE_MODE = 0o600
 /** A voice note of a few minutes is well under 1 MB: a file bigger than this is not one, and is not downloaded. */
 export const DEFAULT_MAX_AUDIO_BYTES = 25 * 1024 * 1024
+/** A photo of WhatsApp is a few hundred KB; this is far above any, and what the vision model accepts is smaller. */
+export const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const DEFAULT_AUDIO_DOWNLOAD_TIMEOUT_MS = 60_000
 /** What the audio files of one account may take together, downloaded and not yet transcribed (`transcription.maxMediaMb`). */
 export const DEFAULT_MAX_MEDIA_DIR_BYTES = 500 * 1024 * 1024
@@ -82,6 +84,8 @@ export interface AudioFetcherOptions {
   readonly openAudio: (descriptor: AudioDescriptor) => Promise<Readable>
   /** Bigger files are refused, by the size the message announces and by what actually arrives. */
   readonly maxBytes?: number
+  /** The same limit for an image. Default 10 MB. */
+  readonly maxImageBytes?: number
   /** The whole download, opening included. */
   readonly timeoutMs?: number
   /** The most the media directory may hold. Default 500 MB. */
@@ -104,10 +108,14 @@ export interface AudioFetcher {
 }
 
 /**
- * Audio formats of WhatsApp, by mimetype (parameters like `; codecs=opus` ignored) to the extension the file gets. The
+ * Media formats of WhatsApp that are downloaded (audios, and images when they are read), by mimetype (parameters like `; codecs=opus` ignored) to the extension the file gets. The
  * transcription side picks the ffmpeg input format from that extension, so an unknown format never reaches ffmpeg.
  */
 const EXTENSIONS: Readonly<Record<string, string>> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
   'audio/ogg': 'ogg',
   'audio/opus': 'ogg',
   'audio/mpeg': 'mp3',
@@ -119,7 +127,16 @@ const EXTENSIONS: Readonly<Record<string, string>> = {
   'audio/amr': 'amr',
 }
 
-/** The extension for a mimetype, or undefined when it is not a known audio format. */
+/** What a known mimetype is: an audio or an image, or undefined for anything else. */
+export function mediaKindOfMimetype(mimetype: string | null | undefined): 'audio' | 'image' | undefined {
+  const extension = extensionForMimetype(mimetype)
+  if (extension === undefined) return undefined
+  return IMAGE_EXTENSIONS.includes(extension) ? 'image' : 'audio'
+}
+
+const IMAGE_EXTENSIONS: readonly string[] = ['jpg', 'png', 'webp']
+
+/** The extension for a mimetype, or undefined when it is not a known audio or image format. */
 export function extensionForMimetype(mimetype: string | null | undefined): string | undefined {
   if (typeof mimetype !== 'string') return undefined
   const base = mimetype.split(';')[0]?.trim().toLowerCase() ?? ''
@@ -167,7 +184,8 @@ async function ensureMediaDir(mediaDir: string): Promise<boolean> {
 }
 
 export function createAudioFetcher(options: AudioFetcherOptions): AudioFetcher {
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_AUDIO_BYTES
+  const maxAudioBytes = options.maxBytes ?? DEFAULT_MAX_AUDIO_BYTES
+  const maxImageBytes = options.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES
   const timeoutMs = options.timeoutMs ?? DEFAULT_AUDIO_DOWNLOAD_TIMEOUT_MS
   const maxDirBytes = options.maxDirBytes ?? DEFAULT_MAX_MEDIA_DIR_BYTES
   const isLive = options.isLive ?? (() => true)
@@ -180,6 +198,7 @@ export function createAudioFetcher(options: AudioFetcherOptions): AudioFetcher {
       if (!isSafeDirectPath(descriptor.directPath)) return err('invalid-media-path')
       const extension = extensionForMimetype(descriptor.mimetype)
       if (extension === undefined) return err('unsupported-format')
+      const maxBytes = mediaKindOfMimetype(descriptor.mimetype) === 'image' ? maxImageBytes : maxAudioBytes
       if (descriptor.mediaKey.byteLength !== 32) return err('invalid-media')
       if (gone()) return err('aborted')
       const announced = descriptor.fileLength

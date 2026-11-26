@@ -10,7 +10,7 @@ import makeWASocket, {
 import { loadSecureAuthState } from './auth-state.js'
 import type { AudioReuploadRequest, SocketFactory, WhatsAppSocket } from './connection.js'
 import { normalizeJid, selfChatJid } from './jid.js'
-import { type AudioDescriptor, isSafeDirectPath } from './media.js'
+import { type AudioDescriptor, isSafeDirectPath, mediaKindOfMimetype } from './media.js'
 import type {
   WaChat,
   WaContact,
@@ -82,7 +82,9 @@ async function openAudio(descriptor: AudioDescriptor): Promise<Readable> {
   // is never given (only `directPath` and the key), and the path must be a plain path. The fetcher checks the same
   // before it gets here; this is the second lock.
   if (!isSafeDirectPath(descriptor.directPath)) throw new Error('invalid-media-path')
-  return downloadContentFromMessage({ mediaKey: descriptor.mediaKey, directPath: descriptor.directPath }, 'audio', {
+  // The same download for an image that is read (opt-in): only the media type of the key derivation changes.
+  const type = mediaKindOfMimetype(descriptor.mimetype) === 'image' ? 'image' : 'audio'
+  return downloadContentFromMessage({ mediaKey: descriptor.mediaKey, directPath: descriptor.directPath }, type, {
     host: DEF_MEDIA_HOST,
   })
 }
@@ -112,13 +114,22 @@ async function requestAudioReupload(
       fromMe: request.key.fromMe,
       ...(request.key.participant === null ? {} : { participant: request.key.participant }),
     },
-    message: {
-      audioMessage: {
-        mediaKey: request.descriptor.mediaKey,
-        directPath: request.descriptor.directPath,
-        mimetype: request.descriptor.mimetype,
-      },
-    },
+    message:
+      mediaKindOfMimetype(request.descriptor.mimetype) === 'image'
+        ? {
+            imageMessage: {
+              mediaKey: request.descriptor.mediaKey,
+              directPath: request.descriptor.directPath,
+              mimetype: request.descriptor.mimetype,
+            },
+          }
+        : {
+            audioMessage: {
+              mediaKey: request.descriptor.mediaKey,
+              directPath: request.descriptor.directPath,
+              mimetype: request.descriptor.mimetype,
+            },
+          },
   }
   let timer: ReturnType<typeof setTimeout> | undefined
   const timedOut = new Promise<never>((_resolve, reject) => {
