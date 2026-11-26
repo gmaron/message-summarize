@@ -23,6 +23,7 @@ import type { Clock } from './ports/clock.js'
 
 const DAY_MS = 86_400_000
 export const DEFAULT_AUDIO_HISTORY_DAYS = 14
+export const DEFAULT_IMAGE_HISTORY_DAYS = 7
 /** How far ahead of our own clock an edit time may be and still be believed (phone clocks drift). */
 export const EDIT_CLOCK_SKEW_MS = 5 * 60_000
 
@@ -42,6 +43,17 @@ export interface CaptureMessagesDeps {
   readonly ownConversationIds: () => readonly string[]
   /** RF-15: audios from history older than this many days are not downloaded. Default 14; 0 means no limit. */
   readonly audioHistoryDays?: number
+  /** False: audios are not asked for (only images are read). Default true. */
+  readonly downloadAudios?: boolean
+  /** Whether images are read now (`imageReading.enabled`), read on every event. Absent: they are not. */
+  readonly readImages?: () => boolean
+  /** Images from history older than this many days are not downloaded. Default 7; 0 means no limit. */
+  readonly imageHistoryDays?: number
+  /**
+   * The local-only patterns (`localOnlyPatterns`), read on every event. An image of a local-only conversation is never
+   * downloaded to be read: reading it needs a model that is not on this machine. Same matcher as the digest.
+   */
+  readonly localOnlyPatterns?: () => readonly string[]
 }
 
 export interface CaptureMessages {
@@ -85,6 +97,10 @@ export interface CaptureMessages {
 export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessages {
   const { repository, clock } = deps
   const audioHistoryDays = deps.audioHistoryDays ?? DEFAULT_AUDIO_HISTORY_DAYS
+  const wantsAudios = deps.downloadAudios ?? true
+  const readsImages = deps.readImages ?? (() => false)
+  const imageHistoryDays = deps.imageHistoryDays ?? DEFAULT_IMAGE_HISTORY_DAYS
+  const localOnlyPatterns = deps.localOnlyPatterns ?? (() => [])
 
   /** What the exclusion needs to know of a conversation besides its id: the stored chat and person (for the names). */
   interface Facts {
@@ -93,8 +109,8 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
   }
 
   /** Looks the facts up, or null when there are no patterns now (nothing to compare, so nothing to look up). */
-  async function factsOf(id: string, isGroup: boolean): Promise<Facts | null> {
-    if (deps.excludePatterns().length === 0) return null
+  async function factsOf(id: string, isGroup: boolean, alsoLocalOnly = false): Promise<Facts | null> {
+    if (deps.excludePatterns().length === 0 && !(alsoLocalOnly && localOnlyPatterns().length > 0)) return null
     const stored = await repository.findConversation(id)
     const base: Conversation = stored ?? {
       id,
@@ -112,8 +128,12 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
    * right before a write, with nothing awaited in between, so an exclusion applied while the event was being handled
    * (the web marks a chat and deletes what was stored) can never be followed by a write of that event.
    */
-  function excludedNow(facts: Facts | null, id: string, eventName?: string | null): boolean {
-    const patterns = deps.excludePatterns()
+  function excludedNow(
+    facts: Facts | null,
+    id: string,
+    eventName?: string | null,
+    patterns: readonly string[] = deps.excludePatterns(),
+  ): boolean {
     if (patterns.length === 0) return false
     // Both names count: the one the event brings and the one already stored. Neither replaces the other, so a
     // pattern that matches either excludes the chat (a rename must not let an excluded chat through).
@@ -126,6 +146,13 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       if (isExcluded(patterns, id, name)) return true
     }
     return false
+  }
+
+  /** Is the conversation local-only by the patterns in force now? Same matcher and names as the exclusion. */
+  async function localOnly(id: string, isGroup: boolean, eventName?: string | null): Promise<boolean> {
+    const patterns = localOnlyPatterns()
+    if (patterns.length === 0) return false
+    return excludedNow(await factsOf(id, isGroup, true), id, eventName, patterns)
   }
 
   /** Should the content events of this conversation be dropped (owner's own chat, or excluded by RF-14)? */
@@ -177,7 +204,16 @@ export function createCaptureMessages(deps: CaptureMessagesDeps): CaptureMessage
       return {
         stored: true,
         isNew,
-        downloadAudio: message.kind === 'audio' && !hasTranscript && !mediaHandled && recent,
+        downloadAudio: wantsAudios && message.kind === 'audio' && !hasTranscript && !mediaHandled && recent,
+        downloadImage:
+          message.kind === 'image' &&
+          readsImages() &&
+          !hasTranscript &&
+          !mediaHandled &&
+          (origin === 'live' ||
+            imageHistoryDays === 0 ||
+            message.timestamp >= clock.now() - imageHistoryDays * DAY_MS) &&
+          !(await localOnly(id, isGroup, conversationName)),
       }
     },
 

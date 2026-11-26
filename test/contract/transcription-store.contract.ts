@@ -221,7 +221,36 @@ export function describeTranscriptionStoreContract(backend: PersistenceBackend):
         messageId: 'a',
         mediaRef: 'a.ogg',
         timestamp: 1234,
+        kind: 'audio',
+        caption: null,
       })
+    })
+
+    it('queues an image like an audio, and says it is one, with the text of its message as context', async () => {
+      const f = make()
+      await f.repository.insertMessage(
+        message({ id: 'p', conversationId: 'c1', kind: 'image', text: '[imagen] Mirá', timestamp: 500 }),
+      )
+      expect(
+        await f.repository.queueDownload('c1', 'p', {
+          directPath: '/v/p',
+          mediaKey: new Uint8Array(32).fill(3),
+          mimetype: 'image/jpeg',
+          fileLength: 100,
+        }),
+      ).toBe(true)
+      expect(await f.downloads.completeDownload('c1', 'p', 'p.jpg')).toBe(true)
+      await audio(f, 'a', 1000)
+      expect(await f.transcription.nextPending()).toEqual({
+        conversationId: 'c1',
+        messageId: 'p',
+        mediaRef: 'p.jpg',
+        timestamp: 500,
+        kind: 'image',
+        caption: '[imagen] Mirá',
+      })
+      expect(await f.transcription.complete('c1', 'p', 'Feria del libro')).toBe(true)
+      expect((await f.transcription.nextPending())?.kind).toBe('audio')
     })
 
     it('limits to a time range: from inclusive, until exclusive', async () => {

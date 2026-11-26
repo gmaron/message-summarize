@@ -158,6 +158,22 @@ export interface TranscriptionConfig {
   readonly maxMediaMb: number
 }
 
+/**
+ * Reading the text of images (opt-in). Unlike the audio, THE IMAGE LEAVES THIS MACHINE: a model with vision reads it, and that
+ * is the CLI provider (`provider.claudeCli`, today the only one that is supported). So it is off by default, an image of a
+ * conversation in `localOnlyPatterns` is never read, and `doctor` says what is sent. The text goes where "[image]" shows
+ * in digests and Ask; the picture is deleted as soon as it is read.
+ */
+export interface ImageReadingConfig {
+  readonly enabled: boolean
+  /** Images of the history sync from the last N days are read too (older ones stay "[image]"). 0: no limit. Default 7. */
+  readonly historyDays: number
+  /** Total time for one image. */
+  readonly timeoutMs: number
+}
+
+export const DEFAULT_IMAGE_READING: ImageReadingConfig = { enabled: false, historyDays: 7, timeoutMs: 180_000 }
+
 /** The local web (RNF-03). Only the installation's config.json sets it: an account cannot. */
 export interface WebConfig {
   readonly enabled: boolean
@@ -203,6 +219,7 @@ export interface AppConfig {
   readonly schedules: readonly string[]
   readonly provider: ProviderConfig
   readonly transcription: TranscriptionConfig
+  readonly imageReading: ImageReadingConfig
   readonly web: WebConfig
   readonly logs: LogsConfig
 }
@@ -266,9 +283,11 @@ const TOP_LEVEL = new Set([
   'schedules',
   'provider',
   'transcription',
+  'imageReading',
   'web',
   'logs',
 ])
+const IMAGE_READING_KEYS = new Set(['enabled', 'historyDays', 'timeoutMs'])
 const TRANSCRIPTION_KEYS = new Set([
   'enabled',
   'whisperCommand',
@@ -668,6 +687,21 @@ export function parseConfig(
   )
   const maxMediaMb = positiveInt(transcriptionObj, 'maxMediaMb', 'transcription.maxMediaMb', 500)
 
+  const imageObj = section(input, 'imageReading', 'imageReading', IMAGE_READING_KEYS)
+  const imageEnabled = ((): boolean | undefined => {
+    const v = imageObj.enabled
+    if (v === undefined) return DEFAULT_IMAGE_READING.enabled
+    return typeof v === 'boolean' ? v : add('imageReading.enabled', 'notBoolean')
+  })()
+  // 0: no limit, the whole history.
+  const imageHistoryDays = nonNegativeInt(
+    imageObj,
+    'historyDays',
+    'imageReading.historyDays',
+    DEFAULT_IMAGE_READING.historyDays,
+  )
+  const imageTimeout = positiveInt(imageObj, 'timeoutMs', 'imageReading.timeoutMs', DEFAULT_IMAGE_READING.timeoutMs)
+
   const webObj = section(input, 'web', 'web', WEB_KEYS)
   const webEnabled = ((): boolean | undefined => {
     const v = webObj.enabled
@@ -771,6 +805,9 @@ export function parseConfig(
     transcriptionThreads === undefined ||
     downloadConcurrency === undefined ||
     maxMediaMb === undefined ||
+    imageEnabled === undefined ||
+    imageHistoryDays === undefined ||
+    imageTimeout === undefined ||
     webEnabled === undefined ||
     webHost === undefined ||
     webPort === undefined ||
@@ -831,6 +868,7 @@ export function parseConfig(
       threads: transcriptionThreads,
       downloadConcurrency,
     },
+    imageReading: { enabled: imageEnabled, historyDays: imageHistoryDays, timeoutMs: imageTimeout },
     web: { enabled: webEnabled, host: webHost ?? DEFAULT_WEB.host, port: webPort, allowedHosts: webAllowedHosts },
     logs: { maxBytes: logsMaxBytes },
   })
@@ -906,6 +944,9 @@ export function mergeConfigJson(base: Obj, overrides: Obj): Obj {
   if (isObject(baseTranscription) && isObject(overrideTranscription)) {
     merged.transcription = { ...baseTranscription, ...overrideTranscription }
   }
+  const baseImages = base.imageReading
+  const overrideImages = overrides.imageReading
+  if (isObject(baseImages) && isObject(overrideImages)) merged.imageReading = { ...baseImages, ...overrideImages }
   return merged
 }
 

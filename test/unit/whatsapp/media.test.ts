@@ -19,11 +19,13 @@ import {
   classifyFailure,
   createAudioFetcher,
   DEFAULT_MAX_AUDIO_BYTES,
+  DEFAULT_MAX_IMAGE_BYTES,
   extensionForMimetype,
   isSafeDirectPath,
   MEDIA_DIR_MODE,
   MEDIA_FILE_MODE,
   mediaDirectoryBytes,
+  mediaKindOfMimetype,
   mediaRefOf,
 } from '../../../src/infrastructure/whatsapp/media.js'
 import { until } from '../../support/cli-harness.js'
@@ -100,6 +102,65 @@ describe('what the sender writes is checked before anything is requested', () =>
     ]) {
       expect(extensionForMimetype(unknown), String(unknown)).toBeUndefined()
     }
+  })
+
+  it('knows the image formats the vision model takes, and tells an image from an audio', () => {
+    expect(extensionForMimetype('image/jpeg')).toBe('jpg')
+    expect(extensionForMimetype('IMAGE/PNG')).toBe('png')
+    expect(extensionForMimetype('image/webp')).toBe('webp')
+    expect(extensionForMimetype('image/gif')).toBeUndefined()
+    expect(extensionForMimetype('image/svg+xml')).toBeUndefined()
+    expect(mediaKindOfMimetype('image/jpeg')).toBe('image')
+    expect(mediaKindOfMimetype('audio/ogg; codecs=opus')).toBe('audio')
+    expect(mediaKindOfMimetype('video/mp4')).toBeUndefined()
+    expect(mediaKindOfMimetype(null)).toBeUndefined()
+  })
+
+  it('downloads an image into a file with the extension of its format, under the same checks as an audio', async () => {
+    const dir = mediaDir()
+    const fetcher = createAudioFetcher({
+      mediaDir: dir,
+      openAudio: async () => Readable.from([Buffer.from('jpegbytes')]),
+    })
+    const result = await fetcher.fetch(audioMessage(9, 'image/jpeg'), KEY)
+    expect(result).toEqual({ ok: true, value: mediaRefOf(KEY.conversationId, KEY.messageId, 'jpg') })
+    let opened = 0
+    const refusing = createAudioFetcher({
+      mediaDir: mediaDir(),
+      openAudio: async () => {
+        opened++
+        return Readable.from([Buffer.from('x')])
+      },
+    })
+    expect(await refusing.fetch(audioMessage(9, 'image/jpeg', { directPath: '//evil/x' }), KEY)).toEqual({
+      ok: false,
+      error: 'invalid-media-path',
+    })
+    expect(await refusing.fetch(audioMessage(9, 'image/jpeg', { mediaKey: new Uint8Array(5) }), KEY)).toEqual({
+      ok: false,
+      error: 'invalid-media',
+    })
+    expect(opened).toBe(0)
+  })
+
+  it('an image has its own size limit (10 MB by default), apart from the one of an audio', async () => {
+    const fetcher = createAudioFetcher({
+      mediaDir: mediaDir(),
+      openAudio: async () => Readable.from([Buffer.from('x')]),
+    })
+    expect(DEFAULT_MAX_IMAGE_BYTES).toBe(10 * 1024 * 1024)
+    expect(await fetcher.fetch(audioMessage(DEFAULT_MAX_IMAGE_BYTES + 1, 'image/jpeg'), KEY)).toEqual({
+      ok: false,
+      error: 'too-large',
+    })
+    // The same size is fine for an audio (25 MB limit).
+    expect((await fetcher.fetch(audioMessage(DEFAULT_MAX_IMAGE_BYTES + 1), KEY)).ok).toBe(true)
+    const small = createAudioFetcher({
+      mediaDir: mediaDir(),
+      maxImageBytes: 4,
+      openAudio: async () => Readable.from([Buffer.from('0123456789')]),
+    })
+    expect(await small.fetch(audioMessage(undefined, 'image/jpeg'), KEY)).toEqual({ ok: false, error: 'too-large' })
   })
 
   it('gives the file the extension of its format, so the transcriber can force the right demuxer', async () => {

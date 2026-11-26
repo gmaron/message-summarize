@@ -42,11 +42,19 @@ export interface WaMediaFields {
   contextInfo?: WaContextInfo | null
 }
 
+/** The fields of a media message that a download needs. All written by the sender. */
+export type WaDownloadableMedia = WaMediaFields & {
+  directPath?: string | null
+  mediaKey?: Uint8Array | string | null
+  url?: string | null
+}
+
 /** A protobuf message, as loosely as it is read: the kind is whichever field is set. */
 export interface WaContent {
   conversation?: string | null
   extendedTextMessage?: { text?: string | null; contextInfo?: WaContextInfo | null } | null
-  imageMessage?: WaMediaFields | null
+  /** Like `audioMessage`, an image is downloaded (when it is read) from what the sender wrote: none of it is trusted. */
+  imageMessage?: WaDownloadableMedia | null
   videoMessage?: WaMediaFields | null
   /** A round video note: handled as a video. */
   ptvMessage?: WaMediaFields | null
@@ -56,13 +64,7 @@ export interface WaContent {
    * with `isSafeDirectPath`), `mediaKey` (the decryption key of the file: a secret, stored only in the account database).
    * `url` is never used: it could point anywhere.
    */
-  audioMessage?:
-    | (WaMediaFields & {
-        directPath?: string | null
-        mediaKey?: Uint8Array | string | null
-        url?: string | null
-      })
-    | null
+  audioMessage?: WaDownloadableMedia | null
   documentMessage?: WaMediaFields | null
   stickerMessage?: WaMediaFields | null
   locationMessage?: WaLocation | null

@@ -76,6 +76,7 @@ describe('parseConfig defaults', () => {
         threads: 1,
         downloadConcurrency: 2,
       },
+      imageReading: { enabled: false, historyDays: 7, timeoutMs: 180_000 },
       web: { enabled: true, host: '127.0.0.1', port: 8787, allowedHosts: [] },
       logs: { maxBytes: 52_428_800 },
     })
@@ -222,6 +223,35 @@ describe('parseConfig errors name the option and the reason (RF-73)', () => {
       'timezone',
       'concurrency',
     ])
+  })
+})
+
+describe('imageReading options (opt-in, the pictures leave this machine)', () => {
+  const imagesOf = (input: unknown) => {
+    const result = parse(input)
+    if (!result.ok) throw new Error(JSON.stringify(result.error))
+    return result.value.imageReading
+  }
+
+  it('is off by default, reads the last 7 days of history and gives an image three minutes', () => {
+    expect(imagesOf({})).toEqual({ enabled: false, historyDays: 7, timeoutMs: 180_000 })
+  })
+
+  it('takes every option, and 0 days means the whole history', () => {
+    expect(imagesOf({ imageReading: { enabled: true, historyDays: 0, timeoutMs: 60_000 } })).toEqual({
+      enabled: true,
+      historyDays: 0,
+      timeoutMs: 60_000,
+    })
+  })
+
+  it('refuses what is not valid, and an option that does not exist', () => {
+    expect(issuesOf({ imageReading: { enabled: 'yes' } })).toEqual([
+      { option: 'imageReading.enabled', code: 'notBoolean' },
+    ])
+    expect(issuesOf({ imageReading: { historyDays: -1 } })[0]?.option).toBe('imageReading.historyDays')
+    expect(issuesOf({ imageReading: { timeoutMs: 0 } })[0]?.option).toBe('imageReading.timeoutMs')
+    expect(issuesOf({ imageReading: { model: 'x' } })[0]?.option).toBe('imageReading.model')
   })
 })
 

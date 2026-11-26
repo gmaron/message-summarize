@@ -362,14 +362,14 @@ export class SqliteCaptureWriter {
     return Number(result.changes) === 1
   }
 
-  /** The file of an audio was stored: it joins the queue, unless it has a transcript (then it is just recorded). */
+  /** The file of an audio or an image was stored: it joins the queue, unless it has a transcript (then it is just recorded). */
   setMedia(conversationId: string, id: string, mediaRef: string): boolean {
     const result = this.db
       .prepare(
         `UPDATE messages SET media_ref = ?,
            transcribe_status = CASE WHEN transcript IS NULL THEN 'pending' ELSE 'done' END,
            transcribe_error = NULL, ${CLEAR_DESCRIPTOR}
-         WHERE conversation_id = ? AND id = ? AND kind = 'audio'`,
+         WHERE conversation_id = ? AND id = ? AND kind IN ('audio', 'image')`,
       )
       .run(mediaRef, conversationId, id)
     return Number(result.changes) === 1
@@ -386,7 +386,7 @@ export class SqliteCaptureWriter {
            dl_reupload_attempts = 0, dl_needs_reupload = 0,
            dl_direct_path = ?, dl_media_key = ?, dl_mimetype = ?, dl_file_length = ?,
            dl_remote_jid = ?, dl_from_me = ?, dl_participant = ?
-         WHERE conversation_id = ? AND id = ? AND kind = 'audio' AND transcript IS NULL AND transcribe_status IS NULL`,
+         WHERE conversation_id = ? AND id = ? AND kind IN ('audio', 'image') AND transcript IS NULL AND transcribe_status IS NULL`,
       )
       .run(
         descriptor.directPath,
@@ -407,7 +407,7 @@ export class SqliteCaptureWriter {
     const result = this.db
       .prepare(
         `UPDATE messages SET transcribe_status = 'failed', transcribe_error = ?, ${CLEAR_DESCRIPTOR}
-         WHERE conversation_id = ? AND id = ? AND kind = 'audio' AND transcript IS NULL`,
+         WHERE conversation_id = ? AND id = ? AND kind IN ('audio', 'image') AND transcript IS NULL`,
       )
       .run(reason, conversationId, id)
     return Number(result.changes) === 1

@@ -248,14 +248,20 @@ export class InMemoryCaptureRepository
   async queueDownload(conversationId: string, messageId: string, descriptor: DownloadDescriptor): Promise<boolean> {
     const old = this.messages[this.indexOf(conversationId, messageId)]
     const key = this.key(conversationId, messageId)
-    if (old === undefined || old.kind !== 'audio' || old.transcript !== null || this.media.has(key)) return false
+    if (
+      old === undefined ||
+      (old.kind !== 'audio' && old.kind !== 'image') ||
+      old.transcript !== null ||
+      this.media.has(key)
+    )
+      return false
     this.media.set(key, { ref: null, status: 'download_pending', error: null, descriptor, attempts: 0 })
     return true
   }
 
   async setMedia(conversationId: string, messageId: string, mediaRef: string): Promise<boolean> {
     const old = this.messages[this.indexOf(conversationId, messageId)]
-    if (old === undefined || old.kind !== 'audio') return false
+    if (old === undefined || (old.kind !== 'audio' && old.kind !== 'image')) return false
     this.media.set(this.key(conversationId, messageId), {
       ref: mediaRef,
       status: old.transcript === null ? 'pending' : 'done',
@@ -268,7 +274,7 @@ export class InMemoryCaptureRepository
 
   async setMediaFailure(conversationId: string, messageId: string, reason: string): Promise<boolean> {
     const old = this.messages[this.indexOf(conversationId, messageId)]
-    if (old === undefined || old.kind !== 'audio' || old.transcript !== null) return false
+    if (old === undefined || (old.kind !== 'audio' && old.kind !== 'image') || old.transcript !== null) return false
     const known = this.media.get(this.key(conversationId, messageId))
     this.media.set(this.key(conversationId, messageId), {
       ref: known?.ref ?? null,
@@ -452,6 +458,8 @@ export class InMemoryCaptureRepository
       messageId: first.message.id,
       mediaRef: first.ref,
       timestamp: first.message.timestamp,
+      kind: first.message.kind === 'image' ? 'image' : 'audio',
+      caption: first.message.kind === 'image' ? first.message.text : null,
     }
   }
 
@@ -474,6 +482,8 @@ export class InMemoryCaptureRepository
       messageId: first.message.id,
       mediaRef: first.ref,
       timestamp: first.message.timestamp,
+      kind: first.message.kind === 'image' ? 'image' : 'audio',
+      caption: first.message.kind === 'image' ? first.message.text : null,
     }
   }
 

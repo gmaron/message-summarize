@@ -8,6 +8,20 @@ describe('messageBody', () => {
   it('keeps the caption of an image', () => {
     expect(messageBody({ kind: 'image', text: 'look', transcript: null })).toEqual({ type: 'text', text: 'look' })
   })
+  it('an image whose text was read keeps its label and caption and carries what it says', () => {
+    expect(messageBody({ kind: 'image', text: '[imagen] look', transcript: 'Concert, Friday 8 pm' })).toEqual({
+      type: 'image',
+      text: '[imagen] look',
+      transcript: 'Concert, Friday 8 pm',
+    })
+  })
+  it('an image with an empty transcript (nothing to read) shows as before', () => {
+    expect(messageBody({ kind: 'image', text: '[imagen] look', transcript: '' })).toEqual({
+      type: 'text',
+      text: '[imagen] look',
+    })
+    expect(messageBody({ kind: 'image', text: null, transcript: 'x' })).toEqual({ type: 'placeholder', kind: 'image' })
+  })
   it('returns a placeholder by kind when a non-audio message has no text', () => {
     expect(messageBody({ kind: 'image', text: null, transcript: null })).toEqual({ type: 'placeholder', kind: 'image' })
     expect(messageBody({ kind: 'sticker', text: null, transcript: null })).toEqual({

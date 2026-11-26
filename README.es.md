@@ -273,6 +273,7 @@ El detalle de referencia está en [docs/guias](docs/guias/README.md) (español) 
 | [Proveedores](docs/guias/proveedores.md) | Elegir y probar el proveedor de LLM, claves de API y privacidad de cada uno. |
 | [Una CLI como proveedor](docs/guias/cli-como-proveedor.md) | La regla de "sin herramientas" y la CLI genérica. |
 | [Transcripción](docs/guias/transcripcion.md) | whisper.cpp, opciones y límites. |
+| [Lectura de imágenes](docs/guias/lectura-de-imagenes.md) | Opcional: el texto de las imágenes en los digests. La imagen sale de tu máquina. |
 | [Modelo local (Ollama)](docs/guias/modelo-local-ollama.md) | Candidatos, evaluación y comandos `msum ollama`. |
 | [Importar la herramienta anterior](docs/guias/importar-herramienta-anterior.md) | `msum import`. |
 | [Red y privacidad](docs/guias/red-y-privacidad.md) | Todos los destinos de red. |

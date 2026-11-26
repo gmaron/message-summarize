@@ -6,8 +6,9 @@ Nothing is sent anywhere except what this guide lists. There is no telemetry, an
 
 | Destination | When | What is sent |
 |---|---|---|
-| WhatsApp | Whenever an account is connected | Your own account's connection; the download of audio you receive, if transcription is on. |
+| WhatsApp | Whenever an account is connected | Your own account's connection; the download of audio you receive, if transcription is on, and of the images you receive, if image reading is on. |
 | The LLM provider you chose | When summarizing or answering an "Ask" request | The text of the conversations that are not "local only" and your prompt (or your request). |
+| Anthropic, through `claude-cli` | Only with `imageReading.enabled` ([guide](image-reading.md)) | **The images** of the conversations that are not "local only", to read their text. |
 | What Claude Code contacts | With `claude-cli` | Decided by the CLI itself (see below). |
 | The provider's model list | When opening the wizard or Settings to choose a model | A `GET` with no chat text. |
 | Your Ollama server | `msum ollama pull`, `msum doctor` or the model picker | The tag, or a request for the model list; no chat text. |

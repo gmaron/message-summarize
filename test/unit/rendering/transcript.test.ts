@@ -99,6 +99,17 @@ describe('bodies', () => {
     const m = from('Ana Gómez', T, 'caption', { kind: 'audio', transcript: 'Hola, te llamo mañana.' })
     expect(body({ messages: [m] })).toBe('[09:05] Ana Gómez: 🎤 (audio) Hola, te llamo mañana.')
   })
+  it('renders an image with the text that was read from it, after its label and caption', () => {
+    const m = from('Ana Gómez', T, '[imagen] Mirá', { kind: 'image', transcript: 'Feria del libro, sábado 10 hs' })
+    expect(body({ messages: [m] })).toBe(
+      '[09:05] Ana Gómez: [imagen] Mirá (lo que dice la imagen: «Feria del libro, sábado 10 hs»)',
+    )
+    expect(en.render(transcript({ messages: [m] }))).toContain('(what the image says: «Feria del libro, sábado 10 hs»)')
+  })
+  it('an image with no text read renders as before', () => {
+    const m = from('Ana Gómez', T, '[imagen] Mirá', { kind: 'image', transcript: null })
+    expect(body({ messages: [m] })).toBe('[09:05] Ana Gómez: [imagen] Mirá')
+  })
   it('renders an audio with no transcript, or an empty one, as not transcribed', () => {
     for (const transcript of [null, '']) {
       const m = from('Ana Gómez', T, 'caption', { kind: 'audio', transcript })

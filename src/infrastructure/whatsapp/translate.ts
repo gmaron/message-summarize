@@ -5,7 +5,7 @@ import type { Catalog } from '../i18n/index.js'
 import { type ParsedContent, parseContent, parseEdit, parseEditedBody, toNumber, unwrap } from './content.js'
 import { parseExtras } from './details.js'
 import { addressOf, isBroadcastJid, isGroupJid, isLid, isNewsletterJid, normalizeJid } from './jid.js'
-import { extensionForMimetype, isSafeDirectPath } from './media.js'
+import { extensionForMimetype, isSafeDirectPath, mediaKindOfMimetype } from './media.js'
 import type { OwnConversationIds } from './own-ids.js'
 import { rawValueJson } from './raw.js'
 import type {
@@ -548,10 +548,15 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     )
     count('stored')
     // The capture decides which audios are wanted: live ones, and those of the history within the configured days.
-    if (outcome?.downloadAudio && ports.audio !== undefined) {
+    if ((outcome?.downloadAudio || outcome?.downloadImage) && ports.audio !== undefined) {
       await timed(
         'requestDownload',
-        requestDownload(msg, { conversationId: located.chatJid, isGroup: located.isGroup, conversationName }, key.id),
+        requestDownload(
+          msg,
+          { conversationId: located.chatJid, isGroup: located.isGroup, conversationName },
+          key.id,
+          outcome.downloadImage ? 'image' : 'audio',
+        ),
       )
     }
   }
@@ -565,12 +570,20 @@ export function createTranslator(ports: TranslatorPorts): WhatsAppTranslator {
     msg: WaMessage,
     where: { conversationId: string; isGroup: boolean; conversationName: string | null },
     messageId: string,
+    kind: 'audio' | 'image',
   ): Promise<void> {
     const event = { ...where, messageId }
-    const audio = unwrap(msg.message)?.audioMessage
+    // Same checks for both: what the sender wrote is never trusted, an image included.
+    const content = unwrap(msg.message)
+    const audio = kind === 'image' ? content?.imageMessage : content?.audioMessage
     const failed = (reason: string): Promise<void> => capture.mediaFailed({ ...event, reason })
     if (!isSafeDirectPath(audio?.directPath)) return failed('invalid-media-path')
-    if (extensionForMimetype(audio?.mimetype) === undefined || typeof audio?.mimetype !== 'string') {
+    if (
+      extensionForMimetype(audio?.mimetype) === undefined ||
+      typeof audio?.mimetype !== 'string' ||
+      // An audio message never carries an image mimetype or the other way round: the kind is the message's, the file is checked.
+      mediaKindOfMimetype(audio.mimetype) !== kind
+    ) {
       return failed('unsupported-format')
     }
     const mediaKey = mediaKeyOf(audio.mediaKey)

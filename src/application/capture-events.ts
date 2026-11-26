@@ -149,4 +149,11 @@ export interface ReceiveOutcome {
    * The adapter answers with `queueMedia` (the descriptor, to download later) or `mediaFailed`.
    */
   readonly downloadAudio: boolean
+  /**
+   * The adapter should download this IMAGE so its text can be read (opt-in `imageReading`): an image stored with no text
+   * read yet, whose file was not stored before and whose download did not fail before, that arrived live or from history
+   * within the configured days, and whose conversation is not local-only. Same answer as for an audio: `queueMedia` or
+   * `mediaFailed`.
+   */
+  readonly downloadImage?: boolean
 }

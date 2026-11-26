@@ -41,6 +41,7 @@ import { createRenderers } from '../infrastructure/rendering/index.js'
 import { resolveModelPath, WhisperCppTranscriber } from '../infrastructure/transcription/index.js'
 import { OwnConversationIds } from '../infrastructure/whatsapp/own-ids.js'
 import type { AppConfig } from './config.js'
+import { buildImageReader, mayReadImage, routeMedia } from './media-transcriber.js'
 import type { AccountLayout } from './paths.js'
 import { buildSummarizer } from './providers.js'
 
@@ -75,6 +76,8 @@ export interface RuntimeOptions {
   readonly summarizer?: Summarizer | null
   /** Replaces the transcriber built from the configuration (null: none). For tests. */
   readonly transcriber?: Transcriber | null
+  /** Reads images (tests). Absent: the real reader when `imageReading` is on, none otherwise. */
+  readonly imageReader?: Transcriber | null
   /** Replaces the real timers of the transcription wait. For tests. */
   readonly startDeadline?: StartDeadline
   /** How long a digest waits for pending audios. Default `DIGEST_TRANSCRIPTION_WAIT_MS`. */
@@ -160,7 +163,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     if (bound !== null) ownIds.set([bound])
 
     const { transcription: settings } = config
-    const transcriber =
+    const audioTranscriber =
       options.transcriber !== undefined
         ? options.transcriber
         : settings.enabled
@@ -176,6 +179,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
               env,
             })
           : null
+    // Images are read by a model with vision, which is the provider: opt-in, see `ImageReadingConfig`.
+    const imageReader = options.imageReader !== undefined ? options.imageReader : buildImageReader(config, env)
+    const transcriber = routeMedia(audioTranscriber, imageReader)
     const queues = new SqliteTranscriptionStore(db)
     const mediaFreed = new Set<() => void>()
     // The process slot allows as many transcriptions at once as the most demanding account asks for.
@@ -197,6 +203,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
         : { mustObserve: options.daemonRunning }),
       ...(options.transcriptionPollMs === undefined ? {} : { observePollMs: options.transcriptionPollMs }),
       // What is kept is the text: the audio file goes once it is transcribed, or failed for good.
+      mayRead: mayReadImage(repository, () => config.localOnlyPatterns),
       deleteMedia: async (mediaRef) => {
         await rm(join(layout.mediaDir, mediaRef), { force: true })
         for (const listener of [...mediaFreed]) listener()
@@ -213,6 +220,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       // History audios of the last N days are downloaded too (RF-15), when transcription is on (the adapter only
       // downloads then). Older ones stay untranscribed.
       audioHistoryDays: settings.historyAudioDays,
+      // Only what is on is asked for: with transcription off, images can still be read, and the other way round.
+      downloadAudios: audioTranscriber !== null,
+      readImages: () => imageReader !== null && config.imageReading.enabled,
+      imageHistoryDays: config.imageReading.historyDays,
+      localOnlyPatterns: () => config.localOnlyPatterns,
     })
 
     // A summarizer given in the options (tests) is fixed: a reconfiguration does not replace it. The audio wait is not

@@ -82,6 +82,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 |---|---|---|---|
 | RF-20 | Transcribir audios localmente con whisper.cpp | v1 | La transcripción reemplaza al "[audio]" en el digest. Nunca se envía audio a un servicio externo |
 | RF-21 | Activar o desactivar la transcripción | v1 | Si está desactivada o falta whisper, el producto funciona igual y los audios aparecen como "[audio]" |
+| RF-24 | Leer el texto de las imágenes (opcional) | v1 | Opt-in (`imageReading.enabled`, desactivado por defecto). La imagen se descarga igual que un audio (cola durable, solo del host de medios de WhatsApp, 10 MB como máximo), la lee un modelo con visión por el CLI de Claude Code y el texto reemplaza al "[imagen]" en el digest y en Ask; la imagen se borra al leerla. A diferencia del audio, **la imagen sale de la máquina** (va a Anthropic por el proveedor `claude-cli`, el único que lee imágenes): por eso `doctor` lo avisa y pide el consentimiento del proveedor, y una conversación de `localOnlyPatterns` nunca se lee (se revisa al capturar y otra vez justo antes de leer). Sin texto que leer, la imagen sigue como "[imagen]" |
 | RF-22 | Descargar el modelo de whisper desde la web | v1 | Se elige el modelo, se ve una barra de progreso y se verifica el checksum al terminar |
 | RF-23 | Elegir el idioma de la transcripción | v1 | Configurable por cuenta, con detección automática como opción |
 
@@ -212,6 +213,7 @@ Prioridad: **v1** (necesario para la v0.1.0) o **Luego**. Cada requerimiento tie
 | RF-10 a RF-15 | `infrastructure/whatsapp/BaileysSource` + `MessageParser` + `HandleIncomingMessage` | 1 |
 | RF-50 a RF-52 | `DeliveryChannel` + `WhatsAppSelfChatDelivery` + `OutboxRepository` + `WhatsAppTextRenderer` | 1 |
 | RF-03, RF-06, RF-60 a RF-66 | Daemon, `CronerScheduler`, `ScheduleRepository`, `app.db`, `import` | 2 |
+| RF-24 | `ClaudeImageReader` (`infrastructure/vision/`), `routeMedia` y `mayReadImage` (`main/media-transcriber.ts`), la cola de medios compartida con el audio | 3 |
 | RF-20 a RF-23, RF-40 a RF-47, RF-81 | `infrastructure/llm/api/` (`OpenAISummarizer`, `AnthropicSummarizer`, `GeminiSummarizer`, `OllamaSummarizer`), `infrastructure/llm/cli/` (`CliSummarizer` con presets de Claude Code, Gemini CLI y Codex, más la plantilla genérica; `SandboxedProcessRunner`), `StructuredOutputValidator`, `FallbackSummarizer`, `LocalOnlyRouter`, `RateLimitRetry`, `WhisperCppTranscriber`, `ModelDownloader`, `doctor` | 3 |
 | RF-01, RF-02, RF-04, RF-70 a RF-75, RF-82 | API HTTP con node:http + SSE, SPA, autenticación con token | 4 |
 | RF-76 | `AskChats` (caso de uso sobre `Summarizer`), `AskService` en memoria, rutas `/api/accounts/:id/ask` y pestaña "Pedir" | Posterior a v0.1.0-rc1 |

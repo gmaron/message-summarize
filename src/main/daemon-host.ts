@@ -424,9 +424,12 @@ export class DaemonHost {
       this.invalidConfigs.delete(id)
       const next = this.withPendingMarks(id, loaded.value)
       // The transcriber, the queue, the history days and the download worker of the connection are wired when the unit
-      // starts: `reconfigure` does not rebuild them. A change of `transcription` therefore restarts the unit, with the full
+      // starts: `reconfigure` does not rebuild them. A change of `transcription` or `imageReading` therefore restarts the unit, with the full
       // release of a stop (no whisper, no download, no open handle) and a start on the next look; everything else is live.
-      if (JSON.stringify(next.transcription) !== JSON.stringify(unit.runtime.config.transcription)) {
+      if (
+        JSON.stringify(next.transcription) !== JSON.stringify(unit.runtime.config.transcription) ||
+        JSON.stringify(next.imageReading) !== JSON.stringify(unit.runtime.config.imageReading)
+      ) {
         logger.info('account.restarting', { reason: 'transcription' })
         this.languages.set(id, loaded.value.language)
         await this.stopUnit(id, 'restart')

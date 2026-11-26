@@ -17,6 +17,8 @@ interface PendingRow {
   id: string
   media_ref: string
   timestamp: number
+  kind: string
+  text: string | null
 }
 
 interface DownloadRow {
@@ -57,6 +59,18 @@ function toPendingDownload(row: DownloadRow): PendingDownload {
             },
           }),
     },
+  }
+}
+
+function toPendingAudio(row: PendingRow): PendingAudio {
+  const image = row.kind === 'image'
+  return {
+    conversationId: row.conversation_id,
+    messageId: row.id,
+    mediaRef: row.media_ref,
+    timestamp: row.timestamp,
+    kind: image ? 'image' : 'audio',
+    caption: image ? row.text : null,
   }
 }
 
@@ -281,18 +295,12 @@ export class SqliteTranscriptionStore
     const { sql, params } = rangeClause(range)
     const row = this.db
       .prepare(
-        `SELECT conversation_id, id, media_ref, timestamp FROM messages
+        `SELECT conversation_id, id, media_ref, timestamp, kind, text FROM messages
          WHERE transcribe_status = 'pending' AND media_ref IS NOT NULL${sql}
          ORDER BY timestamp, seq LIMIT 1`,
       )
       .get(...params) as PendingRow | undefined
-    if (row === undefined) return null
-    return {
-      conversationId: row.conversation_id,
-      messageId: row.id,
-      mediaRef: row.media_ref,
-      timestamp: row.timestamp,
-    }
+    return row === undefined ? null : toPendingAudio(row)
   }
 
   async countPending(range?: TimeRange): Promise<number> {
@@ -340,16 +348,10 @@ export class SqliteTranscriptionStore
            WHERE transcribe_status = 'pending' AND media_ref IS NOT NULL AND transcribe_claimed_at IS NULL${sql}
            ORDER BY timestamp ${direction}, seq ${direction} LIMIT 1
          )
-         RETURNING conversation_id, id, media_ref, timestamp`,
+         RETURNING conversation_id, id, media_ref, timestamp, kind, text`,
       )
       .get(Date.now(), ...params) as PendingRow | undefined
-    if (row === undefined) return null
-    return {
-      conversationId: row.conversation_id,
-      messageId: row.id,
-      mediaRef: row.media_ref,
-      timestamp: row.timestamp,
-    }
+    return row === undefined ? null : toPendingAudio(row)
   }
 
   async releaseClaim(conversationId: string, messageId: string): Promise<void> {

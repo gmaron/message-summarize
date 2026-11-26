@@ -185,6 +185,8 @@ export interface Catalog {
     massMessage(excerpt: string): string
     audio(transcript: string): string
     readonly audioUntranscribed: string
+    /** An image with text read from it (opt-in `imageReading`): its label and caption (`text`) and what it says. */
+    imageRead(text: string, transcript: string): string
     /** Suffix of a line whose message was repeated in `count` other groups (always 1 or more). */
     copies(count: number): string
     /** Shown instead of the text of a message that has none (RF-10). */
@@ -668,6 +670,7 @@ export interface Catalog {
         readonly accounts: string
         readonly schedules: string
         readonly transcription: string
+        readonly imageReading: string
         readonly whisper: string
         readonly ffmpeg: string
         readonly whisperModel: string
@@ -680,6 +683,14 @@ export interface Catalog {
       /** The downloaded audios of the account take (nearly) all the space they are allowed (`transcription.maxMediaMb`). */
       mediaFull(usedMb: number, capMb: number): string
       readonly mediaFullFix: string
+      /** Image reading is on (opt-in): the pictures LEAVE this machine, through the Claude Code CLI provider. */
+      imageReadingOn(historyDays: number): string
+      /** Image reading is on but the primary provider is not the Claude Code CLI: images stay as "[image]". */
+      imageReadingNeedsClaudeCli(provider: string): string
+      readonly imageReadingNeedsClaudeCliFix: string
+      /** Images would be sent to Anthropic and no consent is recorded for the provider. */
+      imageReadingConsentMissing(hosts: string): string
+      readonly imageReadingConsentMissingFix: string
       /** Transcription is off: audios show as not transcribed, and that is fine (RF-21). */
       readonly transcriptionOff: string
       transcriptionOn(language: string): string

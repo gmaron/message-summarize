@@ -1,4 +1,4 @@
-/** An audio that was downloaded and waits for its transcript (RF-15). */
+/** An audio (or image) that was downloaded and waits for its transcript, or for its text to be read (RF-15). */
 export interface PendingAudio {
   readonly conversationId: string
   readonly messageId: string
@@ -6,6 +6,10 @@ export interface PendingAudio {
   readonly mediaRef: string
   /** Epoch ms. */
   readonly timestamp: number
+  /** What the file is. An image is read with a vision model instead of being transcribed. */
+  readonly kind: 'audio' | 'image'
+  /** The text of the message (label and caption): context for reading an image. Null for an audio. */
+  readonly caption: string | null
 }
 
 /** Epoch milliseconds: `from` inclusive, `until` exclusive. A missing end is open. */

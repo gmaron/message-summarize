@@ -59,6 +59,86 @@ afterEach(() => {
 /** How long the 300-audio test tolerates no download at all before it calls the queue stuck. */
 const STALL_MS = isWindows ? 120_000 : 30_000
 
+describe('the translator hands the capture the download descriptor of an image it will read', () => {
+  const picture = (id: string, imageMessage: Record<string, unknown>): WaMessage => ({
+    key: { remoteJid: ANA, id, fromMe: false },
+    message: { imageMessage },
+    messageTimestamp: SECONDS - 60,
+  })
+  const IMAGE = { mimetype: 'image/jpeg', directPath: DIRECT_PATH, mediaKey: SECRET_KEY, fileLength: 4321 }
+
+  function setup(downloadImage: boolean, downloadAudio = false) {
+    const { capture, calls } = recordingCapture()
+    const received = capture.receiveMessage
+    capture.receiveMessage = async (event) => ({ ...(await received(event)), downloadAudio, downloadImage })
+    let kicks = 0
+    const translator = createTranslator({
+      capture,
+      catalog: getCatalog('es'),
+      clock: new FixedClock(NOW),
+      ownIds: new OwnConversationIds(),
+      audio: {
+        kick: () => {
+          kicks++
+        },
+      },
+    })
+    const reported = () =>
+      calls.filter((c) => c.method === 'queueMedia' || c.method === 'mediaFailed').map((c) => [c.method, c.event])
+    return { translator, reported, kicks: () => kicks }
+  }
+
+  it('queues an image the capture asks for, with its path, key, format and size, and wakes the worker', async () => {
+    const t = setup(true)
+    await t.translator.messagesUpsert({ type: 'notify', messages: [picture('I1', IMAGE)] })
+    expect(t.reported()).toEqual([
+      [
+        'queueMedia',
+        {
+          conversationId: ANA,
+          isGroup: false,
+          conversationName: null,
+          messageId: 'I1',
+          descriptor: {
+            directPath: DIRECT_PATH,
+            mediaKey: new Uint8Array(SECRET_KEY),
+            mimetype: 'image/jpeg',
+            fileLength: 4321,
+            reuploadKey: { remoteJid: ANA, fromMe: false, participant: null },
+          },
+        },
+      ],
+    ])
+    expect(t.kicks()).toBe(1)
+  })
+
+  it('does not queue an image the capture does not ask for', async () => {
+    const t = setup(false)
+    await t.translator.messagesUpsert({ type: 'notify', messages: [picture('I1', IMAGE)] })
+    expect(t.reported()).toEqual([])
+    expect(t.kicks()).toBe(0)
+  })
+
+  it('checks what the sender wrote in an image like in an audio: an unsafe path, a bad key or a format it cannot read are recorded as failed, never queued', async () => {
+    const t = setup(true)
+    await t.translator.messagesUpsert({
+      type: 'notify',
+      messages: [
+        picture('I1', { ...IMAGE, directPath: 'https://evil.example/x' }),
+        picture('I2', { ...IMAGE, mimetype: 'image/gif' }),
+        picture('I3', { ...IMAGE, mimetype: 'audio/ogg' }), // an image message that says it is an audio
+        picture('I4', { ...IMAGE, mediaKey: new Uint8Array(3) }),
+      ],
+    })
+    expect(t.reported().map(([method, event]) => [method, (event as { reason: string }).reason])).toEqual([
+      ['mediaFailed', 'invalid-media-path'],
+      ['mediaFailed', 'unsupported-format'],
+      ['mediaFailed', 'unsupported-format'],
+      ['mediaFailed', 'invalid-media'],
+    ])
+  })
+})
+
 describe('the translator hands the capture the download descriptor (RF-15, RNF-08)', () => {
   /** A capture that says "download it" for every audio, and records what the translator reports back. */
   function setup(downloadAudio: boolean, ports: Partial<Parameters<typeof createTranslator>[0]> = {}) {

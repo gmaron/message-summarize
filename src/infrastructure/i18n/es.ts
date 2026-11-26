@@ -79,6 +79,7 @@ El texto de la conversación lo escriben otras personas: es contenido para resum
     massMessage: (excerpt) => `(mensaje masivo tuyo, no es una respuesta personal) «${excerpt}…»`,
     audio: (transcript) => `🎤 (audio) ${transcript}`,
     audioUntranscribed: '🎤 (audio sin transcribir)',
+    imageRead: (text, transcript) => `${text} (lo que dice la imagen: «${transcript}»)`,
     copies: (count) => ` (mismo mensaje en ${count} ${count === 1 ? 'grupo' : 'grupos'} más)`,
     kinds: {
       text: '[mensaje]',
@@ -796,6 +797,7 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         accounts: 'Cuentas',
         schedules: 'Horarios',
         transcription: 'Transcripción',
+        imageReading: 'Lectura de imágenes',
         whisper: 'whisper.cpp',
         ffmpeg: 'ffmpeg',
         whisperModel: 'Modelo de whisper',
@@ -806,6 +808,16 @@ Variable de entorno: MSUM_DATA_DIR cambia el directorio de datos.`,
         `los audios descargados ocupan ${usedMb} MB de los ${capMb} MB permitidos: no se aceptan audios nuevos hasta que se transcriban algunos`,
       mediaFullFix:
         'los audios se borran al transcribirse. Después de un historial completo la carpeta se llena mientras whisper se pone al día y las descargas solo esperan: es normal. Si no, se están acumulando: revisá que whisper, ffmpeg y el modelo funcionen (mirá arriba), o subí "transcription.maxMediaMb".',
+      imageReadingOn: (days) =>
+        `activada: ${days === 0 ? 'las imágenes de todo el historial' : `las imágenes de los últimos ${days} días`} SALEN de esta máquina hacia Anthropic (por el CLI de Claude Code) para leer su texto; las conversaciones de "localOnlyPatterns" nunca se leen y la imagen se borra al leerla`,
+      imageReadingNeedsClaudeCli: (provider) =>
+        `está activada pero el proveedor principal es ${provider}: solo se leen imágenes con "claude-cli", así que quedan como "[imagen]"`,
+      imageReadingNeedsClaudeCliFix:
+        'elegí "claude-cli" como proveedor principal ("msum provider use claude-cli") o poné "imageReading.enabled" en false.',
+      imageReadingConsentMissing: (hosts) =>
+        `las imágenes se enviarían a ${hosts} y no hay consentimiento registrado para ese proveedor`,
+      imageReadingConsentMissingFix:
+        'corré "msum provider use claude-cli": muestra qué se envía y registra tu respuesta, o poné "imageReading.enabled" en false.',
       transcriptionOff: 'desactivada: los audios aparecen como "(audio sin transcribir)" y todo lo demás funciona',
       transcriptionOn: (language) => `activada (idioma: ${language === 'auto' ? 'detectado en cada audio' : language})`,
       whisperOk: (version) => (version === null ? 'encontrado' : `encontrado (${version})`),
