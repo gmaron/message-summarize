@@ -41,7 +41,7 @@ import { createRenderers } from '../infrastructure/rendering/index.js'
 import { resolveModelPath, WhisperCppTranscriber } from '../infrastructure/transcription/index.js'
 import { OwnConversationIds } from '../infrastructure/whatsapp/own-ids.js'
 import type { AppConfig } from './config.js'
-import { buildImageReader, mayReadImage, routeMedia } from './media-transcriber.js'
+import { buildImageReader, imageReadingActive, mayReadImage, routeMedia } from './media-transcriber.js'
 import type { AccountLayout } from './paths.js'
 import { buildSummarizer } from './providers.js'
 
@@ -222,7 +222,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       audioHistoryDays: settings.historyAudioDays,
       // Only what is on is asked for: with transcription off, images can still be read, and the other way round.
       downloadAudios: audioTranscriber !== null,
-      readImages: () => imageReader !== null && config.imageReading.enabled,
+      readImages: () => imageReader !== null && imageReadingActive(config),
       imageHistoryDays: config.imageReading.historyDays,
       localOnlyPatterns: () => config.localOnlyPatterns,
     })

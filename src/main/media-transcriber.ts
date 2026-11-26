@@ -1,7 +1,7 @@
 import type { CaptureRepository } from '../application/ports/capture-repository.js'
 import type { Transcriber } from '../application/ports/transcriber.js'
 import type { PendingAudio } from '../application/ports/transcription-store.js'
-import { isExcluded } from '../domain/exclusion.js'
+import { exactIdOf, isExcluded } from '../domain/exclusion.js'
 import { resolveConversationName } from '../domain/names.js'
 import { err } from '../domain/result.js'
 import { ClaudeImageReader } from '../infrastructure/vision/index.js'
@@ -64,6 +64,18 @@ export function mayReadImage(
     if (stored === null) return false // unknown conversation: do not send what cannot be checked
     const person = stored.participantId === null ? null : await repository.findParticipant(stored.participantId)
     const { name } = resolveConversationName(stored, person, { unnamedGroup: '' })
+    // Fail closed: the check in capture also sees the name the event brought, which is not stored with the queued
+    // image. A group whose name is not known now cannot be compared with a name pattern, so its image is not read.
+    if (name === '' && patterns.some((pattern) => exactIdOf(pattern) === null)) return false
     return !isExcluded(patterns, item.conversationId, name)
   }
+}
+
+/**
+ * What the image reader of a configuration depends on besides `imageReading`: whether the provider allows it and which
+ * Claude Code it runs. A change makes the unit restart, so images are never sent after the provider stopped being the one
+ * the owner agreed to; `null` when images are not read.
+ */
+export function imageReaderSettings(config: AppConfig): string | null {
+  return imageReadingActive(config) ? JSON.stringify(config.provider.claudeCli) : null
 }

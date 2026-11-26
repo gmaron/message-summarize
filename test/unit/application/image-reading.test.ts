@@ -280,6 +280,13 @@ describe('mayReadImage: the second lock of the local-only rule', () => {
     expect(await mayReadImage(repo, () => ['trabajo'])(item())).toBe(true)
   })
 
+  it('fails closed for a group with no known name when a name pattern is set, but not for an id pattern', async () => {
+    const repo = new InMemoryCaptureRepository()
+    await repo.upsertConversation({ id: 'g1', isGroup: true, name: null, participantId: null, address: 'g1' })
+    expect(await mayReadImage(repo, () => ['terapia'])(item('g1'))).toBe(false)
+    expect(await mayReadImage(repo, () => ['id:otro@g.us'])(item('g1'))).toBe(true)
+  })
+
   it('refuses what it cannot check: a conversation it does not know', async () => {
     const repo = new InMemoryCaptureRepository()
     expect(await mayReadImage(repo, () => ['terapia'])(item('ghost'))).toBe(false)

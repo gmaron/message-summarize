@@ -29,6 +29,7 @@ import type { DaemonLock } from './daemon-lock.js'
 import { LinkFlow, type LinkFlowResult, type LinkPhase, type LinkSnapshot } from './link-flow.js'
 import { acquireLinkLock, LINK_HEARTBEAT_MS, linkLockHolder } from './link-lock.js'
 import { errorCode, type LogFields, scopedLogger } from './logger.js'
+import { imageReaderSettings } from './media-transcriber.js'
 import { accountLayoutOf, ensureAccountDirs, unsafeAccountPath } from './paths.js'
 import { type AliasHost, coverAlias, purgeNow } from './privacy-aliases.js'
 import { retryBlock } from './retry.js'
@@ -428,7 +429,8 @@ export class DaemonHost {
       // release of a stop (no whisper, no download, no open handle) and a start on the next look; everything else is live.
       if (
         JSON.stringify(next.transcription) !== JSON.stringify(unit.runtime.config.transcription) ||
-        JSON.stringify(next.imageReading) !== JSON.stringify(unit.runtime.config.imageReading)
+        JSON.stringify(next.imageReading) !== JSON.stringify(unit.runtime.config.imageReading) ||
+        imageReaderSettings(next) !== imageReaderSettings(unit.runtime.config)
       ) {
         logger.info('account.restarting', { reason: 'transcription' })
         this.languages.set(id, loaded.value.language)

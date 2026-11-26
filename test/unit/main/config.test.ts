@@ -13,6 +13,7 @@ import {
   mergeConfigJson,
   parseConfig,
 } from '../../../src/main/config.js'
+import { imageReaderSettings } from '../../../src/main/media-transcriber.js'
 
 const BA = 'America/Argentina/Buenos_Aires'
 const parse = (input: unknown) => parseConfig(input, BA)
@@ -235,6 +236,20 @@ describe('imageReading options (opt-in, the pictures leave this machine)', () =>
 
   it('is off by default, reads the last 7 days of history and gives an image three minutes', () => {
     expect(imagesOf({})).toEqual({ enabled: false, historyDays: 7, timeoutMs: 180_000 })
+  })
+
+  it('changes the reader settings when the provider stops being claude-cli or its command changes', () => {
+    const cfg = (provider: unknown) => {
+      const result = parse({ imageReading: { enabled: true }, provider })
+      if (!result.ok) throw new Error(JSON.stringify(result.error))
+      return result.value
+    }
+    const on = cfg({ primary: 'claude-cli', claudeCli: { command: 'claude', model: 'sonnet' } })
+    expect(imageReaderSettings(on)).not.toBeNull()
+    expect(
+      imageReaderSettings(cfg({ primary: 'claude-cli', claudeCli: { command: 'claude', model: 'opus' } })),
+    ).not.toBe(imageReaderSettings(on))
+    expect(imageReaderSettings(cfg({ primary: null }))).toBeNull()
   })
 
   it('takes every option, and 0 days means the whole history', () => {
